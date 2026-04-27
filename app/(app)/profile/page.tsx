@@ -425,14 +425,16 @@ export default function ProfilePage() {
     const ageValue = form.age.trim() === '' ? null : Number(form.age)
     const normalizedAge = ageValue !== null && Number.isFinite(ageValue) ? ageValue : null
 
-    const updates: ProfileUpdate = {
-      first_name: form.first_name.trim() || null,
-      age: normalizedAge,
-      bio: form.bio.trim() || null,
-      city: form.city.trim() || null,
-      interests: form.interests.slice(0, 5),
-      photos: allPhotos,
-    }
+    const updates = {
+  first_name: form.first_name.trim() || null,
+  age: normalizedAge,
+  bio: form.bio.trim() || null,
+  city: form.city.trim() || null,
+
+  // 🔥 FIX ICI
+  interests: form.interests as any,
+  photos: allPhotos as any,
+}
 
     const { error } = await supabase
       .from('profiles')
