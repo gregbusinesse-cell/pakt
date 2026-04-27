@@ -1,9 +1,9 @@
 'use client'
+
 // app/(app)/matches/page.tsx
 // Messages page: matches + direct messages
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
@@ -22,9 +22,23 @@ interface ConversationItem {
   unread?: boolean
 }
 
-function BusinessBanner({ type }: { type: 'matches' | 'direct' }) {
-  const router = useRouter()
+interface MatchConversationRow {
+  id: string
+  participant1_id: string
+  participant2_id: string
+  last_message: string | null
+  last_message_at: string | null
+}
 
+interface DirectConversationRow {
+  id: string
+  sender_id: string
+  receiver_id: string
+  last_message: string | null
+  last_message_at: string | null
+}
+
+function BusinessBanner({ type }: { type: 'matches' | 'direct' }) {
   const content =
     type === 'matches'
       ? {
@@ -52,14 +66,15 @@ function BusinessBanner({ type }: { type: 'matches' | 'direct' }) {
         </div>
 
         <button
-  type="button"
-  onClick={() => {
-    window.location.href = "https://checkout.stripe.com/c/pay/cs_test_a1EOyhQb3zvA2y8kvEY2t5qaAFMEtLVxEExzPNpRIyx3EkYYmoqCtWQrwi"
-  }}
-  className="shrink-0 bg-gold text-dark px-4 py-2 rounded-[10px] text-sm font-bold transition-transform hover:scale-[1.03] active:scale-[0.99]"
->
-  Découvrir PAKT Business
-</button>
+          type="button"
+          onClick={() => {
+            window.location.href =
+              'https://checkout.stripe.com/c/pay/cs_test_a1EOyhQb3zvA2y8kvEY2t5qaAFMEtLVxEExzPNpRIyx3EkYYmoqCtWQrwi'
+          }}
+          className="shrink-0 bg-gold text-dark px-4 py-2 rounded-[10px] text-sm font-bold transition-transform hover:scale-[1.03] active:scale-[0.99]"
+        >
+          Découvrir PAKT Business
+        </button>
       </div>
     </motion.div>
   )
@@ -76,75 +91,102 @@ export default function MatchesPage() {
 
   useEffect(() => {
     if (!session?.user) return
+
     loadConversations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id])
 
   const loadConversations = async () => {
     if (!session?.user) return
+
     setLoading(true)
 
     try {
-      // Load match conversations
-      const { data: matchConvs } = await supabase
+      const { data: matchConvsData } = await supabase
         .from('conversations')
         .select('*')
         .or(`participant1_id.eq.${session.user.id},participant2_id.eq.${session.user.id}`)
         .order('last_message_at', { ascending: false })
 
-      // Load direct conversations
-      const { data: directConvs } = await supabase
+      const { data: directConvsData } = await supabase
         .from('direct_conversations')
         .select('*')
         .or(`sender_id.eq.${session.user.id},receiver_id.eq.${session.user.id}`)
         .order('last_message_at', { ascending: false })
 
-      // Get all other user IDs
-      const matchUserIds =
-        matchConvs?.map((c) =>
-(c as any).participant1_id === session.user.id 
-  ? (c as any).participant2_id 
-  : (c as any).participant1_id
-          ) || []
-      const directUserIds =
-        directConvs?.map((c) =>
-          (c as any).sender_id === session.user.id 
-  ? (c as any).receiver_id 
-  : (c as any).sender_id
-        ) || []
+      const matchConvs = (matchConvsData ?? []) as MatchConversationRow[]
+      const directConvs = (directConvsData ?? []) as DirectConversationRow[]
 
-      const allIds = Array.from(new Set([...(matchUserIds as any[]), ...(directUserIds as any[])]))
+      const matchUserIds = matchConvs.map((conversation) =>
+        conversation.participant1_id === session.user.id
+          ? conversation.participant2_id
+          : conversation.participant1_id,
+      )
+
+      const directUserIds = directConvs.map((conversation) =>
+        conversation.sender_id === session.user.id
+          ? conversation.receiver_id
+          : conversation.sender_id,
+      )
+
+      const allIds = Array.from(new Set([...matchUserIds, ...directUserIds]))
+
       if (allIds.length === 0) {
-        setLoading(false)
+        setConversations([])
         return
       }
 
-      const { data: profiles } = await supabase.from('profiles').select('*').in('id', allIds)
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', allIds)
 
-      const profileMap = new Map(profiles?.map((p) => [p.id, p]))
+      const profiles = (profilesData ?? []) as Profile[]
+      const profileMap = new Map<string, Profile>(
+        profiles.map((userProfile) => [userProfile.id, userProfile]),
+      )
 
-      const matchItems: ConversationItem[] = (matchConvs || [])
-        .map((c) => ({
-          id: c.id,
-          type: 'match' as const,
-          otherUser: profileMap.get(
-            (c as any).participant1_id === session.user.id 
-  ? (c as any).participant2_id 
-  : (c as any).participant1_id
-          )!,
-          lastMessage: c.last_message,
-          lastMessageAt: c.last_message_at,
-        }))
-        .filter((c) => c.otherUser)
+      const matchItems: ConversationItem[] = matchConvs
+        .map((conversation) => {
+          const otherUserId =
+            conversation.participant1_id === session.user.id
+              ? conversation.participant2_id
+              : conversation.participant1_id
 
-      const directItems: ConversationItem[] = (directConvs || [])
-        .map((c) => ({
-          id: c.id,
-          type: 'direct' as const,
-          otherUser: profileMap.get(c.sender_id === session.user.id ? c.receiver_id : c.sender_id)!,
-          lastMessage: c.last_message,
-          lastMessageAt: c.last_message_at,
-        }))
-        .filter((c) => c.otherUser)
+          const otherUser = profileMap.get(otherUserId)
+
+          if (!otherUser) return null
+
+          return {
+            id: conversation.id,
+            type: 'match' as const,
+            otherUser,
+            lastMessage: conversation.last_message,
+            lastMessageAt: conversation.last_message_at,
+          }
+        })
+        .filter((conversation): conversation is ConversationItem => Boolean(conversation))
+
+      const directItems: ConversationItem[] = directConvs
+        .map((conversation) => {
+          const otherUserId =
+            conversation.sender_id === session.user.id
+              ? conversation.receiver_id
+              : conversation.sender_id
+
+          const otherUser = profileMap.get(otherUserId)
+
+          if (!otherUser) return null
+
+          return {
+            id: conversation.id,
+            type: 'direct' as const,
+            otherUser,
+            lastMessage: conversation.last_message,
+            lastMessageAt: conversation.last_message_at,
+          }
+        })
+        .filter((conversation): conversation is ConversationItem => Boolean(conversation))
 
       setConversations([...matchItems, ...directItems])
     } finally {
@@ -152,17 +194,16 @@ export default function MatchesPage() {
     }
   }
 
-  const filtered = conversations.filter((c) => c.type === tab)
+  const filtered = conversations.filter((conversation) => conversation.type === tab)
 
   return (
     <div className="h-full flex flex-col bg-dark">
-      {/* Header */}
       <div className="px-5 pt-5 pb-3 shrink-0">
         <h1 className="text-2xl font-bold mb-4">Messages</h1>
 
-        {/* Tabs */}
         <div className="flex bg-dark-200 rounded-2xl p-1">
           <button
+            type="button"
             onClick={() => setTab('matches')}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
               tab === 'matches' ? 'bg-gold text-dark' : 'text-white/50'
@@ -171,7 +212,9 @@ export default function MatchesPage() {
             <Users size={15} />
             Matchs
           </button>
+
           <button
+            type="button"
             onClick={() => setTab('direct')}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
               tab === 'direct' ? 'bg-gold text-dark' : 'text-white/50'
@@ -183,7 +226,6 @@ export default function MatchesPage() {
         </div>
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto px-5 pb-4">
         {profile?.plan === 'free' && (
           <BusinessBanner type={tab === 'matches' ? 'matches' : 'direct'} />
@@ -191,8 +233,8 @@ export default function MatchesPage() {
 
         {loading ? (
           <div className="flex flex-col gap-3 pt-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3 p-3">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="flex items-center gap-3 p-3">
                 <div className="w-14 h-14 rounded-full shimmer shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="h-4 w-24 rounded shimmer" />
@@ -217,23 +259,22 @@ export default function MatchesPage() {
           </div>
         ) : (
           <div className="space-y-1 pt-2">
-            {filtered.map((conv, idx) => (
+            {filtered.map((conversation, index) => (
               <motion.div
-                key={conv.id}
+                key={conversation.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.05 }}
+                transition={{ delay: index * 0.05 }}
               >
                 <Link
-                  href={`/chat/${conv.id}?type=${conv.type}&userId=${conv.otherUser.id}`}
+                  href={`/chat/${conversation.id}?type=${conversation.type}&userId=${conversation.otherUser.id}`}
                   className="flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors"
                 >
-                  {/* Avatar */}
                   <div className="relative shrink-0">
                     <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
-                      {conv.otherUser.photos?.[0] ? (
+                      {conversation.otherUser.photos?.[0] ? (
                         <img
-                          src={(conv.otherUser.photos as any)[0]}
+                          src={(conversation.otherUser.photos as string[])[0]}
                           alt=""
                           className="w-full h-full object-cover"
                         />
@@ -243,26 +284,30 @@ export default function MatchesPage() {
                         </div>
                       )}
                     </div>
-                    {conv.type === 'match' && (
+
+                    {conversation.type === 'match' && (
                       <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
                         ✓
                       </div>
                     )}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                      <p className="font-semibold truncate">{conv.otherUser.first_name}</p>
-                      {conv.lastMessageAt && (
+                      <p className="font-semibold truncate">
+                        {conversation.otherUser.first_name}
+                      </p>
+
+                      {conversation.lastMessageAt && (
                         <span className="text-white/30 text-xs shrink-0 ml-2">
-                          {formatTime(conv.lastMessageAt)}
+                          {formatTime(conversation.lastMessageAt)}
                         </span>
                       )}
                     </div>
+
                     <p className="text-white/40 text-sm truncate">
-                      {conv.lastMessage ||
-                        (conv.type === 'match'
+                      {conversation.lastMessage ||
+                        (conversation.type === 'match'
                           ? '🎉 Nouveau match ! Dis bonjour'
                           : 'Nouveau message')}
                     </p>
