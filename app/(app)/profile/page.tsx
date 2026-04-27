@@ -420,8 +420,6 @@ export default function ProfilePage() {
   age: Number.parseInt(form.age, 10),
   bio: form.bio,
   city: form.city,
-  city_lat: form.lat,
-  city_lng: form.lng,
   interests: form.interests,
   photos: allPhotos,
 }
