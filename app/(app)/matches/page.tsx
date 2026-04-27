@@ -107,7 +107,9 @@ export default function MatchesPage() {
           ) || []
       const directUserIds =
         directConvs?.map((c) =>
-          c.sender_id === session.user.id ? c.receiver_id : c.sender_id
+          (c as any).sender_id === session.user.id 
+  ? (c as any).receiver_id 
+  : (c as any).sender_id
         ) || []
 
       const allIds = [...new Set([...matchUserIds, ...directUserIds])]
