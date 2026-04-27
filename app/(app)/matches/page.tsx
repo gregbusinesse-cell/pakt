@@ -112,7 +112,7 @@ export default function MatchesPage() {
   : (c as any).sender_id
         ) || []
 
-      const allIds = [...new Set([...matchUserIds, ...directUserIds])]
+      const allIds = Array.from(new Set([...(matchUserIds as any[]), ...(directUserIds as any[])]))
       if (allIds.length === 0) {
         setLoading(false)
         return
