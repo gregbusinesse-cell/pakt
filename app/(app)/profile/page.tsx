@@ -218,8 +218,8 @@ export default function ProfilePage() {
   const session = useSession()
   const supabase = createClient()
   const { profile, setProfile } = useAppStore()
-  const isSuspended = profile?.is_suspended === true
-  const router = useRouter()
+  const isSuspended = false
+    const router = useRouter()
 
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [editing, setEditing] = useState(false)
