@@ -57,7 +57,7 @@ useEffect(() => {
         .single()
 
       if (data) {
-        if (!data.is_onboarded) {
+        if (!(data as any).is_onboarded) {
           router.push('/onboarding')
           return
         }
