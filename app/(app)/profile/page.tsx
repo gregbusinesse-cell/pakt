@@ -499,7 +499,7 @@ export default function ProfilePage() {
 
     try {
       const updates: ProfileUpdate = { is_suspended: true }
-      const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id)
+      const { error } = await supabase.from('profiles').update(updates as any).eq('id', session.user.id)
 
       if (error) throw error
 
