@@ -404,11 +404,11 @@ export default function ProfilePage() {
 
       if (error) throw error
 
-      const { data: publicData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(data.path)
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('avatars').getPublicUrl(data.path)
 
-      uploadedPhotoMap.set(photo, publicData.publicUrl)
+      uploadedPhotoMap.set(photo, publicUrl)
     }
 
     const allPhotosRaw = photoItems
@@ -422,21 +422,16 @@ export default function ProfilePage() {
 
     type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 
-    const parsedAge =
-      typeof form.age === 'string' && form.age.trim()
-        ? Number(form.age)
-        : null
-
-    const normalizedAge =
-      parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
+    const ageValue = form.age.trim() === '' ? null : Number(form.age)
+    const normalizedAge = ageValue !== null && Number.isFinite(ageValue) ? ageValue : null
 
     const updates: ProfileUpdate = {
-      first_name: form.first_name?.trim() || null,
+      first_name: form.first_name.trim() || null,
       age: normalizedAge,
-      bio: form.bio?.trim() || null,
-      city: form.city?.trim() || null,
-      interests: Array.isArray(form.interests) ? form.interests : [],
-      photos: Array.isArray(allPhotos) ? allPhotos : [],
+      bio: form.bio.trim() || null,
+      city: form.city.trim() || null,
+      interests: form.interests.slice(0, 5),
+      photos: allPhotos,
     }
 
     const { error } = await supabase
@@ -446,10 +441,14 @@ export default function ProfilePage() {
 
     if (error) throw error
 
-    setProfile({
-      ...(profile as Profile),
-      ...updates,
-    })
+    if (profile) {
+      setProfile({
+        ...profile,
+        ...updates,
+        photos: allPhotos,
+        interests: form.interests.slice(0, 5),
+      })
+    }
 
     setExistingPhotos(allPhotos)
     setNewPhotos([])
@@ -458,7 +457,6 @@ export default function ProfilePage() {
     setEditing(false)
     setMode('view')
     toast.success('Profil mis à jour !')
-
   } catch (err) {
     toast.error(err instanceof Error ? err.message : 'Erreur inconnue')
   } finally {
