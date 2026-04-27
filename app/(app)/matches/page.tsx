@@ -13,6 +13,15 @@ import { formatTime } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
 import { MessageCircle, Users, Crown } from 'lucide-react'
 
+type ConversationItem = {
+  id: string
+  type: 'match' | 'direct'
+  otherUser: any
+
+  lastMessage?: string
+  lastMessageAt?: string
+}
+
 interface ConversationItem {
   id: string
   type: 'match' | 'direct'
@@ -167,27 +176,29 @@ export default function MatchesPage() {
   })
   .filter(Boolean) as ConversationItem[]
   
-      const directItems: ConversationItem[] = directConvs
-        .map((conversation) => {
-          const otherUserId =
-            conversation.sender_id === session.user.id
-              ? conversation.receiver_id
-              : conversation.sender_id
+      const directItems: ConversationItem[] = (directConvs || [])
+  .map((conversation) => {
+    if (!conversation) return null
 
-          const otherUser = profileMap.get(otherUserId)
+    const otherUserId =
+      conversation.sender_id === session.user.id
+        ? conversation.receiver_id
+        : conversation.sender_id
 
-          if (!otherUser) return null
+    const otherUser = profileMap.get(otherUserId)
 
-          return {
-            id: conversation.id,
-            type: 'direct' as const,
-            otherUser,
-            lastMessage: conversation.last_message,
-            lastMessageAt: conversation.last_message_at,
-          }
-        })
-        .filter((conversation): conversation is ConversationItem => Boolean(conversation))
+    if (!otherUser) return null
 
+    return {
+      id: conversation.id,
+      type: 'direct' as const,
+      otherUser,
+      lastMessage: conversation.last_message,
+      lastMessageAt: conversation.last_message_at,
+    }
+  })
+  .filter(Boolean) as ConversationItem[]
+  
       setConversations([...matchItems, ...directItems])
     } finally {
       setLoading(false)
