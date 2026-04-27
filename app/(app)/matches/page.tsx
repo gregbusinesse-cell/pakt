@@ -101,8 +101,10 @@ export default function MatchesPage() {
       // Get all other user IDs
       const matchUserIds =
         matchConvs?.map((c) =>
-          c.participant1_id === session.user.id ? c.participant2_id : c.participant1_id
-        ) || []
+(c as any).participant1_id === session.user.id 
+  ? (c as any).participant2_id 
+  : (c as any).participant1_id
+          ) || []
       const directUserIds =
         directConvs?.map((c) =>
           c.sender_id === session.user.id ? c.receiver_id : c.sender_id
@@ -123,7 +125,9 @@ export default function MatchesPage() {
           id: c.id,
           type: 'match' as const,
           otherUser: profileMap.get(
-            c.participant1_id === session.user.id ? c.participant2_id : c.participant1_id
+            (c as any).participant1_id === session.user.id 
+  ? (c as any).participant2_id 
+  : (c as any).participant1_id
           )!,
           lastMessage: c.last_message,
           lastMessageAt: c.last_message_at,
