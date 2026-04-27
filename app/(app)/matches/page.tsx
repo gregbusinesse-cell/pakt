@@ -146,27 +146,27 @@ export default function MatchesPage() {
         profiles.map((userProfile) => [userProfile.id, userProfile]),
       )
 
-      const matchItems: ConversationItem[] = matchConvs
-        .map((conversation) => {
-          const otherUserId =
-            conversation.participant1_id === session.user.id
-              ? conversation.participant2_id
-              : conversation.participant1_id
+      const matchItems: ConversationItem[] = (matchConvs || [])
+  .map((conversation) => {
+    if (!conversation) return null
 
-          const otherUser = profileMap.get(otherUserId)
+    const otherUserId =
+      conversation.participant1_id === session.user.id
+        ? conversation.participant2_id
+        : conversation.participant1_id
 
-          if (!otherUser) return null
+    const otherUser = profileMap.get(otherUserId)
 
-          return {
-            id: conversation.id,
-            type: 'match' as const,
-            otherUser,
-            lastMessage: conversation.last_message,
-            lastMessageAt: conversation.last_message_at,
-          }
-        })
-        .filter((conversation): conversation is ConversationItem => Boolean(conversation))
+    if (!otherUser) return null
 
+    return {
+      id: conversation.id,
+      type: 'match' as const,
+      otherUser,
+    }
+  })
+  .filter(Boolean) as ConversationItem[]
+  
       const directItems: ConversationItem[] = directConvs
         .map((conversation) => {
           const otherUserId =
