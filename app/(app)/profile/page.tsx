@@ -456,7 +456,7 @@ export default function ProfilePage() {
       updates.photos = allPhotos
 
       const { error } = await supabase
-        .from('profiles')
+        .from<Database['public']['Tables']['profiles']['Row']>('profiles')
         .update(updates as any)
         .eq('id', session.user.id)
 
@@ -500,7 +500,7 @@ export default function ProfilePage() {
 
     try {
       const updates: ProfileUpdate = { is_suspended: true }
-      const { error } = await supabase.from('profiles').update(updates as any).eq('id', session.user.id)
+      const { error } = await supabase.from<Database['public']['Tables']['profiles']['Row']>('profiles').update(updates as any).eq('id', session.user.id)
 
       if (error) throw error
 
@@ -522,7 +522,7 @@ export default function ProfilePage() {
     try {
       const updates: ProfileUpdate = { is_suspended: false }
       const { error } = await supabase
-  .from('profiles')
+  .from<Database['public']['Tables']['profiles']['Row']>('profiles')
   .update(updates as never)
   .eq('id', session.user.id)
 
@@ -560,7 +560,7 @@ export default function ProfilePage() {
     setDangerLoading(true)
 
     try {
-      const { error } = await supabase.from('profiles').delete().eq('id', session.user.id)
+      const { error } = await supabase.from<Database['public']['Tables']['profiles']['Row']>('profiles').delete().eq('id', session.user.id)
 
       if (error) throw error
 
