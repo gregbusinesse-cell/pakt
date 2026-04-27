@@ -14,6 +14,8 @@ import { Check, X, Plus, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import { AnimatePresence, motion } from 'framer-motion'
+import type { Database, Profile } from '@/lib/supabase/types'
+
 
 type PhotoItem =
   | { type: 'existing'; url: string }
@@ -415,14 +417,27 @@ export default function ProfilePage() {
 
       const allPhotos = cleanPhotoUrls(allPhotosRaw)
 
-      const updates: Partial<Profile> = {
-  first_name: form.first_name || null,
-  age: form.age || null,
-  bio: form.bio || null,
-  city: form.city || null,
-  interests: form.interests || [],
-  photos: allPhotos || [],
-}
+      type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
+
+const parsedAge =
+  typeof form.age === 'string' && form.age.trim()
+    ? Number(form.age)
+    : typeof form.age === 'number'
+    ? form.age
+    : null
+
+const normalizedAge =
+  parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
+
+const updates = {
+  first_name: form.first_name?.trim() || null,
+  age: normalizedAge,
+  bio: form.bio?.trim() || null,
+  city: form.city?.trim() || null,
+  interests: Array.isArray(form.interests) ? form.interests : [],
+  photos: Array.isArray(allPhotos) ? allPhotos : [],
+} satisfies ProfileUpdate
+
       const { error } = await supabase.from('profiles').update(updates as any).eq('id', session.user.id)
       if (error) throw error
 
