@@ -218,7 +218,7 @@ function PhotoSection(props: {
 
 export default function ProfilePage() {
   const session = useSession()
-  const supabase = createClient()
+  const supabase = createClient<Database>()
   const { profile, setProfile } = useAppStore()
   const isSuspended = false
     const router = useRouter()
