@@ -446,7 +446,7 @@ export default function ProfilePage() {
       const parsedAge = rawAge === '' ? null : Number(rawAge)
       const normalizedAge = parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
 
-      const updates: ProfileUpdate = {}
+      const updates: Partial<Profile> = {}
 
       updates.first_name = form.first_name.trim() || null
       updates.age = normalizedAge
