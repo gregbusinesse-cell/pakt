@@ -31,7 +31,7 @@ useEffect(() => {
     if (session.user.email_confirmed_at) {
       await supabase
         .from('profiles')
-        .update({ email_confirmed: true })
+        .update({ email_confirmed: true } as any)
         .eq('id', session.user.id)
     }
   }
