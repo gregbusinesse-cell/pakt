@@ -13,15 +13,6 @@ import { formatTime } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
 import { MessageCircle, Users, Crown } from 'lucide-react'
 
-type ConversationItem = {
-  id: string
-  type: 'match' | 'direct'
-  otherUser: any
-
-  lastMessage?: string
-  lastMessageAt?: string
-}
-
 interface ConversationItem {
   id: string
   type: 'match' | 'direct'
