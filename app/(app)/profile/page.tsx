@@ -429,32 +429,35 @@ const parsedAge =
 const normalizedAge =
   parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
 
-const updates = {
+const updates: ProfileUpdate = {
   first_name: form.first_name?.trim() || null,
   age: normalizedAge,
   bio: form.bio?.trim() || null,
   city: form.city?.trim() || null,
   interests: Array.isArray(form.interests) ? form.interests : [],
   photos: Array.isArray(allPhotos) ? allPhotos : [],
-} satisfies ProfileUpdate
+}
 
-      const { error } = await supabase.from('profiles').update(updates as any).eq('id', session.user.id)
-      if (error) throw error
+const { error } = await supabase
+  .from('profiles')
+  .update(updates)
+  .eq('id', session.user.id)
 
-      setProfile({ ...profile!, ...updates })
-      setExistingPhotos(allPhotos)
-      setNewPhotos([])
-      setNewPhotoUrls([])
-      setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
-      setEditing(false)
-      setMode('view')
-      toast.success('Profil mis à jour !')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur inconnue')
-    } finally {
-      setSaving(false)
-    }
-  }
+if (error) throw error
+
+// ⚠️ IMPORTANT : cast propre ici
+setProfile({
+  ...(profile as Profile),
+  ...updates,
+})
+
+setExistingPhotos(allPhotos)
+setNewPhotos([])
+setNewPhotoUrls([])
+setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
+setEditing(false)
+setMode('view')
+toast.success('Profil mis à jour !')
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
