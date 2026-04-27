@@ -388,76 +388,83 @@ export default function ProfilePage() {
   }
 
   const saveProfile = async () => {
-    if (!session?.user) return
+  if (!session?.user) return
 
-    setSaving(true)
+  setSaving(true)
 
-    try {
-      const uploadedPhotoMap = new Map<File, string>()
+  try {
+    const uploadedPhotoMap = new Map<File, string>()
 
-      for (const photo of newPhotos) {
-        const path = `${session.user.id}/${Date.now()}-${photo.name}`
+    for (const photo of newPhotos) {
+      const path = `${session.user.id}/${Date.now()}-${photo.name}`
 
-        const { data, error } = await supabase.storage.from('avatars').upload(path, photo, { upsert: true })
-        if (error) throw error
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(path, photo, { upsert: true })
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('avatars').getPublicUrl(data.path)
+      if (error) throw error
 
-        uploadedPhotoMap.set(photo, publicUrl)
-      }
+      const { data: publicData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(data.path)
 
-      const allPhotosRaw = photoItems
-        .map((item) => {
-          if (item.type === 'existing') return item.url
-          return uploadedPhotoMap.get(item.file)
-        })
-        .slice(0, MAX_PHOTOS)
+      uploadedPhotoMap.set(photo, publicData.publicUrl)
+    }
 
-      const allPhotos = cleanPhotoUrls(allPhotosRaw)
+    const allPhotosRaw = photoItems
+      .map((item) => {
+        if (item.type === 'existing') return item.url
+        return uploadedPhotoMap.get(item.file)
+      })
+      .slice(0, MAX_PHOTOS)
 
-      type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
+    const allPhotos = cleanPhotoUrls(allPhotosRaw)
 
-const parsedAge =
-  typeof form.age === 'string' && form.age.trim()
-    ? Number(form.age)
-    : typeof form.age === 'number'
-    ? form.age
-    : null
+    type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 
-const normalizedAge =
-  parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
+    const parsedAge =
+      typeof form.age === 'string' && form.age.trim()
+        ? Number(form.age)
+        : null
 
-const updates: ProfileUpdate = {
-  first_name: form.first_name?.trim() || null,
-  age: normalizedAge,
-  bio: form.bio?.trim() || null,
-  city: form.city?.trim() || null,
-  interests: Array.isArray(form.interests) ? form.interests : [],
-  photos: Array.isArray(allPhotos) ? allPhotos : [],
+    const normalizedAge =
+      parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
+
+    const updates: ProfileUpdate = {
+      first_name: form.first_name?.trim() || null,
+      age: normalizedAge,
+      bio: form.bio?.trim() || null,
+      city: form.city?.trim() || null,
+      interests: Array.isArray(form.interests) ? form.interests : [],
+      photos: Array.isArray(allPhotos) ? allPhotos : [],
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', session.user.id)
+
+    if (error) throw error
+
+    setProfile({
+      ...(profile as Profile),
+      ...updates,
+    })
+
+    setExistingPhotos(allPhotos)
+    setNewPhotos([])
+    setNewPhotoUrls([])
+    setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
+    setEditing(false)
+    setMode('view')
+    toast.success('Profil mis à jour !')
+
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Erreur inconnue')
+  } finally {
+    setSaving(false)
+  }
 }
-
-const { error } = await supabase
-  .from('profiles')
-  .update(updates)
-  .eq('id', session.user.id)
-
-if (error) throw error
-
-// ⚠️ IMPORTANT : cast propre ici
-setProfile({
-  ...(profile as Profile),
-  ...updates,
-})
-
-setExistingPhotos(allPhotos)
-setNewPhotos([])
-setNewPhotoUrls([])
-setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
-setEditing(false)
-setMode('view')
-toast.success('Profil mis à jour !')
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
