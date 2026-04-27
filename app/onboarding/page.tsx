@@ -1,0 +1,610 @@
+'use client'
+// app/onboarding/page.tsx
+// Multi-step onboarding flow for new users
+
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useDropzone } from 'react-dropzone'
+import toast from 'react-hot-toast'
+import { useSession } from '@supabase/auth-helpers-react'
+import { INTERESTS, MAX_PHOTOS } from '@/lib/utils'
+import { X, Plus, ChevronRight, ChevronLeft } from 'lucide-react'
+
+const STEPS = 5
+const MAX_INTERESTS = 5
+
+type PhotoItem = { type: 'new'; url: string; file: File }
+
+declare global {
+  interface Window {
+    google?: any
+  }
+}
+
+let googlePlacesPromise: Promise<void> | null = null
+
+function loadGooglePlacesScript() {
+  if (typeof window === 'undefined') return Promise.resolve()
+  if (window.google?.maps?.places) return Promise.resolve()
+
+  if (!googlePlacesPromise) {
+    googlePlacesPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>('script[data-google-places="true"]')
+
+      if (existing) {
+        existing.addEventListener('load', () => resolve())
+        existing.addEventListener('error', reject)
+        return
+      }
+
+      const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+      if (!key) {
+        reject(new Error('Clé Google Maps manquante'))
+        return
+      }
+
+      const script = document.createElement('script')
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&language=fr`
+      script.async = true
+      script.defer = true
+      script.dataset.googlePlaces = 'true'
+      script.onload = () => resolve()
+      script.onerror = reject
+
+      document.head.appendChild(script)
+    })
+  }
+
+  return googlePlacesPromise
+}
+
+interface OnboardingData {
+  firstName: string
+  age: string
+  bio: string
+  city: string
+  lat: number | null
+  lng: number | null
+  photos: File[]
+  photoUrls: string[]
+}
+
+export default function OnboardingPage() {
+  const [step, setStep] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [direction, setDirection] = useState(1)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
+  const [photoItems, setPhotoItems] = useState<PhotoItem[]>([])
+  const cityInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [data, setData] = useState<OnboardingData>({
+    firstName: '',
+    age: '',
+    bio: '',
+    city: '',
+    lat: null,
+    lng: null,
+    photos: [],
+    photoUrls: [],
+  })
+
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([])
+  const [otherInput, setOtherInput] = useState('')
+
+  const router = useRouter()
+  const supabase = createClient()
+  const session = useSession()
+
+  const progress = ((step + 1) / STEPS) * 100
+
+  const updateData = (key: keyof OnboardingData, value: any) =>
+    setData((prev) => ({ ...prev, [key]: value }))
+
+  useEffect(() => {
+  if (step !== 3) return
+
+  let autocomplete: any
+
+  const init = async () => {
+    try {
+      await loadGooglePlacesScript()
+
+      if (!cityInputRef.current || !window.google?.maps?.places) return
+
+      autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
+        types: ['(cities)'],
+        fields: ['name', 'geometry'],
+      })
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace()
+        const location = place.geometry?.location
+
+        if (!location) return
+
+        setData((prev) => ({
+          ...prev,
+          city: place.name || '',
+          lat: location.lat(),
+          lng: location.lng(),
+        }))
+      })
+    } catch (err) {
+      toast.error('Autocomplete ville indisponible')
+    }
+  }
+
+  setTimeout(init, 300)
+
+  return () => {
+    if (autocomplete && window.google?.maps?.event) {
+      window.google.maps.event.clearInstanceListeners(autocomplete)
+    }
+  }
+}, [step])
+
+  const addInterestsFromText = (text: string) => {
+    const parts = text
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    if (parts.length === 0) return
+
+    setSelectedInterests((prev) => {
+      const existing = new Set(prev.map((i) => i.toLowerCase()))
+      const next = [...prev]
+
+      for (const raw of parts) {
+        if (next.length >= MAX_INTERESTS) break
+        const key = raw.toLowerCase()
+        if (existing.has(key)) continue
+        existing.add(key)
+        next.push(raw)
+      }
+
+      return next
+    })
+
+    setOtherInput('')
+  }
+
+  const toggleInterest = (interest: string) => {
+    setSelectedInterests((prev) => {
+      const already = prev.some((i) => i.toLowerCase() === interest.toLowerCase())
+      if (already) return prev.filter((i) => i.toLowerCase() !== interest.toLowerCase())
+      if (prev.length >= MAX_INTERESTS) return prev
+      return [...prev, interest]
+    })
+  }
+
+  const syncPhotoState = (items: PhotoItem[]) => {
+    const nextItems = items.slice(0, MAX_PHOTOS)
+
+    setPhotoItems(nextItems)
+    setData((prev) => ({
+      ...prev,
+      photos: nextItems.map((item) => item.file),
+      photoUrls: nextItems.map((item) => item.url),
+    }))
+  }
+
+  const onDrop = useCallback(
+    (files: File[]) => {
+      const file = files[0]
+      if (!file) return
+
+      const url = URL.createObjectURL(file)
+
+      setPhotoItems((currentItems) => {
+        const nextItems = [...currentItems]
+        const targetIndex =
+          selectedPhotoIndex !== null ? selectedPhotoIndex : Math.min(nextItems.length, MAX_PHOTOS - 1)
+
+        if (targetIndex >= MAX_PHOTOS) return currentItems
+
+        const newItem: PhotoItem = { type: 'new', file, url }
+
+        if (targetIndex < nextItems.length) nextItems[targetIndex] = newItem
+        else nextItems.push(newItem)
+
+        const limitedItems = nextItems.slice(0, MAX_PHOTOS)
+
+        setData((prev) => ({
+          ...prev,
+          photos: limitedItems.map((item) => item.file),
+          photoUrls: limitedItems.map((item) => item.url),
+        }))
+
+        return limitedItems
+      })
+
+      setSelectedPhotoIndex(null)
+    },
+    [selectedPhotoIndex]
+  )
+
+  const { getRootProps, getInputProps } = useDropzone({
+    onDrop,
+    accept: { 'image/*': [] },
+    multiple: false,
+  })
+
+  const removePhoto = (idx: number) => {
+    const nextItems = photoItems.filter((_, photoIndex) => photoIndex !== idx)
+    syncPhotoState(nextItems)
+  }
+
+  const canProceed = () => {
+    switch (step) {
+      case 0:
+        return data.firstName.trim() && data.age && parseInt(data.age) >= 15
+      case 1:
+        return data.bio.trim().length >= 21
+      case 2:
+        return selectedInterests.length > 0
+      case 3:
+        return data.city.trim() && data.lat !== null && data.lng !== null
+      case 4:
+        return data.photos.length >= 1
+      default:
+        return true
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!session?.user) return
+    setLoading(true)
+
+    try {
+      const uploadedUrls: string[] = []
+
+      for (const photo of data.photos) {
+        const fileName = `${session.user.id}/${Date.now()}-${photo.name}`
+
+        const { data: uploadData, error } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, photo, { upsert: true })
+
+        if (error) throw error
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('avatars').getPublicUrl(uploadData.path)
+
+        uploadedUrls.push(publicUrl)
+      }
+
+      const isGoogle = session?.user?.app_metadata?.provider === 'google'
+
+      const { error } = await supabase.from('profiles').upsert({
+        id: session.user.id,
+        email: session.user.email!,
+        first_name: data.firstName,
+        age: parseInt(data.age),
+        bio: data.bio,
+        interests: selectedInterests,
+        city: data.city,
+        city_lat: data.lat,
+city_lng: data.lng,
+        photos: uploadedUrls,
+        is_onboarded: true,
+        email_confirmed: isGoogle,
+        plan: 'free',
+        swipes_today: 0,
+        last_swipe_date: new Date().toISOString().split('T')[0],
+      })
+
+      if (error) throw error
+
+      router.push('/loading')
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur lors de la création du profil')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const variants = {
+    enter: (dir: number) => ({ x: dir > 0 ? 60 : -60, opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (dir: number) => ({ x: dir < 0 ? 60 : -60, opacity: 0 }),
+  }
+
+  const goNext = () => {
+    if (step === 2 && otherInput.trim()) addInterestsFromText(otherInput)
+
+    if (step === STEPS - 1) {
+      handleSubmit()
+      return
+    }
+
+    setDirection(1)
+    setStep((s) => s + 1)
+  }
+
+  const goPrev = () => {
+    setDirection(-1)
+    setStep((s) => s - 1)
+  }
+
+  const maxReached = selectedInterests.length >= MAX_INTERESTS
+  const allDisplayPhotos = photoItems.map((item) => item.url).slice(0, MAX_PHOTOS)
+  const visiblePhotoSlots = Array.from({ length: MAX_PHOTOS }, (_, index) => allDisplayPhotos[index] || '')
+
+  return (
+    <div className="app-height flex flex-col bg-dark">
+      <div className="h-1 bg-dark-400 mt-safe">
+        <motion.div className="h-full bg-gold" animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
+      </div>
+
+      <div className="flex items-center justify-between px-6 py-4">
+        {step > 0 ? (
+          <button onClick={goPrev} className="p-2 rounded-xl hover:bg-dark-300 transition-colors">
+            <ChevronLeft size={20} className="text-white/70" />
+          </button>
+        ) : (
+          <div />
+        )}
+
+        <span className="text-white/40 text-sm">
+          {step + 1} / {STEPS}
+        </span>
+
+        <div />
+      </div>
+
+      <div className="flex-1 overflow-hidden relative px-6">
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={step}
+            custom={direction}
+            variants={variants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            className="h-full flex flex-col"
+          >
+            {step === 0 && (
+              <div className="flex flex-col gap-6 pt-4">
+                <div>
+                  <h2 className="text-3xl font-bold mb-1">Bienvenue 👋</h2>
+                  <p className="text-white/50">Quelques infos pour commencer</p>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Ton prénom"
+                  value={data.firstName}
+                  onChange={(e) => updateData('firstName', e.target.value)}
+                  className="pakt-input text-lg"
+                  autoFocus
+                />
+
+                <input
+                  type="number"
+                  placeholder="Ton âge"
+                  value={data.age}
+                  onChange={(e) => updateData('age', e.target.value)}
+                  className="pakt-input text-lg"
+                  min="15"
+                  max="99"
+                />
+
+                {data.age && parseInt(data.age) < 15 && (
+                  <p className="text-red-400 text-sm">Tu dois avoir au moins 15 ans.</p>
+                )}
+              </div>
+            )}
+
+            {step === 1 && (
+              <div className="flex flex-col gap-6 pt-4">
+                <div>
+                  <h2 className="text-3xl font-bold mb-1">Ta bio ✍️</h2>
+                  <p className="text-white/50">Présente-toi en quelques mots</p>
+                </div>
+
+                <div>
+                  <textarea
+                    placeholder="Qui es-tu ? Quels sont tes projets ? Qu'est-ce qui te définit..."
+                    value={data.bio}
+                    onChange={(e) => updateData('bio', e.target.value)}
+                    className="pakt-input resize-none h-40 text-base leading-relaxed"
+                    maxLength={500}
+                  />
+
+                  <div className="flex items-center justify-end mt-2">
+                    <p className="text-xs text-white/30">Minimum 21 caractères</p>
+                  </div>
+                </div>
+
+                <p className="text-white/30 text-xs text-right">{data.bio.length}/500</p>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="flex flex-col gap-5 pt-4">
+                <div>
+                  <h2 className="text-3xl font-bold mb-1">Tes intérêts 🎯</h2>
+                  <p className="text-white/50">Sélectionne ce qui te correspond</p>
+                </div>
+
+                {selectedInterests.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedInterests.map((interest) => (
+                      <button
+                        key={interest.toLowerCase()}
+                        type="button"
+                        onClick={() => toggleInterest(interest)}
+                        className="px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 bg-gold text-dark"
+                      >
+                        {interest}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2 overflow-y-auto max-h-64">
+                  {INTERESTS.filter((i) => i !== 'Autre').map((interest) => {
+                    const selected = selectedInterests.some((i) => i.toLowerCase() === interest.toLowerCase())
+                    const disabled = maxReached && !selected
+
+                    return (
+                      <button
+                        key={interest}
+                        type="button"
+                        onClick={() => toggleInterest(interest)}
+                        disabled={disabled}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+                          selected
+                            ? 'bg-gold text-dark'
+                            : 'bg-dark-300 text-white/70 border border-dark-500 hover:border-gold/30'
+                        } ${disabled ? 'opacity-40 hover:border-dark-500 cursor-not-allowed' : ''}`}
+                      >
+                        {interest}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Autre (précise...)"
+                    value={otherInput}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v.includes(',')) addInterestsFromText(v)
+                      else setOtherInput(v)
+                    }}
+                    onBlur={() => {
+                      if (otherInput.trim()) addInterestsFromText(otherInput)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        if (otherInput.trim()) addInterestsFromText(otherInput)
+                      }
+                    }}
+                    className="pakt-input text-sm"
+                  />
+
+                  <p className="text-white/40 text-xs mt-2">Sépare tes intérêts par une virgule</p>
+                  <p className="text-white/40 text-xs mt-1">Maximum 5 intérêts</p>
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="flex flex-col gap-6 pt-4">
+                <div>
+                  <h2 className="text-3xl font-bold mb-1">Ta ville 📍</h2>
+                  <p className="text-white/50">Pour trouver des personnes près de toi</p>
+                </div>
+
+                <input
+                  ref={cityInputRef}
+                  type="text"
+                  placeholder="Paris, Lyon, Bordeaux..."
+                  value={data.city}
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      city: e.target.value,
+                      lat: null,
+                      lng: null,
+                    }))
+                  }
+                  className="pakt-input text-lg"
+                  autoFocus
+                />
+              </div>
+            )}
+
+            {step === 4 && (
+              <div className="flex flex-col gap-5 pt-4">
+                <div>
+                  <h2 className="text-3xl font-bold mb-1">Tes photos 📸</h2>
+                  <p className="text-white/50">Ajoute jusqu'à {MAX_PHOTOS} photos (min 1)</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 w-full max-w-[650px] mx-auto">
+                  {visiblePhotoSlots.map((url, idx) => {
+                    const rootProps = getRootProps({
+                      onClick: () => setSelectedPhotoIndex(idx),
+                      onDragEnter: () => setSelectedPhotoIndex(idx),
+                    })
+
+                    return (
+                      <div
+                        key={`${url || 'empty'}-${idx}`}
+                        {...rootProps}
+                        className="relative aspect-square rounded-xl overflow-hidden bg-[#1e1e1e] border border-dark-500 cursor-pointer hover:border-gold/50 transition-colors"
+                      >
+                        <input {...getInputProps()} />
+
+                        {url ? (
+                          <img src={url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Plus size={20} className="text-white/30" />
+                          </div>
+                        )}
+
+                        {idx === 0 && url && (
+                          <div className="absolute top-1 left-1 bg-gold text-dark text-[10px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none">
+                            Principal
+                          </div>
+                        )}
+
+                        {url && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              removePhoto(idx)
+                            }}
+                            className="absolute top-1 right-1 bg-black/70 rounded-full p-1"
+                          >
+                            <X size={10} className="text-white" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <div className="px-6 pb-8 pt-4">
+        <button
+          onClick={goNext}
+          disabled={!canProceed() || loading}
+          className="btn-primary flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            <>
+              <span className="animate-spin w-4 h-4 border-2 border-dark border-t-transparent rounded-full" />
+              Création du profil...
+            </>
+          ) : step === STEPS - 1 ? (
+            '🚀 Lancer PAKT'
+          ) : (
+            <>
+              Continuer
+              <ChevronRight size={18} />
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
