@@ -415,7 +415,7 @@ export default function ProfilePage() {
 
       const allPhotos = cleanPhotoUrls(allPhotosRaw)
 
-      const updates = {
+      const updates: Partial<Profile> = {
   first_name: form.first_name || null,
   age: form.age || null,
   bio: form.bio || null,
@@ -423,7 +423,6 @@ export default function ProfilePage() {
   interests: form.interests || [],
   photos: allPhotos || [],
 }
-
       const { error } = await supabase.from('profiles').update(updates as any).eq('id', session.user.id)
       if (error) throw error
 
