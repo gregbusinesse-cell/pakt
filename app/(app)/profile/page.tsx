@@ -16,6 +16,7 @@ import SwipeCard from '@/components/swipe/SwipeCard'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Database, Profile } from '@/lib/supabase/types'
 
+type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 
 type PhotoItem =
   | { type: 'existing'; url: string }
@@ -25,6 +26,14 @@ type Preferences = {
   distance_km: number
   age_min: number
   age_max: number
+}
+
+type ProfileForm = {
+  first_name: string
+  age: string
+  bio: string
+  city: string
+  interests: string[]
 }
 
 function cleanPhotoUrls(photos: unknown): string[] {
@@ -42,8 +51,8 @@ function cleanPhotoUrls(photos: unknown): string[] {
   })()
 
   return cleaned
-    .filter((p) => typeof p === 'string' && p.trim().length > 0)
-    .map((p) => (p as string).trim())
+    .filter((photo): photo is string => typeof photo === 'string' && photo.trim().length > 0)
+    .map((photo) => photo.trim())
 }
 
 function normalizePhotos(photos: unknown): string[] {
@@ -56,17 +65,30 @@ function clampNumber(value: number, min: number, max: number) {
 
 function getInitialPreferences(pref: unknown): Preferences {
   const base: Preferences = { distance_km: 50, age_min: 18, age_max: 30 }
+
   if (!pref || typeof pref !== 'object') return base
-  const p = pref as any
-  const distance_km = Number.isFinite(p.distance_km)
-    ? clampNumber(Number(p.distance_km), 0, 1000)
-    : base.distance_km
-  const age_min = Number.isFinite(p.age_min) ? clampNumber(Number(p.age_min), 18, 99) : base.age_min
-  const age_max = Number.isFinite(p.age_max) ? clampNumber(Number(p.age_max), 18, 99) : base.age_max
+
+  const data = pref as Partial<Record<keyof Preferences, unknown>>
+
+  const distanceKm =
+    typeof data.distance_km === 'number' && Number.isFinite(data.distance_km)
+      ? clampNumber(data.distance_km, 0, 1000)
+      : base.distance_km
+
+  const ageMin =
+    typeof data.age_min === 'number' && Number.isFinite(data.age_min)
+      ? clampNumber(data.age_min, 18, 99)
+      : base.age_min
+
+  const ageMax =
+    typeof data.age_max === 'number' && Number.isFinite(data.age_max)
+      ? clampNumber(data.age_max, 18, 99)
+      : base.age_max
+
   return {
-    distance_km,
-    age_min: Math.min(age_min, age_max),
-    age_max: Math.max(age_min, age_max),
+    distance_km: distanceKm,
+    age_min: Math.min(ageMin, ageMax),
+    age_max: Math.max(ageMin, ageMax),
   }
 }
 
@@ -220,8 +242,8 @@ export default function ProfilePage() {
   const session = useSession()
   const supabase = createClient<Database>()
   const { profile, setProfile } = useAppStore()
-  const isSuspended = false
-    const router = useRouter()
+  const isSuspended = Boolean(profile && 'is_suspended' in profile && profile.is_suspended)
+  const router = useRouter()
 
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [editing, setEditing] = useState(false)
@@ -235,10 +257,10 @@ export default function ProfilePage() {
   const [dangerLoading, setDangerLoading] = useState(false)
 
   const [preferences, setPreferences] = useState<Preferences>(() =>
-    getInitialPreferences((profile as any)?.preferences)
+    getInitialPreferences(profile && 'preferences' in profile ? profile.preferences : null)
   )
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<ProfileForm>({
     first_name: profile?.first_name || '',
     age: String(profile?.age || ''),
     bio: profile?.bio || '',
@@ -327,8 +349,7 @@ export default function ProfilePage() {
       interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
     })
 
-    setPreferences(getInitialPreferences((profile as any)?.preferences))
-
+    setPreferences(getInitialPreferences(profile && 'preferences' in profile ? profile.preferences : null))
     setExistingPhotos(photos)
     setNewPhotos([])
     setNewPhotoUrls([])
@@ -352,26 +373,27 @@ export default function ProfilePage() {
     if (mode === 'view') cancelEdit()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
-  
+
   useEffect(() => {
-  if (mode !== 'edit') return
+    if (mode !== 'edit') return
 
-  const scriptId = 'google-places-script'
+    const scriptId = 'google-places-script'
 
-  if (document.getElementById(scriptId)) return
+    if (document.getElementById(scriptId)) return
 
-  const script = document.createElement('script')
-  script.id = scriptId
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=fr`
-  script.async = true
-  script.defer = true
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=fr`
+    script.async = true
+    script.defer = true
 
-  document.head.appendChild(script)
-}, [mode])
+    document.head.appendChild(script)
+  }, [mode])
 
   const toggleInterest = (interest: string) => {
     setForm((prev) => {
       if (prev.interests.length >= 5 && !prev.interests.includes(interest)) return prev
+
       return {
         ...prev,
         interests: prev.interests.includes(interest)
@@ -380,7 +402,6 @@ export default function ProfilePage() {
       }
     })
   }
-  
 
   const removePhoto = (index: number) => {
     const nextItems = photoItems.filter((_, photoIndex) => photoIndex !== index)
@@ -388,83 +409,83 @@ export default function ProfilePage() {
   }
 
   const saveProfile = async () => {
-  if (!session?.user) return
+    if (!session?.user) return
 
-  setSaving(true)
+    setSaving(true)
 
-  try {
-    const uploadedPhotoMap = new Map<File, string>()
+    try {
+      const uploadedPhotoMap = new Map<File, string>()
 
-    for (const photo of newPhotos) {
-      const path = `${session.user.id}/${Date.now()}-${photo.name}`
+      for (const photo of newPhotos) {
+        const path = `${session.user.id}/${Date.now()}-${photo.name}`
 
-      const { data, error } = await supabase.storage
-        .from('avatars')
-        .upload(path, photo, { upsert: true })
+        const { data, error } = await supabase.storage
+          .from('avatars')
+          .upload(path, photo, { upsert: true })
+
+        if (error) throw error
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('avatars').getPublicUrl(data.path)
+
+        uploadedPhotoMap.set(photo, publicUrl)
+      }
+
+      const allPhotosRaw = photoItems
+        .map((item) => {
+          if (item.type === 'existing') return item.url
+          return uploadedPhotoMap.get(item.file)
+        })
+        .slice(0, MAX_PHOTOS)
+
+      const allPhotos = cleanPhotoUrls(allPhotosRaw)
+      const nextInterests = form.interests.slice(0, 5)
+
+      const rawAge = form.age.trim()
+      const parsedAge = rawAge === '' ? null : Number(rawAge)
+      const normalizedAge = parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
+
+      const updates: ProfileUpdate = {}
+
+      updates.first_name = form.first_name.trim() || null
+      updates.age = normalizedAge
+      updates.bio = form.bio.trim() || null
+      updates.city = form.city.trim() || null
+      updates.interests = nextInterests
+      updates.photos = allPhotos
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', session.user.id)
 
       if (error) throw error
 
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('avatars').getPublicUrl(data.path)
+      if (profile) {
+        const nextProfile: Profile = {
+          ...profile,
+          ...updates,
+          interests: nextInterests,
+          photos: allPhotos,
+        }
 
-      uploadedPhotoMap.set(photo, publicUrl)
+        setProfile(nextProfile)
+      }
+
+      setExistingPhotos(allPhotos)
+      setNewPhotos([])
+      setNewPhotoUrls([])
+      setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
+      setEditing(false)
+      setMode('view')
+      toast.success('Profil mis à jour !')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setSaving(false)
     }
-
-    const allPhotosRaw = photoItems
-      .map((item) => {
-        if (item.type === 'existing') return item.url
-        return uploadedPhotoMap.get(item.file)
-      })
-      .slice(0, MAX_PHOTOS)
-
-    const allPhotos = cleanPhotoUrls(allPhotosRaw)
-
-    type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
-
-    const ageValue = form.age.trim() === '' ? null : Number(form.age)
-    const normalizedAge = ageValue !== null && Number.isFinite(ageValue) ? ageValue : null
-
-    const updates = {
-  first_name: form.first_name.trim() || null,
-  age: normalizedAge,
-  bio: form.bio.trim() || null,
-  city: form.city.trim() || null,
-
-  // 🔥 FIX ICI
-  interests: form.interests as any,
-  photos: allPhotos as any,
-}
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', session.user.id)
-
-    if (error) throw error
-
-    if (profile) {
-      setProfile({
-        ...profile,
-        ...updates,
-        photos: allPhotos,
-        interests: form.interests.slice(0, 5),
-      })
-    }
-
-    setExistingPhotos(allPhotos)
-    setNewPhotos([])
-    setNewPhotoUrls([])
-    setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
-    setEditing(false)
-    setMode('view')
-    toast.success('Profil mis à jour !')
-  } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'Erreur inconnue')
-  } finally {
-    setSaving(false)
   }
-}
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -473,12 +494,16 @@ export default function ProfilePage() {
 
   const handleSuspend = async () => {
     if (!session?.user) return
+
     setDangerLoading(true)
+
     try {
-      const { error } = await supabase.from('profiles').update({ is_suspended: true }).eq('id', session.user.id)
+      const updates: ProfileUpdate = { is_suspended: true }
+      const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id)
+
       if (error) throw error
 
-setProfile({ ...(profile as any), is_suspended: true })
+      if (profile) setProfile({ ...profile, is_suspended: true })
       toast.success('Profil suspendu')
       setSuspendOpen(false)
     } catch (err) {
@@ -487,50 +512,52 @@ setProfile({ ...(profile as any), is_suspended: true })
       setDangerLoading(false)
     }
   }
-  
+
   const handleReactivate = async () => {
-  if (!session?.user) return
-  setDangerLoading(true)
+    if (!session?.user) return
 
-  try {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_suspended: false })
-      .eq('id', session.user.id)
+    setDangerLoading(true)
 
-    if (error) throw error
+    try {
+      const updates: ProfileUpdate = { is_suspended: false }
+      const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id)
 
-    setProfile({ ...(profile as any), is_suspended: false })
-    toast.success('Profil réactivé')
-  } catch (err) {
-    toast.error('Erreur')
-  } finally {
-    setDangerLoading(false)
+      if (error) throw error
+
+      if (profile) setProfile({ ...profile, is_suspended: false })
+      toast.success('Profil réactivé')
+    } catch {
+      toast.error('Erreur')
+    } finally {
+      setDangerLoading(false)
+    }
   }
-}
 
-const handleResetPassword = async () => {
-  if (!session?.user?.email) return
+  const handleResetPassword = async () => {
+    if (!session?.user?.email) return
 
-  try {
-    const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
-      redirectTo: 'http://localhost:3000/update-password',
-    })
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
+        redirectTo: 'http://localhost:3000/update-password',
+      })
 
-    if (error) throw error
+      if (error) throw error
 
-    toast.success('Email de réinitialisation envoyé')
-    setResetPwdOpen(false)
-  } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'Erreur')
+      toast.success('Email de réinitialisation envoyé')
+      setResetPwdOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur')
+    }
   }
-}
 
   const handleDeleteAccount = async () => {
     if (!session?.user) return
+
     setDangerLoading(true)
+
     try {
       const { error } = await supabase.from('profiles').delete().eq('id', session.user.id)
+
       if (error) throw error
 
       await supabase.auth.signOut()
@@ -568,6 +595,7 @@ const handleResetPassword = async () => {
             >
               Visualiser
             </button>
+
             <button
               type="button"
               onClick={() => setMode('edit')}
@@ -593,13 +621,10 @@ const handleResetPassword = async () => {
               className="flex justify-center"
             >
               {profile ? (
-  <div className="w-full max-w-md">
-    <SwipeCard
-  profile={profile as any}
-  onSwipe={() => {}}
-  isTop={true}
-  isOwnProfile={true}
-/>                  <div className="mt-6">
+                <div className="w-full max-w-md">
+                  <SwipeCard profile={profile} onSwipe={() => {}} isTop={true} isOwnProfile={true} />
+
+                  <div className="mt-6">
                     <button
                       type="button"
                       onClick={() => setLogoutOpen(true)}
@@ -668,46 +693,13 @@ const handleResetPassword = async () => {
 
               <div className={cardBase}>
                 <p className="text-xs uppercase tracking-widest text-white/40 mb-3">VILLE</p>
-               <input
-  ref={(ref) => {
-    if (!ref) return
-    if (ref.dataset.init === 'true') return // ✅ évite double init
-    if (!window.google?.maps?.places) return
-
-    ref.dataset.init = 'true'
-
-    const autocomplete = new window.google.maps.places.Autocomplete(ref, {
-      types: ['(cities)'],
-      fields: ['name', 'geometry'],
-    })
-
-    autocomplete.addListener('place_changed', () => {
-  const place = autocomplete.getPlace()
-  if (!place.geometry) return
-
-  const lat = place.geometry.location.lat()
-  const lng = place.geometry.location.lng()
-
-  setForm((prev) => ({
-    ...prev,
-    city: place.name || '',
-    lat,
-    lng
-  }))
-})
-  }}
-  value={form.city}
-  onChange={(event) =>
-  setForm((prev) => ({
-    ...prev,
-    city: event.target.value,
-    lat: null,
-    lng: null
-  }))
-}
-  placeholder="Paris, Lyon..."
-  className={inputBase}
-/> </div>
+                <input
+                  value={form.city}
+                  onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+                  placeholder="Paris, Lyon..."
+                  className={inputBase}
+                />
+              </div>
 
               <div className={cardBase}>
                 <p className="text-xs uppercase tracking-widest text-white/40 mb-3">BIO</p>
@@ -768,10 +760,9 @@ const handleResetPassword = async () => {
                       min={0}
                       max={1000}
                       value={preferences.distance_km}
-                      onChange={(e) => {
-                        const next = { ...preferences, distance_km: Number(e.target.value) }
+                      onChange={(event) => {
+                        const next = { ...preferences, distance_km: Number(event.target.value) }
                         setPreferences(next)
-                        if (profile) setProfile({ ...(profile as any), preferences: next })
                       }}
                       className="w-full accent-gold"
                     />
@@ -791,11 +782,12 @@ const handleResetPassword = async () => {
                         min={18}
                         max={99}
                         value={preferences.age_min}
-                        onChange={(e) => {
-                          const v = Number(e.target.value)
-                          const next = { ...preferences, age_min: Math.min(v, preferences.age_max) }
-                          setPreferences(next)
-                          if (profile) setProfile({ ...(profile as any), preferences: next })
+                        onChange={(event) => {
+                          const value = Number(event.target.value)
+                          setPreferences((prev) => ({
+                            ...prev,
+                            age_min: Math.min(value, prev.age_max),
+                          }))
                         }}
                         className="w-full accent-gold"
                       />
@@ -805,11 +797,12 @@ const handleResetPassword = async () => {
                         min={18}
                         max={99}
                         value={preferences.age_max}
-                        onChange={(e) => {
-                          const v = Number(e.target.value)
-                          const next = { ...preferences, age_max: Math.max(v, preferences.age_min) }
-                          setPreferences(next)
-                          if (profile) setProfile({ ...(profile as any), preferences: next })
+                        onChange={(event) => {
+                          const value = Number(event.target.value)
+                          setPreferences((prev) => ({
+                            ...prev,
+                            age_max: Math.max(value, prev.age_min),
+                          }))
                         }}
                         className="w-full accent-gold"
                       />
@@ -826,40 +819,40 @@ const handleResetPassword = async () => {
                 <LogOut size={16} />
                 Se déconnecter
               </button>
-<button
-  type="button"
-  onClick={() => setResetPwdOpen(true)}
-  className="w-full rounded-[12px] border border-dark-500 bg-dark-200 px-4 py-4 text-sm font-semibold text-white/70 hover:text-white hover:border-gold/50 transition-colors"
->
-  Modifier mon mot de passe
-</button>
 
+              <button
+                type="button"
+                onClick={() => setResetPwdOpen(true)}
+                className="w-full rounded-[12px] border border-dark-500 bg-dark-200 px-4 py-4 text-sm font-semibold text-white/70 hover:text-white hover:border-gold/50 transition-colors"
+              >
+                Modifier mon mot de passe
+              </button>
 
               <button
                 type="button"
                 onClick={() => setDeleteOpen(true)}
                 className="w-full rounded-[12px] border border-red-500/20 bg-red-500/10 px-4 py-4 text-sm font-semibold text-red-200 hover:border-red-500/40 transition-colors"
               >
-                              Supprimer mon compte
+                Supprimer mon compte
               </button>
 
               {isSuspended ? (
-  <button
-    type="button"
-    onClick={handleReactivate}
-    className="w-full rounded-[12px] border border-gold/40 bg-gold/10 px-4 py-4 text-sm font-semibold text-gold hover:bg-gold/20 transition-colors"
-  >
-    Réactiver mon profil
-  </button>
-) : (
-  <button
-    type="button"
-    onClick={() => setSuspendOpen(true)}
-    className="w-full rounded-[12px] border border-dark-500 bg-dark-200 px-4 py-4 text-sm font-semibold text-white/70 hover:text-white hover:border-gold/50 transition-colors"
-  >
-    Suspendre mon profil
-  </button>
-)}
+                <button
+                  type="button"
+                  onClick={handleReactivate}
+                  className="w-full rounded-[12px] border border-gold/40 bg-gold/10 px-4 py-4 text-sm font-semibold text-gold hover:bg-gold/20 transition-colors"
+                >
+                  Réactiver mon profil
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSuspendOpen(true)}
+                  className="w-full rounded-[12px] border border-dark-500 bg-dark-200 px-4 py-4 text-sm font-semibold text-white/70 hover:text-white hover:border-gold/50 transition-colors"
+                >
+                  Suspendre mon profil
+                </button>
+              )}
 
               <ConfirmModal
                 open={deleteOpen}
@@ -872,16 +865,17 @@ const handleResetPassword = async () => {
                 onCancel={() => setDeleteOpen(false)}
                 onConfirm={handleDeleteAccount}
               />
-<ConfirmModal
-  open={resetPwdOpen}
-  title="Modifier votre mot de passe ?"
-  body="Un email va vous être envoyé pour réinitialiser votre mot de passe."
-  question="Êtes-vous sûr de vouloir réinitialiser votre mot de passe ?"
-  confirmText="Oui"
-  confirmVariant="neutral"
-  onCancel={() => setResetPwdOpen(false)}
-  onConfirm={handleResetPassword}
-/>
+
+              <ConfirmModal
+                open={resetPwdOpen}
+                title="Modifier votre mot de passe ?"
+                body="Un email va vous être envoyé pour réinitialiser votre mot de passe."
+                question="Êtes-vous sûr de vouloir réinitialiser votre mot de passe ?"
+                confirmText="Oui"
+                confirmVariant="neutral"
+                onCancel={() => setResetPwdOpen(false)}
+                onConfirm={handleResetPassword}
+              />
 
               <ConfirmModal
                 open={suspendOpen}
