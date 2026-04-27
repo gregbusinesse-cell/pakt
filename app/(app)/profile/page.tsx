@@ -457,7 +457,7 @@ export default function ProfilePage() {
 
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(updates as any)
         .eq('id', session.user.id)
 
       if (error) throw error
@@ -491,6 +491,7 @@ export default function ProfilePage() {
     await supabase.auth.signOut()
     router.push('/auth')
   }
+
 
   const handleSuspend = async () => {
     if (!session?.user) return
