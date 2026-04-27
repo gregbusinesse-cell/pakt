@@ -415,13 +415,13 @@ export default function ProfilePage() {
 
       const allPhotos = cleanPhotoUrls(allPhotosRaw)
 
-      const updates = {
-  first_name: form.first_name,
-  age: Number.parseInt(form.age, 10),
-  bio: form.bio,
-  city: form.city,
-  interests: form.interests,
-  photos: allPhotos,
+      cconst updates = {
+  first_name: form.first_name || null,
+  age: form.age || null,
+  bio: form.bio || null,
+  city: form.city || null,
+  interests: form.interests || [],
+  photos: allPhotos || [],
 }
 
       const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id)
