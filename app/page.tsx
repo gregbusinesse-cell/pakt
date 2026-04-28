@@ -4,20 +4,28 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
+type OnboardingProfile = {
+  is_onboarded: boolean
+}
+
 export default async function Home() {
   const supabase = createServerClient()
-  const { data: { session } } = await supabase.auth.getSession()
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
   if (!session) {
     redirect('/auth')
   }
 
-  // Check if onboarded
-  const { data: profile } = await supabase
+  const { data: profileData } = await supabase
     .from('profiles')
     .select('is_onboarded')
     .eq('id', session.user.id)
     .single()
+
+  const profile = profileData as OnboardingProfile | null
 
   if (!profile?.is_onboarded) {
     redirect('/onboarding')
