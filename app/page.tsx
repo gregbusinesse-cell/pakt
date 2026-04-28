@@ -1,41 +1,53 @@
-// app/page.tsx
-// Entry point - redirects based on auth state
+'use client'
 
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
-type ProfileRow = { is_onboarded: boolean } | null
+export default function Home() {
+  const supabase = createClient()
+  const router = useRouter()
 
-export default async function Home() {
-  const supabase = createServerClient() as any
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+      console.log('SESSION CLIENT:', session)
 
-  if (!session) redirect('/auth')
+      if (!session) {
+        router.replace('/auth')
+        return
+      }
 
-  const { data: profileData } = await supabase
-    .from('profiles')
-    .select('is_onboarded')
-    .eq('id', session.user.id)
-    .maybeSingle()
+      // récup profil
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_onboarded')
+        .eq('id', session.user.id)
+        .maybeSingle()
 
-  const profile = profileData as ProfileRow
+      // pas de profil → onboarding
+      if (!profile) {
+        await supabase.from('profiles').upsert({
+          id: session.user.id,
+          email: session.user.email,
+          is_onboarded: false,
+        } as never)
 
-  // si pas de profile: onboarding (et on crée un row minimal best-effort)
-  if (!profile) {
-    await supabase.from('profiles').upsert(
-      {
-        id: session.user.id,
-        email: session.user.email,
-        is_onboarded: false,
-      } as never
-    )
-    redirect('/onboarding')
-  }
+        router.replace('/onboarding')
+        return
+      }
 
-  if (!profile.is_onboarded) redirect('/onboarding')
+      if (!profile.is_onboarded) {
+        router.replace('/onboarding')
+        return
+      }
 
-  redirect('/swipe')
+      router.replace('/swipe')
+    }
+
+    checkAuth()
+  }, [])
+
+  return null
 }
