@@ -4,7 +4,7 @@ import type { Metadata, Viewport } from 'next'
 import { Sora } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
-import { SupabaseProvider } from '@/components/providers/SupabaseProvider'
+import SupabaseProvider from '@/components/providers/SupabaseProvider'
 
 const sora = Sora({
   subsets: ['latin'],
