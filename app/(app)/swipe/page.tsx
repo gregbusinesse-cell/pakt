@@ -1,4 +1,5 @@
 'use client'
+
 // app/(app)/swipe/page.tsx
 // Main swipe page - Tinder-style card swiping (with free limits + paywall)
 
@@ -69,7 +70,8 @@ function PaywallModal({
 
 export default function SwipePage() {
   const session = useSession()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
+  const db = supabase as any
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
 
@@ -91,7 +93,6 @@ export default function SwipePage() {
 
   const isEmailVerified = !!session?.user?.email_confirmed_at || profile?.email_confirmed === true
 
-  // Daily reset (front-only)
   useEffect(() => {
     const today = getTodayKey()
     setCountsDate(today)
@@ -110,6 +111,7 @@ export default function SwipePage() {
 
     setSwipesCount(0)
     setMessagesCount(0)
+
     try {
       localStorage.setItem(
         'pakt:limits',
@@ -134,44 +136,41 @@ export default function SwipePage() {
     setPaywallOpen(true)
   }, [])
 
-  // Mark Google users as verified in DB (so they appear for others)
   useEffect(() => {
     if (!session?.user) return
+
     const provider = (session.user.app_metadata as any)?.provider
     if (provider !== 'google') return
 
-    supabase
-      .from('profiles')
-      .update({ email_confirmed: true })
+    db.from('profiles')
+      .update({ email_confirmed: true } as never)
       .eq('id', session.user.id)
-      .then(({ error }) => {
+      .then(({ error }: { error: unknown }) => {
         if (error) console.log('[Swipe] google verify update error:', error)
         if (profile) setProfile({ ...(profile as any), email_confirmed: true })
       })
-      .catch((e) => console.log('[Swipe] google verify update exception:', e))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id])
+      .catch((error: unknown) => console.log('[Swipe] google verify update exception:', error))
+  }, [db, profile, session?.user, setProfile])
 
   const loadProfiles = useCallback(async () => {
     if (!session?.user) return
+
     setLoading(true)
 
     try {
-      const { data: swipedData, error: swipedErr } = await supabase
-  .from('swipes')
-  .select('target_id')
-  .eq('swiper_id', session.user.id)
-  
+      const { data: swipedData, error: swipedErr } = await db
+        .from('swipes')
+        .select('target_id')
+        .eq('swiper_id', session.user.id)
+
       if (swipedErr) console.log('[Swipe] load swiped likes error:', swipedErr)
 
       const swipedSet = new Set<string>([
         session.user.id,
-        ...(swipedData?.map((s: any) => s.target_id) || []),
+        ...((swipedData || []).map((swipe: any) => swipe.target_id) || []),
       ])
 
-      const notIn = `(${[...swipedSet].map((id) => `"${id}"`).join(',')})`
-
-      const { data: profilesData, error: profilesErr } = await supabase
+      const { data: profilesData, error: profilesErr } = await db
         .from('profiles')
         .select('*')
         .eq('is_onboarded', true)
@@ -179,49 +178,49 @@ export default function SwipePage() {
         .eq('email_confirmed', true)
         .neq('id', session.user.id)
         .limit(20)
-        
-        const userLat = profile?.city_lat
-const userLng = profile?.city_lng
-const maxDistance = profile?.preferences?.distance_km || 50
-
-const filteredProfiles = (profilesData || []).filter((p) => {
-  if (swipedSet.has(p.id)) return false
-
-  // ❌ skip si pas de coords
-  if (!p.city_lat || !p.city_lng) return false
-  if (!userLat || !userLng) return true // fallback si toi t’as pas encore
-
-  const R = 6371
-  const dLat = (p.city_lat - userLat) * Math.PI / 180
-  const dLng = (p.city_lng - userLng) * Math.PI / 180
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(userLat * Math.PI / 180) *
-    Math.cos(p.city_lat * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2)
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  const distance = R * c
-
-  return distance <= maxDistance
-})
 
       if (profilesErr) console.log('[Swipe] load profiles error:', profilesErr)
 
-      const { data: likesData, error: likesErr } = await supabase
+      const userLat = (profile as any)?.city_lat
+      const userLng = (profile as any)?.city_lng
+      const maxDistance = (profile as any)?.preferences?.distance_km || 50
+
+      const filteredProfiles = ((profilesData || []) as any[]).filter((candidate) => {
+        if (swipedSet.has(candidate.id)) return false
+
+        if (!candidate.city_lat || !candidate.city_lng) return false
+        if (!userLat || !userLng) return true
+
+        const radius = 6371
+        const dLat = ((candidate.city_lat - userLat) * Math.PI) / 180
+        const dLng = ((candidate.city_lng - userLng) * Math.PI) / 180
+
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((userLat * Math.PI) / 180) *
+            Math.cos((candidate.city_lat * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2)
+
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        const distance = radius * c
+
+        return distance <= maxDistance
+      })
+
+      const { data: likesData, error: likesErr } = await db
         .from('likes')
         .select('liker_id')
         .eq('liked_id', session.user.id)
 
       if (likesErr) console.log('[Swipe] load likedMeIds error:', likesErr)
 
-      setLikedMeIds(new Set(likesData?.map((l: any) => l.liker_id) || []))
-      setProfiles(filteredProfiles)
+      setLikedMeIds(new Set((likesData || []).map((like: any) => like.liker_id)))
+      setProfiles(filteredProfiles as Profile[])
     } finally {
       setLoading(false)
     }
-  }, [session?.user?.id])
+  }, [db, profile, session?.user])
 
   useEffect(() => {
     loadProfiles()
@@ -235,7 +234,6 @@ const filteredProfiles = (profilesData || []).filter((p) => {
 
   const currentProfile = profiles[0]
 
-  // Logs
   useEffect(() => {
     console.log('[Swipe] currentProfile.id:', currentProfile?.id)
     console.log('[Swipe] canSwipe:', canSwipe)
@@ -248,14 +246,18 @@ const filteredProfiles = (profilesData || []).filter((p) => {
   const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
     if (!session?.user || !profile) return
 
-    console.log('[Swipe] handleSwipe dir/profile:', dir, swipedProfile?.id)
-    await supabase.from('swipes').upsert({
-  swiper_id: session.user.id,
-  target_id: swipedProfile.id,
-  action: dir === 'right' ? 'like' : 'dislike'
-}, {
-  onConflict: 'swiper_id,target_id'
-})
+    console.log('[Swipe] handleSwipe dir/profile:', dir, swipedProfile.id)
+
+    await db.from('swipes').upsert(
+      {
+        swiper_id: session.user.id,
+        target_id: swipedProfile.id,
+        action: dir === 'right' ? 'like' : 'dislike',
+      },
+      {
+        onConflict: 'swiper_id,target_id',
+      }
+    )
 
     if (reachedFreeLimit) {
       console.log('[Swipe] blocked by reachedFreeLimit')
@@ -269,10 +271,8 @@ const filteredProfiles = (profilesData || []).filter((p) => {
       persistCounts(next, messagesCount)
     }
 
-    // Remove from stack immediately
-    setProfiles((prev) => prev.filter((p) => p.id !== swipedProfile.id))
+    setProfiles((prev) => prev.filter((item) => item.id !== swipedProfile.id))
 
-    // Best-effort backend swipe counter (do not block UX)
     try {
       const today = new Date().toISOString().split('T')[0]
       const newSwipesCount =
@@ -281,26 +281,26 @@ const filteredProfiles = (profilesData || []).filter((p) => {
       const updatedProfile = { ...profile, swipes_today: newSwipesCount, last_swipe_date: today }
       setProfile(updatedProfile as any)
 
-      const { error: swipeUpdateErr } = await supabase
+      const { error: swipeUpdateErr } = await db
         .from('profiles')
-        .update({ swipes_today: newSwipesCount, last_swipe_date: today })
+        .update({ swipes_today: newSwipesCount, last_swipe_date: today } as never)
         .eq('id', session.user.id)
 
       if (swipeUpdateErr) console.log('[Swipe] profiles swipe update error:', swipeUpdateErr)
-    } catch (e) {
-      console.log('[Swipe] profiles swipe update exception:', e)
+    } catch (error) {
+      console.log('[Swipe] profiles swipe update exception:', error)
     }
 
     if (dir === 'right') {
       const likePayload = { liker_id: session.user.id, liked_id: swipedProfile.id }
 
-      const { error: likeErr } = await supabase
+      const { error: likeErr } = await db
         .from('likes')
         .upsert(likePayload, { onConflict: 'liker_id,liked_id', ignoreDuplicates: true })
 
       if (likeErr) console.log('[Swipe] likes.insert/upsert error:', likeErr)
 
-      const { data: existingLike, error: matchErr } = await supabase
+      const { data: existingLike, error: matchErr } = await db
         .from('likes')
         .select('id')
         .eq('liker_id', swipedProfile.id)
@@ -321,10 +321,12 @@ const filteredProfiles = (profilesData || []).filter((p) => {
       openPaywall()
       return
     }
+
     if (reachedFreeLimit) {
       openPaywall()
       return
     }
+
     if (profile?.plan === 'free') {
       const next = messagesCount + 1
       setMessagesCount(next)
@@ -332,9 +334,8 @@ const filteredProfiles = (profilesData || []).filter((p) => {
     }
   }
 
-  // ✅ Proper stack: render up to 3 cards, only top is interactive.
   const stack = profiles.slice(0, STACK_RENDER_COUNT)
-  const stackForRender = stack.slice().reverse() // bottom first, top last (so it sits above)
+  const stackForRender = stack.slice().reverse()
 
   return (
     <div className="h-full flex flex-col bg-dark">
@@ -366,19 +367,19 @@ const filteredProfiles = (profilesData || []).filter((p) => {
           <EmptyState onRefresh={loadProfiles} />
         ) : (
           <div className="relative h-full">
-            {stackForRender.map((p) => {
-              const isTop = p.id === profiles[0]?.id
+            {stackForRender.map((item) => {
+              const isTop = item.id === profiles[0]?.id
               const zIndex = isTop ? 20 : 10
 
               return (
-                <div key={p.id} className="absolute inset-0">
+                <div key={item.id} className="absolute inset-0">
                   <SwipeCard
-                    profile={p}
+                    profile={item}
                     onSwipe={(dir) => {
                       if (!isTop) return
-                      handleSwipe(dir, p)
+                      handleSwipe(dir, item)
                     }}
-                    hasLikedYou={likedMeIds.has(p.id)}
+                    hasLikedYou={likedMeIds.has(item.id)}
                     zIndex={zIndex}
                     isTop={isTop}
                     onMessage={() => {
