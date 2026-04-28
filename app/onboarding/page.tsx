@@ -1,8 +1,9 @@
 'use client'
+
 // app/onboarding/page.tsx
 // Multi-step onboarding flow for new users
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -95,56 +96,56 @@ export default function OnboardingPage() {
   const [otherInput, setOtherInput] = useState('')
 
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const session = useSession()
 
   const progress = ((step + 1) / STEPS) * 100
 
-  const updateData = (key: keyof OnboardingData, value: any) =>
+  const updateData = (key: keyof OnboardingData, value: string | number | null | File[] | string[]) =>
     setData((prev) => ({ ...prev, [key]: value }))
 
   useEffect(() => {
-  if (step !== 3) return
+    if (step !== 3) return
 
-  let autocomplete: any
+    let autocomplete: any
 
-  const init = async () => {
-    try {
-      await loadGooglePlacesScript()
+    const init = async () => {
+      try {
+        await loadGooglePlacesScript()
 
-      if (!cityInputRef.current || !window.google?.maps?.places) return
+        if (!cityInputRef.current || !window.google?.maps?.places) return
 
-      autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
-        types: ['(cities)'],
-        fields: ['name', 'geometry'],
-      })
+        autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
+          types: ['(cities)'],
+          fields: ['name', 'geometry'],
+        })
 
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace()
-        const location = place.geometry?.location
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace()
+          const location = place.geometry?.location
 
-        if (!location) return
+          if (!location) return
 
-        setData((prev) => ({
-          ...prev,
-          city: place.name || '',
-          lat: location.lat(),
-          lng: location.lng(),
-        }))
-      })
-    } catch (err) {
-      toast.error('Autocomplete ville indisponible')
+          setData((prev) => ({
+            ...prev,
+            city: place.name || '',
+            lat: location.lat(),
+            lng: location.lng(),
+          }))
+        })
+      } catch {
+        toast.error('Autocomplete ville indisponible')
+      }
     }
-  }
 
-  setTimeout(init, 300)
+    setTimeout(init, 300)
 
-  return () => {
-    if (autocomplete && window.google?.maps?.event) {
-      window.google.maps.event.clearInstanceListeners(autocomplete)
+    return () => {
+      if (autocomplete && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(autocomplete)
+      }
     }
-  }
-}, [step])
+  }, [step])
 
   const addInterestsFromText = (text: string) => {
     const parts = text
@@ -257,6 +258,7 @@ export default function OnboardingPage() {
 
   const handleSubmit = async () => {
     if (!session?.user) return
+
     setLoading(true)
 
     try {
@@ -278,7 +280,7 @@ export default function OnboardingPage() {
         uploadedUrls.push(publicUrl)
       }
 
-      const isGoogle = session?.user?.app_metadata?.provider === 'google'
+      const isGoogle = session.user.app_metadata?.provider === 'google'
 
       const { error } = await supabase.from('profiles').upsert({
         id: session.user.id,
@@ -289,20 +291,20 @@ export default function OnboardingPage() {
         interests: selectedInterests,
         city: data.city,
         city_lat: data.lat,
-city_lng: data.lng,
+        city_lng: data.lng,
         photos: uploadedUrls,
         is_onboarded: true,
         email_confirmed: isGoogle,
         plan: 'free',
         swipes_today: 0,
         last_swipe_date: new Date().toISOString().split('T')[0],
-      })
+      } as never)
 
       if (error) throw error
 
       router.push('/loading')
-    } catch (err: any) {
-      toast.error(err.message || 'Erreur lors de la création du profil')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur lors de la création du profil')
     } finally {
       setLoading(false)
     }
@@ -380,7 +382,7 @@ city_lng: data.lng,
                   type="text"
                   placeholder="Ton prénom"
                   value={data.firstName}
-                  onChange={(e) => updateData('firstName', e.target.value)}
+                  onChange={(event) => updateData('firstName', event.target.value)}
                   className="pakt-input text-lg"
                   autoFocus
                 />
@@ -389,7 +391,7 @@ city_lng: data.lng,
                   type="number"
                   placeholder="Ton âge"
                   value={data.age}
-                  onChange={(e) => updateData('age', e.target.value)}
+                  onChange={(event) => updateData('age', event.target.value)}
                   className="pakt-input text-lg"
                   min="15"
                   max="99"
@@ -412,7 +414,7 @@ city_lng: data.lng,
                   <textarea
                     placeholder="Qui es-tu ? Quels sont tes projets ? Qu'est-ce qui te définit..."
                     value={data.bio}
-                    onChange={(e) => updateData('bio', e.target.value)}
+                    onChange={(event) => updateData('bio', event.target.value)}
                     className="pakt-input resize-none h-40 text-base leading-relaxed"
                     maxLength={500}
                   />
@@ -449,8 +451,8 @@ city_lng: data.lng,
                 )}
 
                 <div className="flex flex-wrap gap-2 overflow-y-auto max-h-64">
-                  {INTERESTS.filter((i) => i !== 'Autre').map((interest) => {
-                    const selected = selectedInterests.some((i) => i.toLowerCase() === interest.toLowerCase())
+                  {INTERESTS.filter((interest) => interest !== 'Autre').map((interest) => {
+                    const selected = selectedInterests.some((item) => item.toLowerCase() === interest.toLowerCase())
                     const disabled = maxReached && !selected
 
                     return (
@@ -476,17 +478,17 @@ city_lng: data.lng,
                     type="text"
                     placeholder="Autre (précise...)"
                     value={otherInput}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      if (v.includes(',')) addInterestsFromText(v)
-                      else setOtherInput(v)
+                    onChange={(event) => {
+                      const value = event.target.value
+                      if (value.includes(',')) addInterestsFromText(value)
+                      else setOtherInput(value)
                     }}
                     onBlur={() => {
                       if (otherInput.trim()) addInterestsFromText(otherInput)
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
                         if (otherInput.trim()) addInterestsFromText(otherInput)
                       }
                     }}
@@ -511,10 +513,10 @@ city_lng: data.lng,
                   type="text"
                   placeholder="Paris, Lyon, Bordeaux..."
                   value={data.city}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setData((prev) => ({
                       ...prev,
-                      city: e.target.value,
+                      city: event.target.value,
                       lat: null,
                       lng: null,
                     }))
@@ -577,8 +579,7 @@ city_lng: data.lng,
                     )
                   })}
                 </div>
-
-                              </div>
+              </div>
             )}
           </motion.div>
         </AnimatePresence>
