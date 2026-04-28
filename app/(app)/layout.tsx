@@ -10,6 +10,7 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
 import { Flame, MessageCircle, User } from 'lucide-react'
+import type { Profile } from '@/lib/supabase/types'
 
 const NAV_ITEMS = [
   { href: '/swipe', icon: Flame, label: 'Découvrir' },
@@ -30,13 +31,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     if (!session?.user) return
 
     const syncEmail = async () => {
-  if (!session.user.email_confirmed_at) return
+      if (!session.user.email_confirmed_at) return
 
-  await supabase
-    .from('profiles')
-    .update({ email_confirmed: true } as never)
-    .eq('id', session.user.id)
-}
+      await supabase
+        .from('profiles')
+        .update({ email_confirmed: true } as never)
+        .eq('id', session.user.id)
+    }
 
     syncEmail()
   }, [session, supabase])
@@ -48,11 +49,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
 
     const loadProfile = async () => {
-      const { data } = await supabase
+      const { data } = (await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single()
+        .single()) as unknown as { data: Profile | null }
 
       if (!data) return
 
