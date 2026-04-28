@@ -2,7 +2,6 @@
 
 // app/(app)/layout.tsx
 
-import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -11,7 +10,6 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
 import { Flame, MessageCircle, User } from 'lucide-react'
-import type { Database } from '@/lib/supabase/types'
 
 const NAV_ITEMS = [
   { href: '/swipe', icon: Flame, label: 'Découvrir' },
@@ -32,14 +30,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     if (!session?.user) return
 
     const syncEmail = async () => {
-      if (!session.user.email_confirmed_at) return
+  if (!session.user.email_confirmed_at) return
 
-      const updates: Database['public']['Tables']['profiles']['Update'] = {
-        email_confirmed: true,
-      }
-
-      await supabase.from('profiles').update(updates).eq('id', session.user.id)
-    }
+  await supabase
+    .from('profiles')
+    .update({ email_confirmed: true } as never)
+    .eq('id', session.user.id)
+}
 
     syncEmail()
   }, [session, supabase])
