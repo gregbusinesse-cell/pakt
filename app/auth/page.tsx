@@ -6,29 +6,25 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
-import Image from 'next/image'
-import Link from 'next/link' // ✅ AJOUT
+import Link from 'next/link'
 
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+
   const router = useRouter()
   const supabase = createClient()
 
+  // ✅ SEULE logique autorisée
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) router.push('/swipe')
-    }
-    checkSession()
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        router.push('/')
+        router.replace('/swipe')
       }
     })
+
     return () => subscription.unsubscribe()
   }, [])
 
@@ -59,6 +55,7 @@ export default function AuthPage() {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     })
+
     if (error) toast.error(error.message)
   }
 
@@ -91,7 +88,7 @@ export default function AuthPage() {
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${
                 mode === m
                   ? 'bg-gold text-dark'
                   : 'text-white/50 hover:text-white'
@@ -141,7 +138,6 @@ export default function AuthPage() {
           Continuer avec Google
         </button>
 
-        {/* ✅ FOOTER FIX */}
         <p className="text-center text-white/30 text-xs mt-8">
           En continuant, tu acceptes nos{' '}
           <Link href="/legal/cgu" className="text-gold/60 underline">
@@ -149,8 +145,7 @@ export default function AuthPage() {
           </Link>
         </p>
 
-      </motion.div> {/* ✅ MANQUAIT */}
-
+      </motion.div>
     </div>
   )
 }
