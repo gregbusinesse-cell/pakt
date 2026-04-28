@@ -6,10 +6,20 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/lib/supabase/types'
 
+type SwipeProfile = {
+  swipes_today: number | null
+  last_swipe_date: string | null
+  plan: 'free' | 'premium'
+}
+
 export async function POST(request: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies })
+  const db = supabase as any
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -20,44 +30,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid params' }, { status: 400 })
   }
 
-  // Get current profile & check swipe limit
-  const { data: profile } = await supabase
+  const { data: profileData } = await db
     .from('profiles')
     .select('swipes_today, last_swipe_date, plan')
     .eq('id', session.user.id)
     .single()
 
-  if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+  const profile = profileData as SwipeProfile | null
+
+  if (!profile) {
+    return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+  }
 
   const today = new Date().toISOString().split('T')[0]
   const isNewDay = profile.last_swipe_date !== today
-  const currentSwipes = isNewDay ? 0 : (profile.swipes_today || 0)
+  const currentSwipes = isNewDay ? 0 : profile.swipes_today || 0
 
   if (profile.plan === 'free' && currentSwipes >= 10) {
     return NextResponse.json({ error: 'Swipe limit reached', limitReached: true }, { status: 429 })
   }
 
-  // Update swipe count
-  await supabase
+  await db
     .from('profiles')
     .update({
       swipes_today: currentSwipes + 1,
       last_swipe_date: today,
-    })
+    } as never)
     .eq('id', session.user.id)
 
   let isMatch = false
 
   if (action === 'like') {
-    // Record like
-    const { error } = await supabase.from('likes').insert({
+    const { error } = await db.from('likes').insert({
       liker_id: session.user.id,
       liked_id: targetId,
     })
 
     if (!error) {
-      // Check for mutual like (match detection handled by DB trigger)
-      const { data: existingLike } = await supabase
+      const { data: existingLike } = await db
         .from('likes')
         .select('id')
         .eq('liker_id', targetId)
