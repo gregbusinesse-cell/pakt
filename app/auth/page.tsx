@@ -20,7 +20,7 @@ export default function AuthPage() {
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (session) router.push('/')
+      if (session) router.push('/swipe')
     }
     checkSession()
 
