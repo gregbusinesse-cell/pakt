@@ -12,21 +12,17 @@ export default function Home() {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession()
 
-      console.log('SESSION CLIENT:', session)
-
       if (!session) {
         router.replace('/auth')
         return
       }
 
-      // récup profil
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_onboarded')
         .eq('id', session.user.id)
         .maybeSingle()
 
-      // pas de profil → onboarding
       if (!profile) {
         await supabase.from('profiles').upsert({
           id: session.user.id,
