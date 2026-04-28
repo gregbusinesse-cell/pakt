@@ -17,12 +17,13 @@ export default function Home() {
         return
       }
 
-      const { data: profile } = await supabase
+      const { data: profile } = (await supabase
         .from('profiles')
         .select('is_onboarded')
         .eq('id', session.user.id)
-        .maybeSingle()
+        .maybeSingle()) as any
 
+      // 👇 IMPORTANT : d'abord vérifier profile
       if (!profile) {
         await supabase.from('profiles').upsert({
           id: session.user.id,
@@ -34,6 +35,7 @@ export default function Home() {
         return
       }
 
+      // 👇 ensuite vérifier onboarding
       if (!profile.is_onboarded) {
         router.replace('/onboarding')
         return
