@@ -273,24 +273,17 @@ export default function ProfilePage() {
   const initialPhotos = normalizePhotos(profile?.photos)
 
   const [newPhotos, setNewPhotos] = useState<File[]>([])
-  const [existingPhotos, setExistingPhotos] = useState<string[]>(initialPhotos)
   const [photoItems, setPhotoItems] = useState<PhotoItem[]>(
     initialPhotos.map((url) => ({ type: 'existing', url }))
   )
 
   const syncPhotoState = (items: PhotoItem[]) => {
     const nextItems = items.slice(0, MAX_PHOTOS)
-
-    const nextExistingPhotos = nextItems
-      .filter((item): item is Extract<PhotoItem, { type: 'existing' }> => item.type === 'existing')
-      .map((item) => item.url)
-
     const nextNewItems = nextItems.filter(
       (item): item is Extract<PhotoItem, { type: 'new' }> => item.type === 'new'
     )
 
     setPhotoItems(nextItems)
-    setExistingPhotos(nextExistingPhotos)
     setNewPhotos(nextNewItems.map((item) => item.file))
   }
 
@@ -319,16 +312,10 @@ export default function ProfilePage() {
         }
 
         const limitedItems = nextItems.slice(0, MAX_PHOTOS)
-
-        const nextExistingPhotos = limitedItems
-          .filter((item): item is Extract<PhotoItem, { type: 'existing' }> => item.type === 'existing')
-          .map((item) => item.url)
-
         const nextNewItems = limitedItems.filter(
           (item): item is Extract<PhotoItem, { type: 'new' }> => item.type === 'new'
         )
 
-        setExistingPhotos(nextExistingPhotos)
         setNewPhotos(nextNewItems.map((item) => item.file))
 
         return limitedItems
@@ -358,7 +345,6 @@ export default function ProfilePage() {
     })
 
     setPreferences(getInitialPreferences(profile?.preferences))
-    setExistingPhotos(photos)
     setNewPhotos([])
     setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
     setEditing(true)
@@ -370,7 +356,6 @@ export default function ProfilePage() {
     setEditing(false)
     setSelectedPhotoIndex(null)
     setNewPhotos([])
-    setExistingPhotos(photos)
     setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
   }
 
@@ -464,7 +449,7 @@ export default function ProfilePage() {
 
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(updates as never)
         .eq('id', session.user.id)
 
       if (error) throw error
@@ -480,7 +465,6 @@ export default function ProfilePage() {
         setProfile(nextProfile)
       }
 
-      setExistingPhotos(allPhotos)
       setNewPhotos([])
       setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
       setEditing(false)
@@ -508,7 +492,7 @@ export default function ProfilePage() {
 
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(updates as never)
         .eq('id', session.user.id)
 
       if (error) throw error
@@ -533,7 +517,7 @@ export default function ProfilePage() {
 
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(updates as never)
         .eq('id', session.user.id)
 
       if (error) throw error
