@@ -19,6 +19,14 @@ const FREE_SWIPE_LIMIT = 10
 const FREE_MESSAGE_LIMIT = 2
 const STACK_RENDER_COUNT = 3
 
+type ProfileWithLocation = Profile & {
+  city_lat?: number | null
+  city_lng?: number | null
+  preferences?: {
+    distance_km?: number
+  } | null
+}
+
 function getTodayKey() {
   return new Date().toISOString().split('T')[0]
 }
@@ -71,16 +79,24 @@ function PaywallModal({
 export default function SwipePage() {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
-  const db = supabase as any
+  const db = useMemo(() => supabase as any, [supabase])
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
+
+  const profileWithLocation = profile as ProfileWithLocation | null
+  const sessionUserId = session?.user?.id
+  const sessionProvider = session?.user?.app_metadata?.provider
+  const sessionEmailConfirmedAt = session?.user?.email_confirmed_at
+
+  const userLat = profileWithLocation?.city_lat ?? null
+  const userLng = profileWithLocation?.city_lng ?? null
+  const maxDistance = profileWithLocation?.preferences?.distance_km ?? 50
 
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
   const [showMatch, setShowMatch] = useState(false)
-
   const [paywallOpen, setPaywallOpen] = useState(false)
 
   const [swipesCount, setSwipesCount] = useState(0)
@@ -91,7 +107,7 @@ export default function SwipePage() {
   const reachedFreeLimit =
     isFree && (swipesCount >= FREE_SWIPE_LIMIT || messagesCount >= FREE_MESSAGE_LIMIT)
 
-  const isEmailVerified = !!session?.user?.email_confirmed_at || profile?.email_confirmed === true
+  const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
 
   useEffect(() => {
     const today = getTodayKey()
@@ -99,8 +115,10 @@ export default function SwipePage() {
 
     try {
       const stored = localStorage.getItem('pakt:limits')
+
       if (stored) {
         const parsed = JSON.parse(stored)
+
         if (parsed?.date === today) {
           setSwipesCount(Number(parsed?.swipesCount) || 0)
           setMessagesCount(Number(parsed?.messagesCount) || 0)
@@ -137,55 +155,46 @@ export default function SwipePage() {
   }, [])
 
   useEffect(() => {
-    if (!session?.user) return
-
-    const provider = (session.user.app_metadata as any)?.provider
-    if (provider !== 'google') return
+    if (!sessionUserId) return
+    if (sessionProvider !== 'google') return
+    if (profile?.email_confirmed === true) return
 
     db.from('profiles')
       .update({ email_confirmed: true } as never)
-      .eq('id', session.user.id)
+      .eq('id', sessionUserId)
       .then(({ error }: { error: unknown }) => {
-        if (error) console.log('[Swipe] google verify update error:', error)
-        if (profile) setProfile({ ...(profile as any), email_confirmed: true })
+        if (error) return
+        if (profile) setProfile({ ...profile, email_confirmed: true })
       })
-      .catch((error: unknown) => console.log('[Swipe] google verify update exception:', error))
-  }, [db, profile, session?.user, setProfile])
+      .catch(() => {})
+  }, [db, profile, sessionProvider, sessionUserId, setProfile])
 
   const loadProfiles = useCallback(async () => {
-    if (!session?.user) return
+    if (!sessionUserId) return
 
-    setLoading(true)
+    setLoading((prev) => (profiles.length === 0 ? true : prev))
 
     try {
-      const { data: swipedData, error: swipedErr } = await db
+      const { data: swipedData } = await db
         .from('swipes')
         .select('target_id')
-        .eq('swiper_id', session.user.id)
-
-      if (swipedErr) console.log('[Swipe] load swiped likes error:', swipedErr)
+        .eq('swiper_id', sessionUserId)
 
       const swipedSet = new Set<string>([
-        session.user.id,
-        ...((swipedData || []).map((swipe: any) => swipe.target_id) || []),
+        sessionUserId,
+        ...((swipedData || []).map((swipe: { target_id: string }) => swipe.target_id) || []),
       ])
 
-      const { data: profilesData, error: profilesErr } = await db
+      const { data: profilesData } = await db
         .from('profiles')
         .select('*')
         .eq('is_onboarded', true)
         .eq('is_suspended', false)
         .eq('email_confirmed', true)
-        .neq('id', session.user.id)
+        .neq('id', sessionUserId)
         .limit(20)
 
-      if (profilesErr) console.log('[Swipe] load profiles error:', profilesErr)
-
-      const userLat = (profile as any)?.city_lat
-      const userLng = (profile as any)?.city_lng
-      const maxDistance = (profile as any)?.preferences?.distance_km || 50
-
-      const filteredProfiles = ((profilesData || []) as any[]).filter((candidate) => {
+      const filteredProfiles = ((profilesData || []) as ProfileWithLocation[]).filter((candidate) => {
         if (swipedSet.has(candidate.id)) return false
 
         if (!candidate.city_lat || !candidate.city_lng) return false
@@ -208,49 +217,30 @@ export default function SwipePage() {
         return distance <= maxDistance
       })
 
-      const { data: likesData, error: likesErr } = await db
+      const { data: likesData } = await db
         .from('likes')
         .select('liker_id')
-        .eq('liked_id', session.user.id)
+        .eq('liked_id', sessionUserId)
 
-      if (likesErr) console.log('[Swipe] load likedMeIds error:', likesErr)
-
-      setLikedMeIds(new Set((likesData || []).map((like: any) => like.liker_id)))
+      setLikedMeIds(new Set((likesData || []).map((like: { liker_id: string }) => like.liker_id)))
       setProfiles(filteredProfiles as Profile[])
     } finally {
       setLoading(false)
     }
-  }, [db, profile, session?.user])
+  }, [db, maxDistance, profiles.length, sessionUserId, userLat, userLng])
 
   useEffect(() => {
     loadProfiles()
   }, [loadProfiles])
 
-  const canSwipe = useMemo(() => {
-    if (!profile) return false
-    if (!isFree) return true
-    return !reachedFreeLimit
-  }, [profile, isFree, reachedFreeLimit])
-
   const currentProfile = profiles[0]
 
-  useEffect(() => {
-    console.log('[Swipe] currentProfile.id:', currentProfile?.id)
-    console.log('[Swipe] canSwipe:', canSwipe)
-    console.log('[Swipe] disabledActions:', reachedFreeLimit)
-    console.log('[Swipe] swipesCount:', swipesCount)
-    console.log('[Swipe] messagesCount:', messagesCount)
-    console.log('[Swipe] reachedFreeLimit:', reachedFreeLimit)
-  }, [currentProfile?.id, canSwipe, reachedFreeLimit, swipesCount, messagesCount])
-
   const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
-    if (!session?.user || !profile) return
-
-    console.log('[Swipe] handleSwipe dir/profile:', dir, swipedProfile.id)
+    if (!sessionUserId || !profile) return
 
     await db.from('swipes').upsert(
       {
-        swiper_id: session.user.id,
+        swiper_id: sessionUserId,
         target_id: swipedProfile.id,
         action: dir === 'right' ? 'like' : 'dislike',
       },
@@ -260,7 +250,6 @@ export default function SwipePage() {
     )
 
     if (reachedFreeLimit) {
-      console.log('[Swipe] blocked by reachedFreeLimit')
       openPaywall()
       return
     }
@@ -276,38 +265,30 @@ export default function SwipePage() {
     try {
       const today = new Date().toISOString().split('T')[0]
       const newSwipesCount =
-        (profile as any).last_swipe_date === today ? ((profile as any).swipes_today || 0) + 1 : 1
+        profile.last_swipe_date === today ? (profile.swipes_today || 0) + 1 : 1
 
       const updatedProfile = { ...profile, swipes_today: newSwipesCount, last_swipe_date: today }
-      setProfile(updatedProfile as any)
+      setProfile(updatedProfile)
 
-      const { error: swipeUpdateErr } = await db
+      await db
         .from('profiles')
         .update({ swipes_today: newSwipesCount, last_swipe_date: today } as never)
-        .eq('id', session.user.id)
-
-      if (swipeUpdateErr) console.log('[Swipe] profiles swipe update error:', swipeUpdateErr)
-    } catch (error) {
-      console.log('[Swipe] profiles swipe update exception:', error)
-    }
+        .eq('id', sessionUserId)
+    } catch {}
 
     if (dir === 'right') {
-      const likePayload = { liker_id: session.user.id, liked_id: swipedProfile.id }
+      const likePayload = { liker_id: sessionUserId, liked_id: swipedProfile.id }
 
-      const { error: likeErr } = await db
+      await db
         .from('likes')
         .upsert(likePayload, { onConflict: 'liker_id,liked_id', ignoreDuplicates: true })
 
-      if (likeErr) console.log('[Swipe] likes.insert/upsert error:', likeErr)
-
-      const { data: existingLike, error: matchErr } = await db
+      const { data: existingLike } = await db
         .from('likes')
         .select('id')
         .eq('liker_id', swipedProfile.id)
-        .eq('liked_id', session.user.id)
+        .eq('liked_id', sessionUserId)
         .maybeSingle()
-
-      if (matchErr) console.log('[Swipe] match check error:', matchErr)
 
       if (existingLike) {
         setMatchedProfile(swipedProfile)
@@ -334,8 +315,8 @@ export default function SwipePage() {
     }
   }
 
-  const stack = profiles.slice(0, STACK_RENDER_COUNT)
-  const stackForRender = stack.slice().reverse()
+  const stackForRender = profiles.slice(0, STACK_RENDER_COUNT).slice().reverse()
+  const showInitialLoading = loading && profiles.length === 0
 
   return (
     <div className="h-full flex flex-col bg-dark">
@@ -352,7 +333,7 @@ export default function SwipePage() {
       </div>
 
       <div className="flex-1 relative px-4 pb-2">
-        {loading ? (
+        {showInitialLoading ? (
           <div className="h-full flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
               <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
@@ -367,12 +348,12 @@ export default function SwipePage() {
           <EmptyState onRefresh={loadProfiles} />
         ) : (
           <div className="relative h-full">
-            {stackForRender.map((item) => {
-              const isTop = item.id === profiles[0]?.id
-              const zIndex = isTop ? 20 : 10
+            {stackForRender.map((item, index) => {
+              const isTop = item.id === currentProfile?.id
+              const zIndex = isTop ? 20 : 10 + index
 
               return (
-                <div key={item.id} className="absolute inset-0">
+                <div key={item.id} className="absolute inset-0" style={{ zIndex }}>
                   <SwipeCard
                     profile={item}
                     onSwipe={(dir) => {
