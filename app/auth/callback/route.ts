@@ -9,11 +9,17 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
 
+  const supabase = createRouteHandlerClient<Database>({ cookies })
+
   if (code) {
-    const supabase = createRouteHandlerClient<Database>({ cookies })
-    await supabase.auth.exchangeCodeForSession(code)
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (error) {
+      console.error('OAuth error:', error)
+      return NextResponse.redirect(`${requestUrl.origin}/auth`)
+    }
   }
 
-  // pas de /swipe ici: on passe par "/" pour onboarding vs swipe
-  return NextResponse.redirect(requestUrl.origin + '/')
+  // ⚠️ IMPORTANT: forcer un refresh complet
+  return NextResponse.redirect(`${requestUrl.origin}/`)
 }

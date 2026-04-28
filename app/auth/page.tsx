@@ -98,7 +98,7 @@ export default function AuthPage() {
                 mode === m ? 'bg-gold text-dark' : 'text-white/50 hover:text-white'
               }`}
             >
-              {m === 'login' ? 'Connexikon' : 'Inscription'}
+              {m === 'login' ? 'Connexion' : 'Inscription'}
             </button>
           ))}
         </div>
