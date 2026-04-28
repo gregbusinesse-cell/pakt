@@ -1,32 +1,35 @@
 // app/page.tsx
+// Entry point - redirects based on auth state
 
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
+type OnboardingProfile = {
+  is_onboarded: boolean
+}
+
 export default async function Home() {
-  const supabase = createServerClient()
+  const supabase = createServerClient() as any
 
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // ❌ pas connecté → login
   if (!session) {
     redirect('/auth')
   }
 
-  // 🔥 sécurité : si profil pas encore créé
-  const { data: profile } = await supabase
+  const { data: profileData } = await supabase
     .from('profiles')
     .select('is_onboarded')
     .eq('id', session.user.id)
-    .maybeSingle()
+    .single()
 
-  // ❌ pas onboarded → onboarding
+  const profile = profileData as OnboardingProfile | null
+
   if (!profile || !profile.is_onboarded) {
     redirect('/onboarding')
   }
 
-  // ✅ sinon app normale
   redirect('/swipe')
 }
