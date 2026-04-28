@@ -22,10 +22,12 @@ export interface Database {
           city: string | null
           interests: string[]
           photos: string[]
+          preferences: Json | null
           plan: 'free' | 'premium'
           swipes_today: number
           last_swipe_date: string
           is_onboarded: boolean
+          is_suspended: boolean
           email_confirmed: boolean
           created_at: string
           updated_at: string
@@ -39,10 +41,13 @@ export interface Database {
           city?: string | null
           interests?: string[]
           photos?: string[]
+          preferences?: Json | null
           plan?: 'free' | 'premium'
           swipes_today?: number
           last_swipe_date?: string
           is_onboarded?: boolean
+          is_suspended?: boolean
+          email_confirmed?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -55,10 +60,12 @@ export interface Database {
           city?: string | null
           interests?: string[]
           photos?: string[]
+          preferences?: Json | null
           plan?: 'free' | 'premium'
           swipes_today?: number
           last_swipe_date?: string
           is_onboarded?: boolean
+          is_suspended?: boolean
           email_confirmed?: boolean
           updated_at?: string
         }
@@ -159,7 +166,6 @@ export interface Database {
   }
 }
 
-// Convenience types
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Like = Database['public']['Tables']['likes']['Row']
 export type Match = Database['public']['Tables']['matches']['Row']

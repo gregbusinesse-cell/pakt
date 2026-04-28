@@ -1,8 +1,9 @@
 'use client'
-// app/(app)/layout.tsx
-// Main app shell with bottom navigation
 
-import { useEffect, useState } from 'react'
+// app/(app)/layout.tsx
+
+import type { ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -10,6 +11,7 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
 import { Flame, MessageCircle, User } from 'lucide-react'
+import type { Database } from '@/lib/supabase/types'
 
 const NAV_ITEMS = [
   { href: '/swipe', icon: Flame, label: 'Découvrir' },
@@ -18,33 +20,29 @@ const NAV_ITEMS = [
   { href: '/settings', icon: null, label: 'PAKT' },
 ]
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: ReactNode }) {
   const session = useSession()
-const supabase = createClient()
-
-console.log('SESSION:', session)
-console.log('EMAIL CONFIRMED:', session?.user?.email_confirmed_at)
-useEffect(() => {
-  if (!session?.user) return
-
-  const syncEmail = async () => {
-  if (session.user.email_confirmed_at) {
-    const updates: Database['public']['Tables']['profiles']['Update'] = {
-      email_confirmed: true
-    }
-
-    await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', session.user.id)
-  }
-}
-  syncEmail()
-}, [session])
+  const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const pathname = usePathname()
   const { setProfile } = useAppStore()
   const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!session?.user) return
+
+    const syncEmail = async () => {
+      if (!session.user.email_confirmed_at) return
+
+      const updates: Database['public']['Tables']['profiles']['Update'] = {
+        email_confirmed: true,
+      }
+
+      await supabase.from('profiles').update(updates).eq('id', session.user.id)
+    }
+
+    syncEmail()
+  }, [session, supabase])
 
   useEffect(() => {
     if (!session) {
@@ -59,13 +57,14 @@ useEffect(() => {
         .eq('id', session.user.id)
         .single()
 
-      if (data) {
-        if (!(data as any).is_onboarded) {
-          router.push('/onboarding')
-          return
-        }
-        setProfile(data)
+      if (!data) return
+
+      if (!data.is_onboarded) {
+        router.push('/onboarding')
+        return
       }
+
+      setProfile(data)
     }
 
     loadProfile()
@@ -106,9 +105,11 @@ useEffect(() => {
             <Link
               key={href}
               href={href}
+              aria-label={label}
               onClick={() => setUnreadCount(0)}
-              className={`flex flex-col items-center gap-1 px-5 py-1 rounded-xl transition-all duration-200 relative
-                ${isActive ? 'text-gold' : 'text-white/40 hover:text-white/70'}`}
+              className={`flex flex-col items-center gap-1 px-5 py-1 rounded-xl transition-all duration-200 relative ${
+                isActive ? 'text-gold' : 'text-white/40 hover:text-white/70'
+              }`}
             >
               <div className="relative h-[22px] flex items-center justify-center">
                 {Icon ? (
@@ -127,10 +128,11 @@ useEffect(() => {
                 )}
               </div>
 
-              {isActive && (
+              {isActive ? (
                 <motion.div layoutId="nav-indicator" className="w-1 h-1 rounded-full bg-gold" />
+              ) : (
+                <div className="w-1 h-1" />
               )}
-              {!isActive && <div className="w-1 h-1" />}
             </Link>
           )
         })}

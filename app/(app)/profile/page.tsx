@@ -3,7 +3,7 @@
 // app/(app)/profile/page.tsx
 // User profile page with edit capabilities
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
@@ -39,6 +39,7 @@ type ProfileForm = {
 function cleanPhotoUrls(photos: unknown): string[] {
   const cleaned = (() => {
     if (Array.isArray(photos)) return photos
+
     if (typeof photos === 'string') {
       try {
         const parsed = JSON.parse(photos)
@@ -47,6 +48,7 @@ function cleanPhotoUrls(photos: unknown): string[] {
         return []
       }
     }
+
     return []
   })()
 
@@ -240,9 +242,9 @@ function PhotoSection(props: {
 
 export default function ProfilePage() {
   const session = useSession()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const { profile, setProfile } = useAppStore()
-  const isSuspended = Boolean(profile && 'is_suspended' in profile && profile.is_suspended)
+  const isSuspended = Boolean(profile?.is_suspended)
   const router = useRouter()
 
   const [mode, setMode] = useState<'view' | 'edit'>('view')
@@ -257,7 +259,7 @@ export default function ProfilePage() {
   const [dangerLoading, setDangerLoading] = useState(false)
 
   const [preferences, setPreferences] = useState<Preferences>(() =>
-    getInitialPreferences(profile && 'preferences' in profile ? profile.preferences : null)
+    getInitialPreferences(profile?.preferences)
   )
 
   const [form, setForm] = useState<ProfileForm>({
@@ -271,7 +273,6 @@ export default function ProfilePage() {
   const initialPhotos = normalizePhotos(profile?.photos)
 
   const [newPhotos, setNewPhotos] = useState<File[]>([])
-  const [newPhotoUrls, setNewPhotoUrls] = useState<string[]>([])
   const [existingPhotos, setExistingPhotos] = useState<string[]>(initialPhotos)
   const [photoItems, setPhotoItems] = useState<PhotoItem[]>(
     initialPhotos.map((url) => ({ type: 'existing', url }))
@@ -279,9 +280,11 @@ export default function ProfilePage() {
 
   const syncPhotoState = (items: PhotoItem[]) => {
     const nextItems = items.slice(0, MAX_PHOTOS)
+
     const nextExistingPhotos = nextItems
       .filter((item): item is Extract<PhotoItem, { type: 'existing' }> => item.type === 'existing')
       .map((item) => item.url)
+
     const nextNewItems = nextItems.filter(
       (item): item is Extract<PhotoItem, { type: 'new' }> => item.type === 'new'
     )
@@ -289,7 +292,6 @@ export default function ProfilePage() {
     setPhotoItems(nextItems)
     setExistingPhotos(nextExistingPhotos)
     setNewPhotos(nextNewItems.map((item) => item.file))
-    setNewPhotoUrls(nextNewItems.map((item) => item.url))
   }
 
   const onDrop = useCallback(
@@ -302,26 +304,32 @@ export default function ProfilePage() {
       setPhotoItems((currentItems) => {
         const nextItems = [...currentItems]
         const targetIndex =
-          selectedPhotoIndex !== null ? selectedPhotoIndex : Math.min(nextItems.length, MAX_PHOTOS - 1)
+          selectedPhotoIndex !== null
+            ? selectedPhotoIndex
+            : Math.min(nextItems.length, MAX_PHOTOS - 1)
 
         if (targetIndex >= MAX_PHOTOS) return currentItems
 
         const newItem: PhotoItem = { type: 'new', file, url }
 
-        if (targetIndex < nextItems.length) nextItems[targetIndex] = newItem
-        else nextItems.push(newItem)
+        if (targetIndex < nextItems.length) {
+          nextItems[targetIndex] = newItem
+        } else {
+          nextItems.push(newItem)
+        }
 
         const limitedItems = nextItems.slice(0, MAX_PHOTOS)
+
         const nextExistingPhotos = limitedItems
           .filter((item): item is Extract<PhotoItem, { type: 'existing' }> => item.type === 'existing')
           .map((item) => item.url)
+
         const nextNewItems = limitedItems.filter(
           (item): item is Extract<PhotoItem, { type: 'new' }> => item.type === 'new'
         )
 
         setExistingPhotos(nextExistingPhotos)
         setNewPhotos(nextNewItems.map((item) => item.file))
-        setNewPhotoUrls(nextNewItems.map((item) => item.url))
 
         return limitedItems
       })
@@ -349,10 +357,9 @@ export default function ProfilePage() {
       interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
     })
 
-    setPreferences(getInitialPreferences(profile && 'preferences' in profile ? profile.preferences : null))
+    setPreferences(getInitialPreferences(profile?.preferences))
     setExistingPhotos(photos)
     setNewPhotos([])
-    setNewPhotoUrls([])
     setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
     setEditing(true)
   }
@@ -363,7 +370,6 @@ export default function ProfilePage() {
     setEditing(false)
     setSelectedPhotoIndex(null)
     setNewPhotos([])
-    setNewPhotoUrls([])
     setExistingPhotos(photos)
     setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
   }
@@ -446,18 +452,19 @@ export default function ProfilePage() {
       const parsedAge = rawAge === '' ? null : Number(rawAge)
       const normalizedAge = parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
 
-      const updates: Partial<Profile> = {}
-
-      updates.first_name = form.first_name.trim() || null
-      updates.age = normalizedAge
-      updates.bio = form.bio.trim() || null
-      updates.city = form.city.trim() || null
-      updates.interests = nextInterests
-      updates.photos = allPhotos
+      const updates: ProfileUpdate = {
+        first_name: form.first_name.trim() || null,
+        age: normalizedAge,
+        bio: form.bio.trim() || null,
+        city: form.city.trim() || null,
+        interests: nextInterests,
+        photos: allPhotos,
+        preferences,
+      }
 
       const { error } = await supabase
-        .from<Database['public']['Tables']['profiles']['Row']>('profiles')
-        .update(updates as any)
+        .from('profiles')
+        .update(updates)
         .eq('id', session.user.id)
 
       if (error) throw error
@@ -475,7 +482,6 @@ export default function ProfilePage() {
 
       setExistingPhotos(allPhotos)
       setNewPhotos([])
-      setNewPhotoUrls([])
       setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
       setEditing(false)
       setMode('view')
@@ -492,7 +498,6 @@ export default function ProfilePage() {
     router.push('/auth')
   }
 
-
   const handleSuspend = async () => {
     if (!session?.user) return
 
@@ -500,7 +505,11 @@ export default function ProfilePage() {
 
     try {
       const updates: ProfileUpdate = { is_suspended: true }
-      const { error } = await supabase.from<Database['public']['Tables']['profiles']['Row']>('profiles').update(updates as any).eq('id', session.user.id)
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', session.user.id)
 
       if (error) throw error
 
@@ -521,10 +530,11 @@ export default function ProfilePage() {
 
     try {
       const updates: ProfileUpdate = { is_suspended: false }
+
       const { error } = await supabase
-  .from<Database['public']['Tables']['profiles']['Row']>('profiles')
-  .update(updates as never)
-  .eq('id', session.user.id)
+        .from('profiles')
+        .update(updates)
+        .eq('id', session.user.id)
 
       if (error) throw error
 
@@ -542,7 +552,7 @@ export default function ProfilePage() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
-        redirectTo: 'http://localhost:3000/update-password',
+        redirectTo: `${window.location.origin}/update-password`,
       })
 
       if (error) throw error
@@ -560,7 +570,10 @@ export default function ProfilePage() {
     setDangerLoading(true)
 
     try {
-      const { error } = await supabase.from<Database['public']['Tables']['profiles']['Row']>('profiles').delete().eq('id', session.user.id)
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', session.user.id)
 
       if (error) throw error
 
@@ -764,10 +777,12 @@ export default function ProfilePage() {
                       min={0}
                       max={1000}
                       value={preferences.distance_km}
-                      onChange={(event) => {
-                        const next = { ...preferences, distance_km: Number(event.target.value) }
-                        setPreferences(next)
-                      }}
+                      onChange={(event) =>
+                        setPreferences((prev) => ({
+                          ...prev,
+                          distance_km: Number(event.target.value),
+                        }))
+                      }
                       className="w-full accent-gold"
                     />
                   </div>
