@@ -5,7 +5,6 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
 import SwipeCard from '@/components/swipe/SwipeCard'
@@ -77,11 +76,58 @@ function PaywallModal({
 }
 
 export default function SwipePage() {
-  const session = useSession()
   const supabase = useMemo(() => createClient(), [])
   const db = useMemo(() => supabase as any, [supabase])
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
+
+  // ✅ session locale (remplace useSession)
+  const [session, setSession] = useState<any>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return
+
+      if (!data.session) {
+        router.replace('/auth')
+        return
+      }
+
+      setSession(data.session)
+      setSessionLoading(false)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession) {
+        router.replace('/auth')
+        return
+      }
+
+      setSession(nextSession)
+      setSessionLoading(false)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase, router])
+
+  if (sessionLoading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-dark">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+          <p className="text-white/40">Chargement...</p>
+        </div>
+      </div>
+    )
+  }
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -170,7 +216,10 @@ export default function SwipePage() {
   }, [db, profile, sessionProvider, sessionUserId, setProfile])
 
   const loadProfiles = useCallback(async () => {
-    if (!sessionUserId) return
+    if (!sessionUserId) {
+      setLoading(false)
+      return
+    }
 
     setLoading((prev) => (profiles.length === 0 ? true : prev))
 

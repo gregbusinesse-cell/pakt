@@ -1,9 +1,8 @@
 // app/auth/callback/route.ts
-// Handles OAuth callback from Supabase
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/lib/supabase/types'
 
 export async function GET(request: Request) {
@@ -15,5 +14,6 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  return NextResponse.redirect(requestUrl.origin + '/swipe')
+  // pas de /swipe ici: on passe par "/" pour onboarding vs swipe
+  return NextResponse.redirect(requestUrl.origin + '/')
 }
