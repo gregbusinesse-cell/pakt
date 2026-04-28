@@ -28,14 +28,17 @@ useEffect(() => {
   if (!session?.user) return
 
   const syncEmail = async () => {
-    if (session.user.email_confirmed_at) {
-      await supabase
-        .from('profiles')
-        .update({ email_confirmed: true } as never)
-        .eq('id', session.user.id)
+  if (session.user.email_confirmed_at) {
+    const updates: Database['public']['Tables']['profiles']['Update'] = {
+      email_confirmed: true
     }
-  }
 
+    await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', session.user.id)
+  }
+}
   syncEmail()
 }, [session])
   const router = useRouter()

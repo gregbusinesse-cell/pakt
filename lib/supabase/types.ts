@@ -26,6 +26,7 @@ export interface Database {
           swipes_today: number
           last_swipe_date: string
           is_onboarded: boolean
+          email_confirmed: boolean
           created_at: string
           updated_at: string
         }
@@ -58,6 +59,7 @@ export interface Database {
           swipes_today?: number
           last_swipe_date?: string
           is_onboarded?: boolean
+          email_confirmed?: boolean
           updated_at?: string
         }
       }
