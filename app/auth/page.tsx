@@ -61,15 +61,21 @@ export default function AuthPage() {
       return
     }
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${siteUrl}/auth/callback`,
-      },
-    })
+    const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://pakt-sigma.vercel.app'
 
-    if (error) toast.error(error.message)
-  }
+const { error } = await supabase.auth.signInWithOAuth({
+  provider: 'google',
+  options: {
+    redirectTo: `${siteUrl}/auth/callback`,
+  },
+})
+
+if (error) {
+  console.error(error)
+  toast.error(error.message)
+}
 
   return (
     <div className="app-height flex flex-col items-center justify-center bg-dark px-6 overflow-y-auto">
