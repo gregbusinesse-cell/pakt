@@ -118,15 +118,15 @@ function ensureGooglePlacesStyles() {
   style.id = 'google-places-autocomplete-style'
   style.innerHTML = `
     .pac-container {
-      z-index: 999999 !important;
-      background: #1e1e1e !important;
-      border: 1px solid rgba(255,255,255,0.12) !important;
-      border-radius: 14px !important;
-      margin-top: 8px !important;
-      box-shadow: 0 18px 50px rgba(0,0,0,0.45) !important;
-      overflow: hidden !important;
-      font-family: inherit !important;
-    }
+  z-index: 999999 !important;
+  position: fixed !important;
+  background: #1e1e1e !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 14px !important;
+  margin-top: 8px !important;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45) !important;
+  overflow: hidden !important;
+}
 
     .pac-item {
       padding: 12px 14px !important;
