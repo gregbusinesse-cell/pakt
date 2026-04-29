@@ -55,26 +55,26 @@ export default function AuthPage() {
   }
 
   const handleGoogleAuth = async () => {
-    const siteUrl = getSiteUrl()
-    if (!siteUrl) {
-      toast.error('NEXT_PUBLIC_SITE_URL manquant')
-      return
-    }
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    'https://pakt-sigma.vercel.app'
 
-    const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  'https://pakt-sigma.vercel.app'
+  if (!siteUrl) {
+    toast.error('NEXT_PUBLIC_SITE_URL manquant')
+    return
+  }
 
-const { error } = await supabase.auth.signInWithOAuth({
-  provider: 'google',
-  options: {
-    redirectTo: `${siteUrl}/auth/callback`,
-  },
-})
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${siteUrl}/auth/callback`,
+    },
+  })
 
-if (error) {
-  console.error(error)
-  toast.error(error.message)
+  if (error) {
+    console.error(error)
+    toast.error(error.message)
+  }
 }
 
   return (

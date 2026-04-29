@@ -9,8 +9,15 @@ export default function Callback() {
   const router = useRouter()
 
   useEffect(() => {
-    const getSession = async () => {
-      const { data } = await supabase.auth.getSession()
+    const handleAuth = async () => {
+      // récupère la session après redirect Google
+      const { data, error } = await supabase.auth.getSession()
+
+      if (error) {
+        console.error(error)
+        router.replace('/auth')
+        return
+      }
 
       if (data.session) {
         router.replace('/')
@@ -19,8 +26,8 @@ export default function Callback() {
       }
     }
 
-    getSession()
-  }, [])
+    handleAuth()
+  }, [router, supabase])
 
-  return null
+  return <div>Connexion...</div>
 }
