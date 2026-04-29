@@ -282,9 +282,18 @@ export default function OnboardingPage() {
     if (step !== 3) return
 
     let cancelled = false
-    let initFrame: number | null = null
     let inputWaitTimer: number | null = null
     let fallbackTimer: number | null = null
+    let inputMonitorTimer: number | null = null
+    let activeInput: HTMLInputElement | null = null
+
+    const clearAutocomplete = () => {
+      if (autocompleteRef.current && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
+      }
+
+      autocompleteRef.current = null
+    }
 
     const waitForInput = () =>
       new Promise<HTMLInputElement>((resolve, reject) => {
@@ -296,12 +305,15 @@ export default function OnboardingPage() {
             return
           }
 
-          if (cityInputRef.current) {
-            resolve(cityInputRef.current)
+          const input = cityInputRef.current
+
+          if (input && document.body.contains(input)) {
+            console.log('Input found', input)
+            resolve(input)
             return
           }
 
-          if (Date.now() - startedAt >= 3000) {
+          if (Date.now() - startedAt >= 5000) {
             reject(new Error('Champ ville introuvable'))
             return
           }
@@ -314,13 +326,18 @@ export default function OnboardingPage() {
 
     const initAutocomplete = async () => {
       try {
-        console.info('[Google Places] init step ville')
+        console.log('Autocomplete INIT')
 
         setCityAutocompleteError(false)
         setCityAutocompleteReady(false)
 
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer)
+          fallbackTimer = null
+        }
+
         fallbackTimer = window.setTimeout(() => {
-          if (!cancelled && !cityAutocompleteReady) {
+          if (!cancelled && !autocompleteRef.current) {
             console.error('[Google Places] fallback timeout init')
             setCityAutocompleteError(true)
             setCityAutocompleteReady(false)
@@ -328,6 +345,12 @@ export default function OnboardingPage() {
         }, 12000)
 
         const input = await waitForInput()
+
+        input.setAttribute('autocomplete', 'off')
+        input.setAttribute('autocorrect', 'off')
+        input.setAttribute('autocapitalize', 'off')
+        input.setAttribute('spellcheck', 'false')
+
         await loadGooglePlacesScript()
 
         if (cancelled) return
@@ -341,10 +364,11 @@ export default function OnboardingPage() {
           throw new Error('Google Places non chargé')
         }
 
-        if (autocompleteRef.current && window.google?.maps?.event) {
-          window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
-          autocompleteRef.current = null
-        }
+        console.log('Google ready')
+
+        clearAutocomplete()
+
+        activeInput = input
 
         const autocomplete = new window.google.maps.places.Autocomplete(input, {
           types: ['(cities)'],
@@ -353,7 +377,11 @@ export default function OnboardingPage() {
 
         autocompleteRef.current = autocomplete
 
+        console.info('[Google Places] autocompleteRef.current défini', Boolean(autocompleteRef.current))
+
         autocomplete.addListener('place_changed', () => {
+          console.log('PLACE CHANGED')
+
           const place = autocomplete.getPlace()
           const location = place.geometry?.location
 
@@ -397,9 +425,23 @@ export default function OnboardingPage() {
           fallbackTimer = null
         }
 
-        console.info('[Google Places] autocomplete initialisé')
         setCityAutocompleteReady(true)
         setCityAutocompleteError(false)
+
+        if (inputMonitorTimer) {
+          window.clearInterval(inputMonitorTimer)
+        }
+
+        inputMonitorTimer = window.setInterval(() => {
+          if (cancelled) return
+
+          const nextInput = cityInputRef.current
+
+          if (nextInput && nextInput !== activeInput && document.body.contains(nextInput)) {
+            console.info('[Google Places] input changé, re-init autocomplete')
+            initAutocomplete()
+          }
+        }, 500)
       } catch (error) {
         if (fallbackTimer) {
           window.clearTimeout(fallbackTimer)
@@ -407,8 +449,6 @@ export default function OnboardingPage() {
         }
 
         console.error('[Google Places] init failed', error)
-
-        googlePlacesPromise = null
 
         if (!cancelled) {
           setCityAutocompleteReady(false)
@@ -418,16 +458,10 @@ export default function OnboardingPage() {
       }
     }
 
-    initFrame = window.requestAnimationFrame(() => {
-      initAutocomplete()
-    })
+    initAutocomplete()
 
     return () => {
       cancelled = true
-
-      if (initFrame) {
-        window.cancelAnimationFrame(initFrame)
-      }
 
       if (inputWaitTimer) {
         window.clearTimeout(inputWaitTimer)
@@ -437,13 +471,14 @@ export default function OnboardingPage() {
         window.clearTimeout(fallbackTimer)
       }
 
-      if (autocompleteRef.current && window.google?.maps?.event) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
+      if (inputMonitorTimer) {
+        window.clearInterval(inputMonitorTimer)
       }
 
-      autocompleteRef.current = null
+      clearAutocomplete()
+      activeInput = null
     }
-  }, [step, cityAutocompleteReady])
+  }, [step])
 
   const addInterestsFromText = (text: string) => {
     const parts = text
