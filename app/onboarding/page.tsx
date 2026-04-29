@@ -41,7 +41,7 @@ function waitForGooglePlaces(timeoutMs = 10000) {
       const hasAutocomplete = Boolean(window.google?.maps?.places?.Autocomplete)
 
       if (hasAutocomplete) {
-        console.info('[Google Places] window.google.maps.places.Autocomplete prêt')
+        console.log('Google loaded')
         resolve()
         return
       }
@@ -68,12 +68,11 @@ async function loadGooglePlacesScript() {
   if (typeof window === 'undefined') return
 
   if (window.google?.maps?.places?.Autocomplete) {
-    console.info('[Google Places] déjà chargé')
+    console.log('Google loaded')
     return
   }
 
   if (googlePlacesPromise) {
-    console.info('[Google Places] chargement déjà en cours')
     return googlePlacesPromise
   }
 
@@ -81,7 +80,6 @@ async function loadGooglePlacesScript() {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
     if (!key) {
-      console.error('[Google Places] clé NEXT_PUBLIC_GOOGLE_MAPS_API_KEY manquante')
       googlePlacesPromise = null
       reject(new Error('Clé Google Maps manquante'))
       return
@@ -93,41 +91,38 @@ async function loadGooglePlacesScript() {
 
     const existing = existingScripts[0]
 
-    existingScripts.slice(1).forEach((script) => {
-      console.warn('[Google Places] script dupliqué supprimé')
-      script.remove()
-    })
+    existingScripts.slice(1).forEach((script) => script.remove())
 
     if (existing) {
-      console.info('[Google Places] script déjà injecté', existing.src)
-
       if (window.google?.maps?.places?.Autocomplete) {
-        console.info('[Google Places] Google déjà disponible après détection script existant')
+        console.log('Google loaded')
         resolve()
         return
       }
 
-      const onLoad = () => {
-        console.info('[Google Places] script existant chargé')
-        waitForGooglePlaces().then(resolve).catch((error) => {
+      existing.addEventListener(
+        'load',
+        () => {
+          waitForGooglePlaces().then(resolve).catch((error) => {
+            googlePlacesPromise = null
+            reject(error)
+          })
+        },
+        { once: true }
+      )
+
+      existing.addEventListener(
+        'error',
+        () => {
           googlePlacesPromise = null
-          reject(error)
-        })
-      }
-
-      const onError = () => {
-        console.error('[Google Places] erreur script existant')
-        googlePlacesPromise = null
-        reject(new Error('Google Maps indisponible'))
-      }
-
-      existing.addEventListener('load', onLoad, { once: true })
-      existing.addEventListener('error', onError, { once: true })
+          reject(new Error('Google Maps indisponible'))
+        },
+        { once: true }
+      )
 
       waitForGooglePlaces()
         .then(resolve)
         .catch((error) => {
-          console.warn('[Google Places] script existant présent mais Google non prêt', error)
           googlePlacesPromise = null
           reject(error)
         })
@@ -144,24 +139,20 @@ async function loadGooglePlacesScript() {
     script.dataset.googlePlaces = 'true'
 
     script.onload = () => {
-      console.info('[Google Places] script chargé')
       waitForGooglePlaces()
         .then(resolve)
         .catch((error) => {
-          console.error('[Google Places] script chargé mais Google Places absent', error)
           googlePlacesPromise = null
           reject(error)
         })
     }
 
     script.onerror = () => {
-      console.error('[Google Places] erreur chargement script')
       googlePlacesPromise = null
       script.remove()
       reject(new Error('Google Maps indisponible'))
     }
 
-    console.info('[Google Places] injection script')
     document.head.appendChild(script)
   })
 
@@ -176,15 +167,19 @@ function ensureGooglePlacesStyles() {
   style.id = 'google-places-autocomplete-style'
   style.innerHTML = `
     .pac-container {
-  z-index: 999999 !important;
-  position: fixed !important;
-  background: #1e1e1e !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  border-radius: 14px !important;
-  margin-top: 8px !important;
-  box-shadow: 0 18px 50px rgba(0,0,0,0.45) !important;
-  overflow: hidden !important;
-}
+      z-index: 999999 !important;
+      position: fixed !important;
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      background: #1e1e1e !important;
+      border: 1px solid rgba(255,255,255,0.12) !important;
+      border-radius: 14px !important;
+      margin-top: 8px !important;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.45) !important;
+      overflow: visible !important;
+      font-family: inherit !important;
+    }
 
     .pac-item {
       padding: 12px 14px !important;
@@ -285,6 +280,7 @@ export default function OnboardingPage() {
     let inputWaitTimer: number | null = null
     let fallbackTimer: number | null = null
     let inputMonitorTimer: number | null = null
+    let initInProgress = false
     let activeInput: HTMLInputElement | null = null
 
     const clearAutocomplete = () => {
@@ -308,7 +304,7 @@ export default function OnboardingPage() {
           const input = cityInputRef.current
 
           if (input && document.body.contains(input)) {
-            console.log('Input found', input)
+            console.log('Input found')
             resolve(input)
             return
           }
@@ -325,8 +321,11 @@ export default function OnboardingPage() {
       })
 
     const initAutocomplete = async () => {
+      if (initInProgress) return
+
       try {
-        console.log('Autocomplete INIT')
+        initInProgress = true
+        console.log('Autocomplete init')
 
         setCityAutocompleteError(false)
         setCityAutocompleteReady(false)
@@ -338,7 +337,7 @@ export default function OnboardingPage() {
 
         fallbackTimer = window.setTimeout(() => {
           if (!cancelled && !autocompleteRef.current) {
-            console.error('[Google Places] fallback timeout init')
+            console.error('[Google Places] autocomplete init timeout')
             setCityAutocompleteError(true)
             setCityAutocompleteReady(false)
           }
@@ -346,28 +345,22 @@ export default function OnboardingPage() {
 
         const input = await waitForInput()
 
-        input.setAttribute('autocomplete', 'off')
+        input.setAttribute('autocomplete', 'new-password')
         input.setAttribute('autocorrect', 'off')
         input.setAttribute('autocapitalize', 'off')
         input.setAttribute('spellcheck', 'false')
+        input.setAttribute('role', 'combobox')
+        input.setAttribute('aria-autocomplete', 'list')
 
         await loadGooglePlacesScript()
 
         if (cancelled) return
 
         if (!window.google?.maps?.places?.Autocomplete) {
-          console.error('[Google Places] Autocomplete absent après chargement', {
-            google: Boolean(window.google),
-            maps: Boolean(window.google?.maps),
-            places: Boolean(window.google?.maps?.places),
-          })
           throw new Error('Google Places non chargé')
         }
 
-        console.log('Google ready')
-
         clearAutocomplete()
-
         activeInput = input
 
         const autocomplete = new window.google.maps.places.Autocomplete(input, {
@@ -377,19 +370,19 @@ export default function OnboardingPage() {
 
         autocompleteRef.current = autocomplete
 
-        console.info('[Google Places] autocompleteRef.current défini', Boolean(autocompleteRef.current))
+        console.log('Google loaded')
+        console.info('[Google Places] autocompleteRef.current', Boolean(autocompleteRef.current))
+
+        window.setTimeout(() => {
+          const pacContainer = document.querySelector('.pac-container')
+          console.info('[Google Places] pac-container exists', Boolean(pacContainer), pacContainer)
+        }, 300)
 
         autocomplete.addListener('place_changed', () => {
-          console.log('PLACE CHANGED')
+          console.log('Place changed')
 
           const place = autocomplete.getPlace()
           const location = place.geometry?.location
-
-          console.info('[Google Places] place_changed', {
-            placeId: place.place_id,
-            name: place.name,
-            hasGeometry: Boolean(location),
-          })
 
           if (!place.place_id || !location) {
             setData((prev) => ({
@@ -438,7 +431,8 @@ export default function OnboardingPage() {
           const nextInput = cityInputRef.current
 
           if (nextInput && nextInput !== activeInput && document.body.contains(nextInput)) {
-            console.info('[Google Places] input changé, re-init autocomplete')
+            clearAutocomplete()
+            activeInput = null
             initAutocomplete()
           }
         }, 500)
@@ -455,6 +449,8 @@ export default function OnboardingPage() {
           setCityAutocompleteError(true)
           toast.error('Autocomplete ville indisponible')
         }
+      } finally {
+        initInProgress = false
       }
     }
 
@@ -694,7 +690,7 @@ export default function OnboardingPage() {
         <div />
       </div>
 
-      <div className="flex-1 overflow-hidden relative px-6">
+      <div className={`flex-1 relative px-6 ${step === 3 ? 'overflow-visible z-50' : 'overflow-hidden'}`}>
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
@@ -704,7 +700,7 @@ export default function OnboardingPage() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="h-full flex flex-col"
+            className={`h-full flex flex-col ${step === 3 ? 'overflow-visible z-50' : ''}`}
           >
             {step === 0 && (
               <div className="flex flex-col gap-6 pt-4">
@@ -837,13 +833,13 @@ export default function OnboardingPage() {
             )}
 
             {step === 3 && (
-              <div className="flex flex-col gap-6 pt-4">
+              <div className="flex flex-col gap-6 pt-4 overflow-visible relative z-50">
                 <div>
                   <h2 className="text-3xl font-bold mb-1">Ta ville 📍</h2>
                   <p className="text-white/50">Pour trouver des personnes près de toi</p>
                 </div>
 
-                <div className="relative">
+                <div className="relative z-50 overflow-visible">
                   <input
                     ref={cityInputRef}
                     type="text"
@@ -860,7 +856,7 @@ export default function OnboardingPage() {
                     }
                     className="pakt-input text-lg pr-12"
                     autoFocus
-                    autoComplete="off"
+                    autoComplete="new-password"
                   />
 
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
