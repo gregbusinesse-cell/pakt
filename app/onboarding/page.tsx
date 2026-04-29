@@ -25,27 +25,39 @@ declare global {
 
 let googlePlacesPromise: Promise<void> | null = null
 
-function waitForGooglePlaces(timeoutMs = 8000) {
+function waitForGooglePlaces(timeoutMs = 10000) {
   return new Promise<void>((resolve, reject) => {
     if (typeof window === 'undefined') {
-      resolve()
+      reject(new Error('Google Places indisponible côté serveur'))
       return
     }
 
     const startedAt = Date.now()
 
     const check = () => {
-      if (window.google?.maps?.places?.Autocomplete) {
+      const hasGoogle = Boolean(window.google)
+      const hasMaps = Boolean(window.google?.maps)
+      const hasPlaces = Boolean(window.google?.maps?.places)
+      const hasAutocomplete = Boolean(window.google?.maps?.places?.Autocomplete)
+
+      if (hasAutocomplete) {
+        console.info('[Google Places] window.google.maps.places.Autocomplete prêt')
         resolve()
         return
       }
 
       if (Date.now() - startedAt >= timeoutMs) {
+        console.error('[Google Places] timeout', {
+          hasGoogle,
+          hasMaps,
+          hasPlaces,
+          hasAutocomplete,
+        })
         reject(new Error('Google Places timeout'))
         return
       }
 
-      window.setTimeout(check, 100)
+      window.setTimeout(check, 150)
     }
 
     check()
@@ -54,58 +66,104 @@ function waitForGooglePlaces(timeoutMs = 8000) {
 
 async function loadGooglePlacesScript() {
   if (typeof window === 'undefined') return
-  if (window.google?.maps?.places?.Autocomplete) return
 
-  if (!googlePlacesPromise) {
-    googlePlacesPromise = new Promise((resolve, reject) => {
-      const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  if (window.google?.maps?.places?.Autocomplete) {
+    console.info('[Google Places] déjà chargé')
+    return
+  }
 
-      if (!key) {
-        reject(new Error('Clé Google Maps manquante'))
+  if (googlePlacesPromise) {
+    console.info('[Google Places] chargement déjà en cours')
+    return googlePlacesPromise
+  }
+
+  googlePlacesPromise = new Promise((resolve, reject) => {
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+    if (!key) {
+      console.error('[Google Places] clé NEXT_PUBLIC_GOOGLE_MAPS_API_KEY manquante')
+      googlePlacesPromise = null
+      reject(new Error('Clé Google Maps manquante'))
+      return
+    }
+
+    const existingScripts = Array.from(
+      document.querySelectorAll<HTMLScriptElement>('script[data-google-places="true"]')
+    )
+
+    const existing = existingScripts[0]
+
+    existingScripts.slice(1).forEach((script) => {
+      console.warn('[Google Places] script dupliqué supprimé')
+      script.remove()
+    })
+
+    if (existing) {
+      console.info('[Google Places] script déjà injecté', existing.src)
+
+      if (window.google?.maps?.places?.Autocomplete) {
+        console.info('[Google Places] Google déjà disponible après détection script existant')
+        resolve()
         return
       }
 
-      const existing = document.querySelector<HTMLScriptElement>('script[data-google-places="true"]')
-
-      if (existing) {
-        existing.addEventListener(
-          'load',
-          () => {
-            waitForGooglePlaces().then(resolve).catch(reject)
-          },
-          { once: true }
-        )
-
-        existing.addEventListener(
-          'error',
-          () => reject(new Error('Google Maps indisponible')),
-          { once: true }
-        )
-
-        waitForGooglePlaces().then(resolve).catch(reject)
-        return
+      const onLoad = () => {
+        console.info('[Google Places] script existant chargé')
+        waitForGooglePlaces().then(resolve).catch((error) => {
+          googlePlacesPromise = null
+          reject(error)
+        })
       }
 
-      const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-        key
-      )}&libraries=places&language=fr&region=FR&v=weekly`
-      script.async = true
-      script.defer = true
-      script.dataset.googlePlaces = 'true'
-
-      script.onload = () => {
-        waitForGooglePlaces().then(resolve).catch(reject)
-      }
-
-      script.onerror = () => {
+      const onError = () => {
+        console.error('[Google Places] erreur script existant')
         googlePlacesPromise = null
         reject(new Error('Google Maps indisponible'))
       }
 
-      document.head.appendChild(script)
-    })
-  }
+      existing.addEventListener('load', onLoad, { once: true })
+      existing.addEventListener('error', onError, { once: true })
+
+      waitForGooglePlaces()
+        .then(resolve)
+        .catch((error) => {
+          console.warn('[Google Places] script existant présent mais Google non prêt', error)
+          googlePlacesPromise = null
+          reject(error)
+        })
+
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      key
+    )}&libraries=places&language=fr&region=FR&v=weekly`
+    script.async = true
+    script.defer = true
+    script.dataset.googlePlaces = 'true'
+
+    script.onload = () => {
+      console.info('[Google Places] script chargé')
+      waitForGooglePlaces()
+        .then(resolve)
+        .catch((error) => {
+          console.error('[Google Places] script chargé mais Google Places absent', error)
+          googlePlacesPromise = null
+          reject(error)
+        })
+    }
+
+    script.onerror = () => {
+      console.error('[Google Places] erreur chargement script')
+      googlePlacesPromise = null
+      script.remove()
+      reject(new Error('Google Maps indisponible'))
+    }
+
+    console.info('[Google Places] injection script')
+    document.head.appendChild(script)
+  })
 
   return googlePlacesPromise
 }
@@ -224,30 +282,63 @@ export default function OnboardingPage() {
     if (step !== 3) return
 
     let cancelled = false
-    let loadingTimeout: number | null = null
+    let initFrame: number | null = null
+    let inputWaitTimer: number | null = null
+    let fallbackTimer: number | null = null
+
+    const waitForInput = () =>
+      new Promise<HTMLInputElement>((resolve, reject) => {
+        const startedAt = Date.now()
+
+        const check = () => {
+          if (cancelled) {
+            reject(new Error('Initialisation annulée'))
+            return
+          }
+
+          if (cityInputRef.current) {
+            resolve(cityInputRef.current)
+            return
+          }
+
+          if (Date.now() - startedAt >= 3000) {
+            reject(new Error('Champ ville introuvable'))
+            return
+          }
+
+          inputWaitTimer = window.setTimeout(check, 50)
+        }
+
+        check()
+      })
 
     const initAutocomplete = async () => {
       try {
+        console.info('[Google Places] init step ville')
+
         setCityAutocompleteError(false)
         setCityAutocompleteReady(false)
 
-        loadingTimeout = window.setTimeout(() => {
-          if (!cancelled) {
+        fallbackTimer = window.setTimeout(() => {
+          if (!cancelled && !cityAutocompleteReady) {
+            console.error('[Google Places] fallback timeout init')
             setCityAutocompleteError(true)
             setCityAutocompleteReady(false)
           }
-        }, 10000)
+        }, 12000)
 
+        const input = await waitForInput()
         await loadGooglePlacesScript()
 
         if (cancelled) return
 
         if (!window.google?.maps?.places?.Autocomplete) {
+          console.error('[Google Places] Autocomplete absent après chargement', {
+            google: Boolean(window.google),
+            maps: Boolean(window.google?.maps),
+            places: Boolean(window.google?.maps?.places),
+          })
           throw new Error('Google Places non chargé')
-        }
-
-        if (!cityInputRef.current) {
-          throw new Error('Champ ville indisponible')
         }
 
         if (autocompleteRef.current && window.google?.maps?.event) {
@@ -255,7 +346,7 @@ export default function OnboardingPage() {
           autocompleteRef.current = null
         }
 
-        const autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
+        const autocomplete = new window.google.maps.places.Autocomplete(input, {
           types: ['(cities)'],
           fields: ['place_id', 'name', 'formatted_address', 'geometry', 'address_components'],
         })
@@ -265,6 +356,12 @@ export default function OnboardingPage() {
         autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace()
           const location = place.geometry?.location
+
+          console.info('[Google Places] place_changed', {
+            placeId: place.place_id,
+            name: place.name,
+            hasGeometry: Boolean(location),
+          })
 
           if (!place.place_id || !location) {
             setData((prev) => ({
@@ -295,27 +392,49 @@ export default function OnboardingPage() {
           }))
         })
 
-        if (loadingTimeout) window.clearTimeout(loadingTimeout)
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer)
+          fallbackTimer = null
+        }
+
+        console.info('[Google Places] autocomplete initialisé')
         setCityAutocompleteReady(true)
         setCityAutocompleteError(false)
-      } catch {
-        if (loadingTimeout) window.clearTimeout(loadingTimeout)
+      } catch (error) {
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer)
+          fallbackTimer = null
+        }
+
+        console.error('[Google Places] init failed', error)
+
         googlePlacesPromise = null
-        setCityAutocompleteReady(false)
-        setCityAutocompleteError(true)
-        toast.error('Autocomplete ville indisponible')
+
+        if (!cancelled) {
+          setCityAutocompleteReady(false)
+          setCityAutocompleteError(true)
+          toast.error('Autocomplete ville indisponible')
+        }
       }
     }
 
-    window.requestAnimationFrame(() => {
+    initFrame = window.requestAnimationFrame(() => {
       initAutocomplete()
     })
 
     return () => {
       cancelled = true
 
-      if (loadingTimeout) {
-        window.clearTimeout(loadingTimeout)
+      if (initFrame) {
+        window.cancelAnimationFrame(initFrame)
+      }
+
+      if (inputWaitTimer) {
+        window.clearTimeout(inputWaitTimer)
+      }
+
+      if (fallbackTimer) {
+        window.clearTimeout(fallbackTimer)
       }
 
       if (autocompleteRef.current && window.google?.maps?.event) {
@@ -324,7 +443,7 @@ export default function OnboardingPage() {
 
       autocompleteRef.current = null
     }
-  }, [step])
+  }, [step, cityAutocompleteReady])
 
   const addInterestsFromText = (text: string) => {
     const parts = text
