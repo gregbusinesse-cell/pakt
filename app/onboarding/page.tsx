@@ -172,6 +172,13 @@ function ensureGooglePlacesStyles() {
   visibility: visible !important;
   max-height: 300px !important;
   overflow-y: auto !important;
+
+  position: fixed !important;
+  z-index: 999999 !important;
+
+  background: #1e1e1e !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 14px !important;
 }
 
 .pac-item {
@@ -359,6 +366,12 @@ export default function OnboardingPage() {
           types: ['(cities)'],
           fields: ['place_id', 'name', 'formatted_address', 'geometry', 'address_components'],
         })
+        
+        input.addEventListener('focus', () => {
+  setTimeout(() => {
+    input.dispatchEvent(new Event('keydown'))
+  }, 100)
+})
 
         autocompleteRef.current = autocomplete
 
@@ -831,21 +844,24 @@ export default function OnboardingPage() {
                   <p className="text-white/50">Pour trouver des personnes près de toi</p>
                 </div>
 
-                <div className="relative z-50 overflow-visible">
+                <div style={{ position: 'relative', zIndex: 999999 }}>
                   <input
                     ref={cityInputRef}
                     type="text"
                     placeholder="Paris, Lyon, Bordeaux..."
                     value={data.city}
                     onChange={(event) =>
-                      setData((prev) => ({
-                        ...prev,
-                        city: event.target.value,
-                        cityPlaceId: '',
-                        lat: null,
-                        lng: null,
-                      }))
-                    }
+  setData((prev) => ({
+    ...prev,
+    city: event.target.value,
+    ...(prev.city !== event.target.value && {
+      cityPlaceId: '',
+      lat: null,
+      lng: null,
+    }),
+  }))
+}
+
                     className="pakt-input text-lg pr-12"
                     autoFocus
                     autoComplete="new-password"
