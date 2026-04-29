@@ -167,34 +167,26 @@ function ensureGooglePlacesStyles() {
   style.id = 'google-places-autocomplete-style'
   style.innerHTML = `
     .pac-container {
-      z-index: 999999 !important;
-      position: fixed !important;
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-      background: #1e1e1e !important;
-      border: 1px solid rgba(255,255,255,0.12) !important;
-      border-radius: 14px !important;
-      margin-top: 8px !important;
-      box-shadow: 0 18px 50px rgba(0,0,0,0.45) !important;
-      overflow: visible !important;
-      font-family: inherit !important;
-    }
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+}
 
-    .pac-item {
-      padding: 12px 14px !important;
-      border-top: 1px solid rgba(255,255,255,0.08) !important;
-      color: rgba(255,255,255,0.7) !important;
-      cursor: pointer !important;
-      font-size: 14px !important;
-      line-height: 1.4 !important;
-      background: #1e1e1e !important;
-    }
+.pac-item {
+  display: block !important;
+  color: white !important;
+  background: #1e1e1e !important;
+}
 
-    .pac-item:first-child {
-      border-top: 0 !important;
-    }
+.pac-item span {
+  color: white !important;
+}
 
+.pac-container:empty {
+  display: none !important;
+}
     .pac-item:hover,
     .pac-item-selected {
       background: rgba(212,175,55,0.12) !important;
