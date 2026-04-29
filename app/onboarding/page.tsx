@@ -1,7 +1,6 @@
 'use client'
 
 // app/onboarding/page.tsx
-// Multi-step onboarding flow for new users
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -11,7 +10,7 @@ import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { useSession } from '@supabase/auth-helpers-react'
 import { INTERESTS, MAX_PHOTOS } from '@/lib/utils'
-import { X, Plus, ChevronRight, ChevronLeft } from 'lucide-react'
+import { X, Plus, ChevronRight, ChevronLeft, MapPin } from 'lucide-react'
 
 const STEPS = 5
 const MAX_INTERESTS = 5
@@ -21,6 +20,7 @@ type PhotoItem = { type: 'new'; url: string; file: File }
 declare global {
   interface Window {
     google?: any
+    __initGooglePlaces?: () => void
   }
 }
 
@@ -35,8 +35,15 @@ function loadGooglePlacesScript() {
       const existing = document.querySelector<HTMLScriptElement>('script[data-google-places="true"]')
 
       if (existing) {
-        existing.addEventListener('load', () => resolve())
-        existing.addEventListener('error', reject)
+        if (window.google?.maps?.places) {
+          resolve()
+          return
+        }
+
+        existing.addEventListener('load', () => resolve(), { once: true })
+        existing.addEventListener('error', () => reject(new Error('Google Maps indisponible')), {
+          once: true,
+        })
         return
       }
 
@@ -47,13 +54,18 @@ function loadGooglePlacesScript() {
         return
       }
 
+      window.__initGooglePlaces = () => {
+        resolve()
+      }
+
       const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&language=fr`
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+        key
+      )}&libraries=places&language=fr&region=FR&v=weekly&callback=__initGooglePlaces`
       script.async = true
       script.defer = true
       script.dataset.googlePlaces = 'true'
-      script.onload = () => resolve()
-      script.onerror = reject
+      script.onerror = () => reject(new Error('Google Maps indisponible'))
 
       document.head.appendChild(script)
     })
@@ -62,11 +74,68 @@ function loadGooglePlacesScript() {
   return googlePlacesPromise
 }
 
+function ensureGooglePlacesStyles() {
+  if (typeof document === 'undefined') return
+  if (document.getElementById('google-places-autocomplete-style')) return
+
+  const style = document.createElement('style')
+  style.id = 'google-places-autocomplete-style'
+  style.innerHTML = `
+    .pac-container {
+      z-index: 999999 !important;
+      background: #1e1e1e !important;
+      border: 1px solid rgba(255,255,255,0.12) !important;
+      border-radius: 14px !important;
+      margin-top: 8px !important;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.45) !important;
+      overflow: hidden !important;
+      font-family: inherit !important;
+    }
+
+    .pac-item {
+      padding: 12px 14px !important;
+      border-top: 1px solid rgba(255,255,255,0.08) !important;
+      color: rgba(255,255,255,0.7) !important;
+      cursor: pointer !important;
+      font-size: 14px !important;
+      line-height: 1.4 !important;
+      background: #1e1e1e !important;
+    }
+
+    .pac-item:first-child {
+      border-top: 0 !important;
+    }
+
+    .pac-item:hover,
+    .pac-item-selected {
+      background: rgba(212,175,55,0.12) !important;
+    }
+
+    .pac-item-query {
+      color: #ffffff !important;
+      font-size: 14px !important;
+      font-weight: 600 !important;
+    }
+
+    .pac-matched {
+      color: #d4af37 !important;
+      font-weight: 700 !important;
+    }
+
+    .pac-icon {
+      filter: invert(1) opacity(0.6) !important;
+    }
+  `
+
+  document.head.appendChild(style)
+}
+
 interface OnboardingData {
   firstName: string
   age: string
   bio: string
   city: string
+  cityPlaceId: string
   lat: number | null
   lng: number | null
   photos: File[]
@@ -79,13 +148,17 @@ export default function OnboardingPage() {
   const [direction, setDirection] = useState(1)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [photoItems, setPhotoItems] = useState<PhotoItem[]>([])
+  const [cityAutocompleteReady, setCityAutocompleteReady] = useState(false)
+  const [cityAutocompleteError, setCityAutocompleteError] = useState(false)
   const cityInputRef = useRef<HTMLInputElement | null>(null)
+  const autocompleteRef = useRef<any>(null)
 
   const [data, setData] = useState<OnboardingData>({
     firstName: '',
     age: '',
     bio: '',
     city: '',
+    cityPlaceId: '',
     lat: null,
     lng: null,
     photos: [],
@@ -100,50 +173,95 @@ export default function OnboardingPage() {
   const session = useSession()
 
   const progress = ((step + 1) / STEPS) * 100
+  const citySelected = Boolean(data.city.trim() && data.cityPlaceId && data.lat !== null && data.lng !== null)
 
-  const updateData = (key: keyof OnboardingData, value: string | number | null | File[] | string[]) =>
-    setData((prev) => ({ ...prev, [key]: value }))
+  const updateData = (
+    key: keyof OnboardingData,
+    value: string | number | null | File[] | string[]
+  ) => setData((prev) => ({ ...prev, [key]: value }))
+
+  useEffect(() => {
+    ensureGooglePlacesStyles()
+  }, [])
 
   useEffect(() => {
     if (step !== 3) return
 
-    let autocomplete: any
+    let cancelled = false
 
-    const init = async () => {
+    const initAutocomplete = async () => {
       try {
+        setCityAutocompleteError(false)
+        setCityAutocompleteReady(false)
+
         await loadGooglePlacesScript()
 
+        if (cancelled) return
         if (!cityInputRef.current || !window.google?.maps?.places) return
 
-        autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
+        if (autocompleteRef.current && window.google?.maps?.event) {
+          window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
+          autocompleteRef.current = null
+        }
+
+        const autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
           types: ['(cities)'],
-          fields: ['name', 'geometry'],
+          fields: ['place_id', 'name', 'formatted_address', 'geometry', 'address_components'],
         })
+
+        autocompleteRef.current = autocomplete
+        setCityAutocompleteReady(true)
 
         autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace()
           const location = place.geometry?.location
 
-          if (!location) return
+          if (!place.place_id || !location) {
+            setData((prev) => ({
+              ...prev,
+              cityPlaceId: '',
+              lat: null,
+              lng: null,
+            }))
+            return
+          }
+
+          const cityName =
+            place.address_components?.find((component: any) => component.types?.includes('locality'))
+              ?.long_name ||
+            place.address_components?.find((component: any) =>
+              component.types?.includes('postal_town')
+            )?.long_name ||
+            place.name ||
+            place.formatted_address ||
+            ''
 
           setData((prev) => ({
             ...prev,
-            city: place.name || '',
+            city: cityName,
+            cityPlaceId: place.place_id,
             lat: location.lat(),
             lng: location.lng(),
           }))
         })
       } catch {
+        setCityAutocompleteError(true)
         toast.error('Autocomplete ville indisponible')
       }
     }
 
-    setTimeout(init, 300)
+    requestAnimationFrame(() => {
+      initAutocomplete()
+    })
 
     return () => {
-      if (autocomplete && window.google?.maps?.event) {
-        window.google.maps.event.clearInstanceListeners(autocomplete)
+      cancelled = true
+
+      if (autocompleteRef.current && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
       }
+
+      autocompleteRef.current = null
     }
   }, [step])
 
@@ -248,7 +366,7 @@ export default function OnboardingPage() {
       case 2:
         return selectedInterests.length > 0
       case 3:
-        return data.city.trim() && data.lat !== null && data.lng !== null
+        return citySelected
       case 4:
         return data.photos.length >= 1
       default:
@@ -317,6 +435,8 @@ export default function OnboardingPage() {
   }
 
   const goNext = () => {
+    if (!canProceed()) return
+
     if (step === 2 && otherInput.trim()) addInterestsFromText(otherInput)
 
     if (step === STEPS - 1) {
@@ -508,22 +628,55 @@ export default function OnboardingPage() {
                   <p className="text-white/50">Pour trouver des personnes près de toi</p>
                 </div>
 
-                <input
-                  ref={cityInputRef}
-                  type="text"
-                  placeholder="Paris, Lyon, Bordeaux..."
-                  value={data.city}
-                  onChange={(event) =>
-                    setData((prev) => ({
-                      ...prev,
-                      city: event.target.value,
-                      lat: null,
-                      lng: null,
-                    }))
-                  }
-                  className="pakt-input text-lg"
-                  autoFocus
-                />
+                <div className="relative">
+                  <input
+                    ref={cityInputRef}
+                    type="text"
+                    placeholder="Paris, Lyon, Bordeaux..."
+                    value={data.city}
+                    onChange={(event) =>
+                      setData((prev) => ({
+                        ...prev,
+                        city: event.target.value,
+                        cityPlaceId: '',
+                        lat: null,
+                        lng: null,
+                      }))
+                    }
+                    className="pakt-input text-lg pr-12"
+                    autoFocus
+                    autoComplete="off"
+                  />
+
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <MapPin
+                      size={20}
+                      className={citySelected ? 'text-gold' : 'text-white/30'}
+                    />
+                  </div>
+                </div>
+
+                {cityAutocompleteError && (
+                  <p className="text-red-400 text-sm">
+                    Impossible de charger Google Places. Vérifie ta clé Google Maps.
+                  </p>
+                )}
+
+                {!cityAutocompleteError && !cityAutocompleteReady && (
+                  <p className="text-white/35 text-sm">Chargement des villes...</p>
+                )}
+
+                {data.city.trim() && !citySelected && cityAutocompleteReady && (
+                  <p className="text-white/40 text-sm">
+                    Sélectionne une ville dans la liste Google pour continuer.
+                  </p>
+                )}
+
+                {citySelected && (
+                  <p className="text-gold text-sm">
+                    Ville sélectionnée : {data.city}
+                  </p>
+                )}
               </div>
             )}
 
