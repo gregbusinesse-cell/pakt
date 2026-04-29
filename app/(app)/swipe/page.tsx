@@ -80,7 +80,7 @@ function PaywallModal({
 
 export default function SwipePage() {
   const supabase = createClient()
-  const db = supabase
+  const db = supabase as any
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
 
@@ -132,60 +132,38 @@ export default function SwipePage() {
 
   const getOrCreateConversation = useCallback(
     async (otherUserId: string) => {
-      console.log('[SWIPE] getOrCreateConversation start', { sessionUserId, otherUserId })
+      console.log('[SWIPE] RPC get_or_create_conversation', { sessionUserId, otherUserId })
 
       if (!sessionUserId || !otherUserId) {
         throw new Error('IDs conversation manquants')
       }
 
-      const { data: existing, error: selectError } = await db
-        .from('conversations')
-        .select('*')
-        .or(
-          `and(user1_id.eq.${sessionUserId},user2_id.eq.${otherUserId}),and(user1_id.eq.${otherUserId},user2_id.eq.${sessionUserId})`
-        )
-        .maybeSingle()
+      const { data, error } = await db.rpc('get_or_create_conversation', {
+        other_user_id: otherUserId,
+      })
 
-      if (selectError) {
-        console.error('[SWIPE] conversation select error', selectError)
-        throw selectError
+      if (error) {
+        console.error('[SWIPE] RPC conversation error', error)
+        throw error
       }
 
-      if (existing?.id) {
-        console.log('[SWIPE] conversation exists', existing)
-        return existing.id as string
+      if (!data) {
+        throw new Error('Conversation ID vide')
       }
 
-      const user1Id = sessionUserId < otherUserId ? sessionUserId : otherUserId
-      const user2Id = sessionUserId < otherUserId ? otherUserId : sessionUserId
-
-      const { data: created, error: insertError } = await db
-        .from('conversations')
-        .insert({
-          user1_id: user1Id,
-          user2_id: user2Id,
-        } as never)
-        .select('*')
-        .single()
-
-      if (insertError) {
-        console.error('[SWIPE] conversation insert error', insertError)
-        throw insertError
-      }
-
-      console.log('[SWIPE] conversation created', created)
-      return created.id as string
+      console.log('[SWIPE] conversation ready', data)
+      return data as string
     },
     [db, sessionUserId]
   )
 
   const createConversationForMatch = useCallback(
     async (otherUserId: string) => {
-      console.log('[SWIPE] createConversationForMatch start', { otherUserId })
+      console.log('[SWIPE] createConversationForMatch', { otherUserId })
 
       try {
         const conversationId = await getOrCreateConversation(otherUserId)
-        console.log('[SWIPE] match conversation ready', { conversationId })
+        console.log('[SWIPE] match conversation created/found', { conversationId })
         return conversationId
       } catch (error) {
         console.error('[SWIPE] createConversationForMatch error', error)
@@ -228,31 +206,29 @@ export default function SwipePage() {
       try {
         const conversationId = await getOrCreateConversation(targetProfile.id)
 
-        console.log('[SWIPE] insert direct message', {
-          conversationId,
+        const payload = {
+          conversation_id: conversationId,
           sender_id: sessionUserId,
           content,
-        })
+          message_type: 'text',
+          is_read: false,
+        }
+
+        console.log('[SWIPE] insert message payload', payload)
 
         const { data: insertedMessage, error: messageError } = await db
           .from('messages')
-          .insert({
-            conversation_id: conversationId,
-            sender_id: sessionUserId,
-            content,
-            message_type: 'text',
-            is_read: false,
-          } as never)
+          .insert(payload)
           .select('*')
           .single()
 
         if (messageError) {
-          console.error('[SWIPE] direct message insert error', messageError)
+          console.error('[SWIPE] message insert error', messageError)
           toast.error(`Erreur message: ${messageError.message}`)
           return false
         }
 
-        console.log('[SWIPE] direct message inserted', insertedMessage)
+        console.log('[SWIPE] message inserted', insertedMessage)
 
         if (profile.plan === 'free') {
           const nextMessagesToday = currentMessagesToday + 1
@@ -271,7 +247,7 @@ export default function SwipePage() {
             .update({
               messages_today: nextMessagesToday,
               last_message_date: today,
-            } as never)
+            })
             .eq('id', sessionUserId)
 
           if (profileUpdateError) {
@@ -317,7 +293,7 @@ export default function SwipePage() {
         .eq('swiper_id', sessionUserId)
 
       if (swipedError) {
-        console.error('[SWIPE] swiped select error', swipedError)
+        console.error('[SWIPE] swipes select error', swipedError)
       }
 
       const swipedSet = new Set<string>([
@@ -369,12 +345,12 @@ export default function SwipePage() {
         .eq('liked_id', sessionUserId)
 
       if (likesError) {
-        console.error('[SWIPE] likes received select error', likesError)
+        console.error('[SWIPE] received likes select error', likesError)
       }
 
       console.log('[SWIPE] profiles loaded', {
-        profiles: filteredProfiles.length,
-        likedMe: likesData,
+        profilesCount: filteredProfiles.length,
+        likedMeIds: likesData,
       })
 
       setLikedMeIds(new Set((likesData || []).map((like: { liker_id: string }) => like.liker_id)))
@@ -458,7 +434,7 @@ export default function SwipePage() {
       try {
         const { error } = await db
           .from('profiles')
-          .update({ email_confirmed: true } as never)
+          .update({ email_confirmed: true })
           .eq('id', sessionUserId)
 
         if (error) {
@@ -524,7 +500,7 @@ export default function SwipePage() {
             swiper_id: sessionUserId,
             target_id: swipedProfile.id,
             action: dir === 'right' ? 'like' : 'dislike',
-          } as never,
+          },
           {
             onConflict: 'swiper_id,target_id',
           }
@@ -532,7 +508,7 @@ export default function SwipePage() {
         .select('*')
 
       if (swipeError) {
-        console.error('[SWIPE] swipes upsert error', swipeError)
+        console.error('[SWIPE] swipe upsert error', swipeError)
         toast.error(`Erreur swipe: ${swipeError.message}`)
         return
       }
@@ -557,7 +533,7 @@ export default function SwipePage() {
 
         const { error: profileUpdateError } = await db
           .from('profiles')
-          .update({ swipes_today: newSwipesCount, last_swipe_date: today } as never)
+          .update({ swipes_today: newSwipesCount, last_swipe_date: today })
           .eq('id', sessionUserId)
 
         if (profileUpdateError) {
@@ -569,13 +545,19 @@ export default function SwipePage() {
 
       if (dir !== 'right') return
 
-      const likePayload = { liker_id: sessionUserId, liked_id: swipedProfile.id }
+      const likePayload = {
+        liker_id: sessionUserId,
+        liked_id: swipedProfile.id,
+      }
 
-      console.log('[SWIPE] insert like', likePayload)
+      console.log('[SWIPE] upsert like', likePayload)
 
       const { data: likeData, error: likeError } = await db
         .from('likes')
-        .upsert(likePayload as never, { onConflict: 'liker_id,liked_id', ignoreDuplicates: true })
+        .upsert(likePayload, {
+          onConflict: 'liker_id,liked_id',
+          ignoreDuplicates: true,
+        })
         .select('*')
 
       if (likeError) {
@@ -586,7 +568,7 @@ export default function SwipePage() {
 
       console.log('[SWIPE] like saved', likeData)
 
-      const { data: existingLike, error: matchCheckError } = await db
+      const { data: mutualLike, error: matchCheckError } = await db
         .from('likes')
         .select('*')
         .eq('liker_id', swipedProfile.id)
@@ -595,13 +577,13 @@ export default function SwipePage() {
 
       if (matchCheckError) {
         console.error('[SWIPE] mutual like check error', matchCheckError)
-        toast.error(`Erreur vérification match: ${matchCheckError.message}`)
+        toast.error(`Erreur match: ${matchCheckError.message}`)
         return
       }
 
-      console.log('[SWIPE] mutual like check result', existingLike)
+      console.log('[SWIPE] mutual like result', mutualLike)
 
-      if (existingLike) {
+      if (mutualLike) {
         const conversationId = await createConversationForMatch(swipedProfile.id)
 
         console.log('[SWIPE] MATCH CREATED', {
@@ -668,9 +650,9 @@ export default function SwipePage() {
                 <div key={item.id} className="absolute inset-0" style={{ zIndex }}>
                   <SwipeCard
                     profile={item}
-                    onSwipe={(dir) => {
+                    onSwipe={(swipeDirection) => {
                       if (!isTop) return
-                      handleSwipe(dir, item)
+                      handleSwipe(swipeDirection, item)
                     }}
                     hasLikedYou={likedMeIds.has(item.id)}
                     zIndex={zIndex}

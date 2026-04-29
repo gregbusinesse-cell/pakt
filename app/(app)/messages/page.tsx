@@ -22,6 +22,10 @@ type Message = {
   content: string
   created_at: string
   is_read: boolean
+  message_type?: string
+  file_url?: string | null
+  file_name?: string | null
+  file_size?: number | null
 }
 
 type ConversationRow = {
@@ -33,6 +37,7 @@ type ConversationRow = {
 
 export default function MessagesPage() {
   const supabase = createClient()
+  const db = supabase as any
   const router = useRouter()
 
   const [session, setSession] = useState<any>(null)
@@ -54,7 +59,7 @@ export default function MessagesPage() {
     setLoading(true)
 
     try {
-      const { data: conversationsData, error: conversationsError } = await supabase
+      const { data: conversationsData, error: conversationsError } = await db
         .from('conversations')
         .select('*')
         .or(`user1_id.eq.${sessionUserId},user2_id.eq.${sessionUserId}`)
@@ -74,7 +79,7 @@ export default function MessagesPage() {
       )
 
       const { data: profilesData, error: profilesError } = otherUserIds.length
-        ? await supabase.from('profiles').select('*').in('id', otherUserIds)
+        ? await db.from('profiles').select('*').in('id', otherUserIds)
         : { data: [], error: null }
 
       if (profilesError) {
@@ -93,7 +98,7 @@ export default function MessagesPage() {
           const otherUserId =
             conversation.user1_id === sessionUserId ? conversation.user2_id : conversation.user1_id
 
-          const { data: lastMessagesData, error: lastMessageError } = await supabase
+          const { data: lastMessagesData, error: lastMessageError } = await db
             .from('messages')
             .select('*')
             .eq('conversation_id', conversation.id)
@@ -107,7 +112,7 @@ export default function MessagesPage() {
             })
           }
 
-          const { count, error: unreadError } = await supabase
+          const { count, error: unreadError } = await db
             .from('messages')
             .select('id', { count: 'exact', head: true })
             .eq('conversation_id', conversation.id)
@@ -144,7 +149,7 @@ export default function MessagesPage() {
     } finally {
       setLoading(false)
     }
-  }, [sessionUserId, supabase])
+  }, [db, sessionUserId])
 
   useEffect(() => {
     let mounted = true
@@ -183,6 +188,44 @@ export default function MessagesPage() {
     loadConversations()
   }, [loadConversations])
 
+  useEffect(() => {
+    if (!sessionUserId) return
+
+    const channel = supabase
+      .channel(`messages-page-${sessionUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          console.log('[MESSAGES] realtime messages change', payload)
+          loadConversations()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+        },
+        (payload) => {
+          console.log('[MESSAGES] realtime conversations change', payload)
+          loadConversations()
+        }
+      )
+      .subscribe((status) => {
+        console.log('[MESSAGES] realtime status', status)
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadConversations, sessionUserId, supabase])
+
   if (sessionLoading || loading) {
     return (
       <div className="h-full flex items-center justify-center bg-dark">
@@ -206,6 +249,9 @@ export default function MessagesPage() {
           {rows.map((row) => {
             const name = row.otherUser?.first_name || row.otherUser?.email || 'Profil'
             const avatar = row.otherUser?.photos?.[0] || null
+            const lastText =
+              row.lastMessage?.content ||
+              (row.lastMessage?.message_type ? `[${row.lastMessage.message_type}]` : 'Nouvelle conversation')
 
             return (
               <button
@@ -243,7 +289,7 @@ export default function MessagesPage() {
                   </div>
 
                   <p className="text-sm text-white/50 truncate mt-1">
-                    {row.lastMessage?.content || 'Nouvelle conversation'}
+                    {lastText}
                   </p>
                 </div>
               </button>
