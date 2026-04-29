@@ -167,13 +167,8 @@ export default function MessagesPage() {
       ) : (
         <div className="px-3 pb-6">
           {rows.map((row) => {
-            const name =
-              row.otherUser?.first_name || row.otherUser?.email || 'Profil'
-
-            const avatar =
-              row.otherUser?.avatar_url ||
-              ((row.otherUser as any)?.photos?.[0] as string | undefined) ||
-              null
+            const name = row.otherUser?.first_name || row.otherUser?.email || 'Profil'
+            const avatar = row.otherUser?.photos?.[0] || null
 
             return (
               <button
