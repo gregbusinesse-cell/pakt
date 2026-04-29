@@ -250,19 +250,22 @@ export default function SwipePage() {
   }, [])
 
   useEffect(() => {
-    if (!sessionUserId) return
-    if (sessionProvider !== 'google') return
-    if (profile?.email_confirmed === true) return
+  if (!sessionUserId) return
+  if (sessionProvider !== 'google') return
+  if (profile?.email_confirmed === true) return
 
-    db.from('profiles')
-      .update({ email_confirmed: true } as never)
-      .eq('id', sessionUserId)
-      .then(({ error }: { error: unknown }) => {
-        if (error) return
-        if (profile) setProfile({ ...profile, email_confirmed: true })
-      })
-      .catch(() => {})
-  }, [db, profile, sessionProvider, sessionUserId, setProfile])
+  void (async () => {
+    try {
+      const { error } = await db
+        .from('profiles')
+        .update({ email_confirmed: true } as never)
+        .eq('id', sessionUserId)
+
+      if (error) return
+      if (profile) setProfile({ ...profile, email_confirmed: true })
+    } catch {}
+  })()
+}, [db, profile, sessionProvider, sessionUserId, setProfile])
 
   useEffect(() => {
     loadProfiles()
