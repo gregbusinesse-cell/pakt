@@ -20,59 +20,25 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html {
-  min-height: 100%;
+html, body {
+  height: 100%;
+  height: -webkit-fill-available;
+  overscroll-behavior: none;
   background: var(--dark);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: none;
 }
 
+/* Prevent body scroll on mobile */
 body {
-  min-height: 100vh;
-  min-height: 100dvh;
+  position: fixed;
   width: 100%;
-  margin: 0;
-  background: var(--dark);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: none;
-  -webkit-font-smoothing: antialiased;
-}
-
-.app-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--dark);
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-#__next {
-  min-height: 100%;
+  overflow: hidden;
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--dark-200);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--dark-500);
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--gold-dark);
-}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--dark-200); }
+::-webkit-scrollbar-thumb { background: var(--dark-500); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold-dark); }
 
 /* Gold gradient text */
 .text-gold-gradient {
@@ -133,19 +99,9 @@ body {
 
 /* Match animation */
 @keyframes matchPulse {
-  0% {
-    transform: scale(0.5);
-    opacity: 0;
-  }
-
-  50% {
-    transform: scale(1.1);
-  }
-
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .match-animate {
@@ -171,34 +127,8 @@ body {
 
 /* Full height mobile */
 .app-height {
-  min-height: 100vh;
-  min-height: 100dvh;
-}
-
-/* Scrollable page helper */
-.page-scroll {
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: max(24px, env(safe-area-inset-bottom));
-}
-
-/* Fixed app screen helper */
-.app-screen {
-  height: 100vh;
   height: 100dvh;
-  overflow: hidden;
-}
-
-/* Scrollable flex child helper */
-.scroll-area {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
+  height: -webkit-fill-available;
 }
 
 /* Gradient overlays */
