@@ -1,7 +1,6 @@
 'use client'
 
 // app/(app)/swipe/page.tsx
-// Main swipe page - Tinder-style card swiping (with free limits + paywall)
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -15,12 +14,15 @@ import { Crown, RefreshCw, Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 const FREE_SWIPE_LIMIT = 10
-const FREE_MESSAGE_LIMIT = 2
+const FREE_MESSAGE_LIMIT = 1
 const STACK_RENDER_COUNT = 3
+const DEFAULT_MESSAGE = 'Salut, ton profil m interesse.'
 
 type ProfileWithLocation = Profile & {
   city_lat?: number | null
   city_lng?: number | null
+  messages_today?: number | null
+  last_message_date?: string | null
   preferences?: {
     distance_km?: number
   } | null
@@ -101,10 +103,14 @@ export default function SwipePage() {
   const userLat = profileWithLocation?.city_lat ?? null
   const userLng = profileWithLocation?.city_lng ?? null
   const maxDistance = profileWithLocation?.preferences?.distance_km ?? 50
+  const todayKey = getTodayKey()
 
   const isFree = profile?.plan === 'free'
-  const reachedFreeLimit =
-    isFree && (swipesCount >= FREE_SWIPE_LIMIT || messagesCount >= FREE_MESSAGE_LIMIT)
+  const profileMessagesToday =
+    profileWithLocation?.last_message_date === todayKey ? profileWithLocation?.messages_today || 0 : 0
+  const reachedMessageLimit = isFree && profileMessagesToday >= FREE_MESSAGE_LIMIT
+  const reachedSwipeLimit = isFree && swipesCount >= FREE_SWIPE_LIMIT
+  const reachedFreeLimit = reachedSwipeLimit || reachedMessageLimit
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
 
@@ -123,6 +129,93 @@ export default function SwipePage() {
   const openPaywall = useCallback(() => {
     setPaywallOpen(true)
   }, [])
+
+  const getOrCreateConversation = useCallback(
+    async (otherUserId: string) => {
+      const { data, error } = await db.rpc('get_or_create_conversation', {
+        other_user_id: otherUserId,
+      })
+
+      if (error) throw error
+      return data as string
+    },
+    [db]
+  )
+
+  const createConversationForMatch = useCallback(
+    async (otherUserId: string) => {
+      try {
+        await getOrCreateConversation(otherUserId)
+      } catch {}
+    },
+    [getOrCreateConversation]
+  )
+
+  const sendDirectMessage = useCallback(
+    async (targetProfile: Profile, content = DEFAULT_MESSAGE) => {
+      if (!sessionUserId || !profile) return false
+
+      const currentProfile = profile as ProfileWithLocation
+      const today = getTodayKey()
+      const currentMessagesToday =
+        currentProfile.last_message_date === today ? currentProfile.messages_today || 0 : 0
+
+      if (profile.plan === 'free' && currentMessagesToday >= FREE_MESSAGE_LIMIT) {
+        openPaywall()
+        return false
+      }
+
+      try {
+        const conversationId = await getOrCreateConversation(targetProfile.id)
+
+        const { error: messageError } = await db.from('messages').insert({
+          conversation_id: conversationId,
+          sender_id: sessionUserId,
+          content,
+          is_read: false,
+        } as never)
+
+        if (messageError) throw messageError
+
+        if (profile.plan === 'free') {
+          const nextMessagesToday = currentMessagesToday + 1
+          const updatedProfile = {
+            ...profile,
+            messages_today: nextMessagesToday,
+            last_message_date: today,
+          } as Profile
+
+          setMessagesCount(nextMessagesToday)
+          persistCounts(swipesCount, nextMessagesToday)
+          setProfile(updatedProfile)
+
+          await db
+            .from('profiles')
+            .update({
+              messages_today: nextMessagesToday,
+              last_message_date: today,
+            } as never)
+            .eq('id', sessionUserId)
+        }
+
+        router.push(`/chat/${conversationId}?userId=${targetProfile.id}&type=direct`)
+        return true
+      } catch {
+        return false
+      }
+    },
+    [
+      db,
+      getOrCreateConversation,
+      openPaywall,
+      persistCounts,
+      profile,
+      router,
+      sessionUserId,
+      setProfile,
+      swipesCount,
+    ]
+  )
 
   const loadProfiles = useCallback(async () => {
     if (!sessionUserId) {
@@ -250,22 +343,22 @@ export default function SwipePage() {
   }, [])
 
   useEffect(() => {
-  if (!sessionUserId) return
-  if (sessionProvider !== 'google') return
-  if (profile?.email_confirmed === true) return
+    if (!sessionUserId) return
+    if (sessionProvider !== 'google') return
+    if (profile?.email_confirmed === true) return
 
-  void (async () => {
-    try {
-      const { error } = await db
-        .from('profiles')
-        .update({ email_confirmed: true } as never)
-        .eq('id', sessionUserId)
+    void (async () => {
+      try {
+        const { error } = await db
+          .from('profiles')
+          .update({ email_confirmed: true } as never)
+          .eq('id', sessionUserId)
 
-      if (error) return
-      if (profile) setProfile({ ...profile, email_confirmed: true })
-    } catch {}
-  })()
-}, [db, profile, sessionProvider, sessionUserId, setProfile])
+        if (error) return
+        if (profile) setProfile({ ...profile, email_confirmed: true })
+      } catch {}
+    })()
+  }, [db, profile, sessionProvider, sessionUserId, setProfile])
 
   useEffect(() => {
     loadProfiles()
@@ -300,7 +393,7 @@ export default function SwipePage() {
       }
     )
 
-    if (reachedFreeLimit) {
+    if (reachedSwipeLimit) {
       openPaywall()
       return
     }
@@ -342,28 +435,22 @@ export default function SwipePage() {
         .maybeSingle()
 
       if (existingLike) {
+        await createConversationForMatch(swipedProfile.id)
         setMatchedProfile(swipedProfile)
         setShowMatch(true)
       }
     }
   }
 
-  const handleMessageTap = () => {
-    if (isFree && messagesCount >= FREE_MESSAGE_LIMIT) {
+  const handleMessageTap = async () => {
+    if (!currentProfile) return
+
+    if (reachedMessageLimit) {
       openPaywall()
       return
     }
 
-    if (reachedFreeLimit) {
-      openPaywall()
-      return
-    }
-
-    if (profile?.plan === 'free') {
-      const next = messagesCount + 1
-      setMessagesCount(next)
-      persistCounts(swipesCount, next)
-    }
+    await sendDirectMessage(currentProfile)
   }
 
   return (
@@ -390,7 +477,7 @@ export default function SwipePage() {
           </div>
         ) : !isEmailVerified ? (
           <EmailLocked />
-        ) : reachedFreeLimit ? (
+        ) : reachedSwipeLimit ? (
           <LimitReached onUpgrade={() => router.push('/checkout')} />
         ) : profiles.length === 0 ? (
           <EmptyState onRefresh={loadProfiles} />
@@ -415,7 +502,7 @@ export default function SwipePage() {
                       if (!isTop) return
                       handleMessageTap()
                     }}
-                    disabledActions={isTop ? reachedFreeLimit : true}
+                    disabledActions={isTop ? reachedSwipeLimit : true}
                   />
                 </div>
               )
