@@ -29,6 +29,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   themeColor: '#0a0a0a',
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
@@ -43,9 +44,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="bg-dark text-white antialiased overflow-hidden h-[100dvh]">
+      <body className="bg-dark text-white antialiased">
         <SupabaseProvider>
-          {children}
+          <div className="app-shell">
+            {children}
+          </div>
+
           <Toaster
             position="top-center"
             toastOptions={{
