@@ -3,7 +3,7 @@
 // app/(app)/swipe/page.tsx
 // Main swipe page - Tinder-style card swiping (with free limits + paywall)
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
@@ -76,58 +76,22 @@ function PaywallModal({
 }
 
 export default function SwipePage() {
-  const supabase = useMemo(() => createClient(), [])
-  const db = useMemo(() => supabase as any, [supabase])
+  const supabase = createClient()
+  const db = supabase
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
 
-  // ✅ session locale (remplace useSession)
   const [session, setSession] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
-
-  useEffect(() => {
-    let mounted = true
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return
-
-      if (!data.session) {
-        router.replace('/auth')
-        return
-      }
-
-      setSession(data.session)
-      setSessionLoading(false)
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!nextSession) {
-        router.replace('/auth')
-        return
-      }
-
-      setSession(nextSession)
-      setSessionLoading(false)
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [supabase, router])
-
-  if (sessionLoading) {
-    return (
-      <div className="h-full flex items-center justify-center bg-dark">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
-          <p className="text-white/40">Chargement...</p>
-        </div>
-      </div>
-    )
-  }
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
+  const [showMatch, setShowMatch] = useState(false)
+  const [paywallOpen, setPaywallOpen] = useState(false)
+  const [swipesCount, setSwipesCount] = useState(0)
+  const [messagesCount, setMessagesCount] = useState(0)
+  const [countsDate, setCountsDate] = useState(getTodayKey())
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -138,51 +102,11 @@ export default function SwipePage() {
   const userLng = profileWithLocation?.city_lng ?? null
   const maxDistance = profileWithLocation?.preferences?.distance_km ?? 50
 
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
-  const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
-  const [showMatch, setShowMatch] = useState(false)
-  const [paywallOpen, setPaywallOpen] = useState(false)
-
-  const [swipesCount, setSwipesCount] = useState(0)
-  const [messagesCount, setMessagesCount] = useState(0)
-  const [countsDate, setCountsDate] = useState(getTodayKey())
-
   const isFree = profile?.plan === 'free'
   const reachedFreeLimit =
     isFree && (swipesCount >= FREE_SWIPE_LIMIT || messagesCount >= FREE_MESSAGE_LIMIT)
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
-
-  useEffect(() => {
-    const today = getTodayKey()
-    setCountsDate(today)
-
-    try {
-      const stored = localStorage.getItem('pakt:limits')
-
-      if (stored) {
-        const parsed = JSON.parse(stored)
-
-        if (parsed?.date === today) {
-          setSwipesCount(Number(parsed?.swipesCount) || 0)
-          setMessagesCount(Number(parsed?.messagesCount) || 0)
-          return
-        }
-      }
-    } catch {}
-
-    setSwipesCount(0)
-    setMessagesCount(0)
-
-    try {
-      localStorage.setItem(
-        'pakt:limits',
-        JSON.stringify({ date: today, swipesCount: 0, messagesCount: 0 })
-      )
-    } catch {}
-  }, [])
 
   const persistCounts = useCallback(
     (nextSwipes: number, nextMessages: number) => {
@@ -199,21 +123,6 @@ export default function SwipePage() {
   const openPaywall = useCallback(() => {
     setPaywallOpen(true)
   }, [])
-
-  useEffect(() => {
-    if (!sessionUserId) return
-    if (sessionProvider !== 'google') return
-    if (profile?.email_confirmed === true) return
-
-    db.from('profiles')
-      .update({ email_confirmed: true } as never)
-      .eq('id', sessionUserId)
-      .then(({ error }: { error: unknown }) => {
-        if (error) return
-        if (profile) setProfile({ ...profile, email_confirmed: true })
-      })
-      .catch(() => {})
-  }, [db, profile, sessionProvider, sessionUserId, setProfile])
 
   const loadProfiles = useCallback(async () => {
     if (!sessionUserId) {
@@ -279,10 +188,100 @@ export default function SwipePage() {
   }, [db, maxDistance, profiles.length, sessionUserId, userLat, userLng])
 
   useEffect(() => {
+    let mounted = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return
+
+      if (!data.session) {
+        router.replace('/auth')
+        return
+      }
+
+      setSession(data.session)
+      setSessionLoading(false)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession) {
+        router.replace('/auth')
+        return
+      }
+
+      setSession(nextSession)
+      setSessionLoading(false)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase, router])
+
+  useEffect(() => {
+    const today = getTodayKey()
+    setCountsDate(today)
+
+    try {
+      const stored = localStorage.getItem('pakt:limits')
+
+      if (stored) {
+        const parsed = JSON.parse(stored)
+
+        if (parsed?.date === today) {
+          setSwipesCount(Number(parsed?.swipesCount) || 0)
+          setMessagesCount(Number(parsed?.messagesCount) || 0)
+          return
+        }
+      }
+    } catch {}
+
+    setSwipesCount(0)
+    setMessagesCount(0)
+
+    try {
+      localStorage.setItem(
+        'pakt:limits',
+        JSON.stringify({ date: today, swipesCount: 0, messagesCount: 0 })
+      )
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (!sessionUserId) return
+    if (sessionProvider !== 'google') return
+    if (profile?.email_confirmed === true) return
+
+    db.from('profiles')
+      .update({ email_confirmed: true } as never)
+      .eq('id', sessionUserId)
+      .then(({ error }: { error: unknown }) => {
+        if (error) return
+        if (profile) setProfile({ ...profile, email_confirmed: true })
+      })
+      .catch(() => {})
+  }, [db, profile, sessionProvider, sessionUserId, setProfile])
+
+  useEffect(() => {
     loadProfiles()
   }, [loadProfiles])
 
+  if (sessionLoading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-dark">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+          <p className="text-white/40">Chargement...</p>
+        </div>
+      </div>
+    )
+  }
+
   const currentProfile = profiles[0]
+  const stackForRender = profiles.slice(0, STACK_RENDER_COUNT).slice().reverse()
+  const showInitialLoading = loading && profiles.length === 0
 
   const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
     if (!sessionUserId || !profile) return
@@ -363,9 +362,6 @@ export default function SwipePage() {
       persistCounts(swipesCount, next)
     }
   }
-
-  const stackForRender = profiles.slice(0, STACK_RENDER_COUNT).slice().reverse()
-  const showInitialLoading = loading && profiles.length === 0
 
   return (
     <div className="h-full flex flex-col bg-dark">
