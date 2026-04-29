@@ -42,43 +42,78 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   }
 
   useEffect(() => {
-    const loadMessages = async () => {
-      const { data } = await db
+  const loadMessages = async () => {
+    console.log('[CHAT] loadMessages start', { conversationId, conversationType })
+
+    if (!conversationId) {
+      console.error('[CHAT] missing conversationId')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const { data, error } = await db
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .eq('conversation_type', conversationType)
         .order('created_at', { ascending: true })
         .limit(100)
 
+      if (error) {
+        console.error('[CHAT] loadMessages error', error)
+        toast.error(`Erreur chargement messages: ${error.message}`)
+        return
+      }
+
+      console.log('[CHAT] messages loaded', data)
       setMessages((data || []) as Message[])
-      setLoading(false)
+
+      if (session?.user?.id) {
+        const { error: readError } = await db
+          .from('messages')
+          .update({ is_read: true } as never)
+          .eq('conversation_id', conversationId)
+          .neq('sender_id', session.user.id)
+          .eq('is_read', false)
+
+        if (readError) console.error('[CHAT] mark as read error', readError)
+      }
+
       setTimeout(scrollToBottom, 100)
+    } catch (err) {
+      console.error('[CHAT] loadMessages catch', err)
+      toast.error('Erreur chargement messages')
+    } finally {
+      setLoading(false)
     }
+  }
 
-    loadMessages()
+  loadMessages()
 
-    const channel = supabase
-      .channel(`chat-${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message])
-          setTimeout(scrollToBottom, 100)
-        }
-      )
-      .subscribe()
+  const channel = supabase
+    .channel(`chat-${conversationId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        console.log('[CHAT] realtime INSERT', payload)
+        setMessages((prev) => [...prev, payload.new as Message])
+        setTimeout(scrollToBottom, 100)
+      }
+    )
+    .subscribe((status) => {
+      console.log('[CHAT] realtime status', status)
+    })
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [conversationId, conversationType, db, supabase])
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [conversationId, conversationType, db, supabase, session?.user?.id])
 
   const uploadFile = async (file: File): Promise<string> => {
     if (!session?.user) throw new Error('Session manquante')
@@ -98,53 +133,87 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   }
 
   const sendMessage = async (
-    content?: string,
-    type: Message['message_type'] = 'text',
-    file?: File
-  ) => {
-    if (!session?.user) return
+  content?: string,
+  type: Message['message_type'] = 'text',
+  file?: File
+) => {
+  console.log('[CHAT] sendMessage start', {
+    conversationId,
+    conversationType,
+    userId: session?.user?.id,
+    content,
+    type,
+    hasFile: Boolean(file),
+  })
 
-    setSending(true)
-
-    try {
-      let fileUrl: string | undefined
-      let fileName: string | undefined
-      let fileSize: number | undefined
-
-      if (file) {
-        fileUrl = await uploadFile(file)
-        fileName = file.name
-        fileSize = file.size
-      }
-
-      await db.from('messages').insert({
-        conversation_id: conversationId,
-        conversation_type: conversationType,
-        sender_id: session.user.id,
-        content: content || null,
-        message_type: type,
-        file_url: fileUrl || null,
-        file_name: fileName || null,
-        file_size: fileSize || null,
-      } as never)
-
-      const table = conversationType === 'match' ? 'conversations' : 'direct_conversations'
-
-      await db
-        .from(table)
-        .update({
-          last_message: content || `[${type}]`,
-          last_message_at: new Date().toISOString(),
-        } as never)
-        .eq('id', conversationId)
-
-      setText('')
-    } catch (err) {
-      toast.error('Erreur envoi: ' + (err instanceof Error ? err.message : 'Erreur inconnue'))
-    } finally {
-      setSending(false)
-    }
+  if (!session?.user?.id) {
+    console.error('[CHAT] missing session user')
+    toast.error('Session manquante')
+    return
   }
+
+  if (!conversationId) {
+    console.error('[CHAT] missing conversationId')
+    toast.error('Conversation introuvable')
+    return
+  }
+
+  if (!content?.trim() && !file) {
+    console.error('[CHAT] empty message')
+    return
+  }
+
+  setSending(true)
+
+  try {
+    let fileUrl: string | undefined
+    let fileName: string | undefined
+    let fileSize: number | undefined
+
+    if (file) {
+      fileUrl = await uploadFile(file)
+      fileName = file.name
+      fileSize = file.size
+      console.log('[CHAT] file uploaded', { fileUrl, fileName, fileSize })
+    }
+
+    const payload = {
+      conversation_id: conversationId,
+      sender_id: session.user.id,
+      content: content?.trim() || `[${type}]`,
+      message_type: type,
+      file_url: fileUrl || null,
+      file_name: fileName || null,
+      file_size: fileSize || null,
+      is_read: false,
+    }
+
+    console.log('[CHAT] insert message payload', payload)
+
+    const { data: insertedMessage, error: insertError } = await db
+      .from('messages')
+      .insert(payload as never)
+      .select('*')
+      .single()
+
+    if (insertError) {
+      console.error('[CHAT] insert message error', insertError)
+      toast.error(`Erreur envoi: ${insertError.message}`)
+      return
+    }
+
+    console.log('[CHAT] message inserted', insertedMessage)
+
+    setMessages((prev) => [...prev, insertedMessage as Message])
+    setText('')
+    setTimeout(scrollToBottom, 100)
+  } catch (err) {
+    console.error('[CHAT] sendMessage catch', err)
+    toast.error('Erreur envoi: ' + (err instanceof Error ? err.message : 'Erreur inconnue'))
+  } finally {
+    setSending(false)
+  }
+}
 
   const handleSendText = () => {
     if (!text.trim()) return

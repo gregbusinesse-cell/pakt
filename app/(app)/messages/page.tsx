@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/supabase/types'
+import toast from 'react-hot-toast'
 
 type Conversation = {
   id: string
@@ -42,7 +43,10 @@ export default function MessagesPage() {
   const sessionUserId = session?.user?.id
 
   const loadConversations = useCallback(async () => {
+    console.log('[MESSAGES] loadConversations start', { sessionUserId })
+
     if (!sessionUserId) {
+      console.error('[MESSAGES] missing sessionUserId')
       setLoading(false)
       return
     }
@@ -50,20 +54,35 @@ export default function MessagesPage() {
     setLoading(true)
 
     try {
-      const { data: conversationsData } = await supabase
+      const { data: conversationsData, error: conversationsError } = await supabase
         .from('conversations')
         .select('*')
         .or(`user1_id.eq.${sessionUserId},user2_id.eq.${sessionUserId}`)
         .order('created_at', { ascending: false })
+
+      if (conversationsError) {
+        console.error('[MESSAGES] conversations select error', conversationsError)
+        toast.error(`Erreur conversations: ${conversationsError.message}`)
+        return
+      }
+
+      console.log('[MESSAGES] conversations loaded', conversationsData)
 
       const conversations = (conversationsData || []) as Conversation[]
       const otherUserIds = conversations.map((item) =>
         item.user1_id === sessionUserId ? item.user2_id : item.user1_id
       )
 
-      const { data: profilesData } = otherUserIds.length
+      const { data: profilesData, error: profilesError } = otherUserIds.length
         ? await supabase.from('profiles').select('*').in('id', otherUserIds)
-        : { data: [] }
+        : { data: [], error: null }
+
+      if (profilesError) {
+        console.error('[MESSAGES] profiles select error', profilesError)
+        toast.error(`Erreur profils: ${profilesError.message}`)
+      }
+
+      console.log('[MESSAGES] profiles loaded', profilesData)
 
       const profileMap = new Map<string, Profile>(
         ((profilesData || []) as Profile[]).map((item) => [item.id, item])
@@ -74,19 +93,33 @@ export default function MessagesPage() {
           const otherUserId =
             conversation.user1_id === sessionUserId ? conversation.user2_id : conversation.user1_id
 
-          const { data: lastMessagesData } = await supabase
+          const { data: lastMessagesData, error: lastMessageError } = await supabase
             .from('messages')
             .select('*')
             .eq('conversation_id', conversation.id)
             .order('created_at', { ascending: false })
             .limit(1)
 
-          const { count } = await supabase
+          if (lastMessageError) {
+            console.error('[MESSAGES] last message error', {
+              conversationId: conversation.id,
+              error: lastMessageError,
+            })
+          }
+
+          const { count, error: unreadError } = await supabase
             .from('messages')
             .select('id', { count: 'exact', head: true })
             .eq('conversation_id', conversation.id)
             .neq('sender_id', sessionUserId)
             .eq('is_read', false)
+
+          if (unreadError) {
+            console.error('[MESSAGES] unread count error', {
+              conversationId: conversation.id,
+              error: unreadError,
+            })
+          }
 
           return {
             conversation,
@@ -103,7 +136,11 @@ export default function MessagesPage() {
         return new Date(bDate).getTime() - new Date(aDate).getTime()
       })
 
+      console.log('[MESSAGES] rows ready', result)
       setRows(result)
+    } catch (error) {
+      console.error('[MESSAGES] loadConversations catch', error)
+      toast.error('Erreur chargement conversations')
     } finally {
       setLoading(false)
     }
