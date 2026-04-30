@@ -584,17 +584,41 @@ export default function SwipePage() {
       console.log('[SWIPE] mutual like result', mutualLike)
 
       if (mutualLike) {
-        const conversationId = await createConversationForMatch(swipedProfile.id)
+  const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
 
-        console.log('[SWIPE] MATCH CREATED', {
-          conversationId,
-          me: sessionUserId,
-          other: swipedProfile.id,
-        })
-
-        setMatchedProfile(swipedProfile)
-        setShowMatch(true)
+  const { data: matchData, error: matchInsertError } = await db
+    .from('matches')
+    .upsert(
+      {
+        user1_id,
+        user2_id,
+      },
+      {
+        onConflict: 'user1_id,user2_id',
+        ignoreDuplicates: true,
       }
+    )
+    .select('*')
+    .maybeSingle()
+
+  if (matchInsertError) {
+    console.error('[SWIPE] match insert error', matchInsertError)
+    toast.error(`Erreur création match: ${matchInsertError.message}`)
+    return
+  }
+
+  const conversationId = await createConversationForMatch(swipedProfile.id)
+
+  console.log('[SWIPE] MATCH CREATED', {
+    matchData,
+    conversationId,
+    me: sessionUserId,
+    other: swipedProfile.id,
+  })
+
+  setMatchedProfile(swipedProfile)
+  setShowMatch(true)
+}
     } catch (error) {
       console.error('[SWIPE] handleSwipe catch', error)
       toast.error('Erreur swipe')

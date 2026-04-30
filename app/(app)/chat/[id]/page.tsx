@@ -58,7 +58,10 @@ export default function ChatPage() {
   }, [router, supabase])
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId) {
+  console.error('[CHAT] userId manquant')
+  return
+}
 
     supabase
       .from('profiles')
