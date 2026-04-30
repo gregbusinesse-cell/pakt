@@ -203,6 +203,19 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     }
 
     console.log('[CHAT] message inserted', insertedMessage)
+    
+    const { error: conversationUpdateError } = await db
+  .from('conversations')
+  .update({
+    last_message: payload.content,
+    last_message_at: new Date().toISOString(),
+  })
+  .eq('id', conversationId)
+
+if (conversationUpdateError) {
+  console.error('[CHAT] conversation update error', conversationUpdateError)
+}
+
 
     setMessages((prev) => [...prev, insertedMessage as Message])
     setText('')

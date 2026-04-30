@@ -48,43 +48,59 @@ export default function MessagesPage() {
   const sessionUserId = session?.user?.id
 
   const loadConversations = useCallback(async () => {
-  const userId = sessionUserId
-
-  if (!userId) {
-    setRows([])
-    setLoading(false)
-    return
-  }
-
   setLoading(true)
 
   try {
-    const { data: conversationsData, error: conversationsError } = await db
-      .from('conversations')
-      .select('*')
-      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-    if (conversationsError) {
-      console.error('[MESSAGES] conversations select error', conversationsError)
-      toast.error(`Erreur conversations: ${conversationsError.message}`)
+    if (userError) {
+      console.error('[MESSAGES] getUser error', userError)
+      toast.error(`Erreur session: ${userError.message}`)
+      setRows([])
       return
+    }
+
+    const userId = user?.id || sessionUserId
+    console.log('[MESSAGES] CURRENT USER ID =', userId)
+
+    if (!userId) {
+      setRows([])
+      return
+    }
+
+    const [{ data: conv1, error: err1 }, { data: conv2, error: err2 }] = await Promise.all([
+      db.from('conversations').select('*').eq('user1_id', userId),
+      db.from('conversations').select('*').eq('user2_id', userId),
+    ])
+
+    if (err1 || err2) {
+      console.error('[MESSAGES] conversations select error', { err1, err2 })
+      toast.error('Erreur conversations')
     }
 
     const conversationsMap = new Map<string, Conversation>()
 
-    for (const conversation of (conversationsData || []) as Conversation[]) {
+    for (const conversation of ([...(conv1 || []), ...(conv2 || [])] as Conversation[])) {
       if (!conversation?.id) continue
       conversationsMap.set(conversation.id, conversation)
     }
 
-    const conversations = Array.from(conversationsMap.values()).sort((a, b) => {
-      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-    })
+    const conversations = Array.from(conversationsMap.values()).sort(
+      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    )
+
+    console.log(
+      '[MESSAGES] CONVERSATION USER IDS =',
+      conversations.map((c) => ({ id: c.id, user1_id: c.user1_id, user2_id: c.user2_id }))
+    )
 
     const otherUserIds = Array.from(
       new Set(
         conversations
-          .map((item) => (item.user1_id === userId ? item.user2_id : item.user1_id))
+          .map((c) => (c.user1_id === userId ? c.user2_id : c.user1_id))
           .filter(Boolean)
       )
     )
@@ -95,7 +111,6 @@ export default function MessagesPage() {
 
     if (profilesError) {
       console.error('[MESSAGES] profiles select error', profilesError)
-      toast.error(`Erreur profils: ${profilesError.message}`)
     }
 
     const profileMap = new Map<string, Profile>(
@@ -104,8 +119,7 @@ export default function MessagesPage() {
 
     const result = await Promise.all(
       conversations.map(async (conversation) => {
-        const otherUserId =
-          conversation.user1_id === userId ? conversation.user2_id : conversation.user1_id
+        const otherUserId = conversation.user1_id === userId ? conversation.user2_id : conversation.user1_id
 
         const { data: lastMessagesData, error: lastMessageError } = await db
           .from('messages')
@@ -115,10 +129,7 @@ export default function MessagesPage() {
           .limit(1)
 
         if (lastMessageError) {
-          console.error('[MESSAGES] last message error', {
-            conversationId: conversation.id,
-            error: lastMessageError,
-          })
+          console.error('[MESSAGES] last message error', { conversationId: conversation.id, error: lastMessageError })
         }
 
         const { count, error: unreadError } = await db
@@ -129,10 +140,7 @@ export default function MessagesPage() {
           .eq('is_read', false)
 
         if (unreadError) {
-          console.error('[MESSAGES] unread count error', {
-            conversationId: conversation.id,
-            error: unreadError,
-          })
+          console.error('[MESSAGES] unread count error', { conversationId: conversation.id, error: unreadError })
         }
 
         return {
@@ -157,7 +165,7 @@ export default function MessagesPage() {
   } finally {
     setLoading(false)
   }
-}, [db, sessionUserId])
+}, [db, sessionUserId, supabase])
 
   useEffect(() => {
     let mounted = true

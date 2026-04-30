@@ -115,9 +115,10 @@ export default function MatchesPage() {
       console.log('[MATCHES] load start', { currentUserId })
 
       const { data: conversationsData, error: conversationsError } = await db
-        .from('conversations')
-.or(`user1_id.eq.${session.user.id},user2_id.eq.${session.user.id}`)
-.order('created_at', { ascending: false })
+  .from('conversations')
+  .select('*')
+  .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+  .order('created_at', { ascending: false })
 
 
       if (conversationsError) {
