@@ -14,9 +14,9 @@ export default function ChatPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const conversationId = params.id as string
-  const conversationType = (searchParams.get('type') || 'match') as 'match' | 'direct'
+  // ✅ METTRE AVANT LES useEffect
   const userId = searchParams.get('userId')
+  const conversationType = (searchParams.get('type') || 'match') as 'match' | 'direct'
 
   const [session, setSession] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
@@ -24,6 +24,34 @@ export default function ChatPage() {
 
   const sessionUserId = session?.user?.id
 
+  // ✅ conversationId en state
+  const [conversationId, setConversationId] = useState<string | null>(null)
+
+  // ✅ INIT CONVERSATION (FIX PRINCIPAL)
+  useEffect(() => {
+    if (!sessionUserId || !userId) return
+
+    const initConversation = async () => {
+      if (params.id === 'new' && userId) {
+        const { data, error } = await supabase.rpc('get_or_create_conversation', {
+          other_user_id: userId,
+        })
+
+        if (error) {
+          console.error('[CHAT] create conversation error', error)
+          return
+        }
+
+        setConversationId(data)
+      } else {
+        setConversationId(params.id as string)
+      }
+    }
+
+    initConversation()
+  }, [params.id, sessionUserId, userId, supabase])
+
+  // SESSION
   useEffect(() => {
     let mounted = true
 
@@ -57,11 +85,12 @@ export default function ChatPage() {
     }
   }, [router, supabase])
 
+  // LOAD OTHER USER
   useEffect(() => {
     if (!userId) {
-  console.error('[CHAT] userId manquant')
-  return
-}
+      console.error('[CHAT] userId manquant')
+      return
+    }
 
     supabase
       .from('profiles')
@@ -71,6 +100,7 @@ export default function ChatPage() {
       .then(({ data }) => setOtherUser(data))
   }, [supabase, userId])
 
+  // MARK MESSAGES AS READ
   useEffect(() => {
     if (!conversationId || !sessionUserId) return
 
@@ -82,7 +112,8 @@ export default function ChatPage() {
       .eq('is_read', false)
   }, [conversationId, sessionUserId, supabase])
 
-  if (sessionLoading || !otherUser) {
+  // LOADING
+  if (sessionLoading || !otherUser || !conversationId) {
     return (
       <div className="h-full flex items-center justify-center bg-dark">
         <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
@@ -90,6 +121,7 @@ export default function ChatPage() {
     )
   }
 
+  // UI
   return (
     <ChatView
       conversationId={conversationId}
