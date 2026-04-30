@@ -144,7 +144,7 @@ export default function MatchesPage() {
       console.log('[MATCHES] matches loaded', matchRows)
 
       const conversationOtherIds = conversationRows.map((conversation) =>
-        conversation.user1_id === session.user.id
+        conversation.user1_id === currentUserId
   ? conversation.user2_id
   : conversation.user1_id
         )
@@ -215,7 +215,7 @@ export default function MatchesPage() {
 )
 
 const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
-      const matchItems: MatchItem[] = await Promise.all(
+      const matchItemsRaw = await Promise.all(
   matchRows.map(async (match) => {
           const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
           const otherUser = profileMap.get(otherUserId)
@@ -242,7 +242,7 @@ if (!conversationId) {
         })
 )
 
-const cleanMatchItems = matchItems.filter(Boolean) as MatchItem[]
+const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -250,14 +250,14 @@ const cleanMatchItems = matchItems.filter(Boolean) as MatchItem[]
         return bTime - aTime
       })
 
-      matchItems.sort((a, b) => {
+      cleanMatchItems.sort((a, b) => {
         const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
         const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
         return bTime - aTime
       })
 
       console.log('[MATCHES] conversation items', conversationItems)
-      console.log('[MATCHES] match items', matchItems)
+      console.log('[MATCHES] match items', cleanMatchItems)
 
       setConversations(conversationItems)
       setMatches(cleanMatchItems)
@@ -267,7 +267,7 @@ const cleanMatchItems = matchItems.filter(Boolean) as MatchItem[]
     } finally {
       setLoading(false)
     }
-  }, [currentUserId, db])
+  }, [currentUserId, db, session?.user?.id])
 
   useEffect(() => {
     if (!currentUserId) return
