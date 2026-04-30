@@ -48,115 +48,116 @@ export default function MessagesPage() {
   const sessionUserId = session?.user?.id
 
   const loadConversations = useCallback(async () => {
-    console.log('[MESSAGES] loadConversations start', { sessionUserId })
+  const userId = sessionUserId
 
-    if (!sessionUserId) {
-      console.error('[MESSAGES] missing sessionUserId')
-      setLoading(false)
+  if (!userId) {
+    setRows([])
+    setLoading(false)
+    return
+  }
+
+  setLoading(true)
+
+  try {
+    const { data: conversationsData, error: conversationsError } = await db
+      .from('conversations')
+      .select('*')
+      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+
+    if (conversationsError) {
+      console.error('[MESSAGES] conversations select error', conversationsError)
+      toast.error(`Erreur conversations: ${conversationsError.message}`)
       return
     }
 
-    setLoading(true)
+    const conversationsMap = new Map<string, Conversation>()
 
-    try {
-      const { data: conversationsData, error: conversationsError } = await db
-  .from('conversations')
-  .select('*')
-  .or(`user1_id.eq.${sessionUserId},user2_id.eq.${sessionUserId}`)
-  .order('created_at', { ascending: false });
-
-console.log('ERROR conversations:', conversationsError);
-        
-
-      if (conversationsError) {
-        console.error('[MESSAGES] conversations select error', conversationsError)
-        toast.error(`Erreur conversations: ${conversationsError.message}`)
-        return
-      }
-
-      console.log('[MESSAGES] conversations loaded', conversationsData)
-
-      const conversations = (conversationsData || []) as Conversation[]
-      const otherUserIds = conversations.map((item) =>
-        item.user1_id === sessionUserId ? item.user2_id : item.user1_id
-      )
-
-      const { data: profilesData, error: profilesError } = otherUserIds.length
-        ? await db.from('profiles').select('*').in('id', otherUserIds)
-        : { data: [], error: null }
-
-      if (profilesError) {
-        console.error('[MESSAGES] profiles select error', profilesError)
-        toast.error(`Erreur profils: ${profilesError.message}`)
-      }
-
-      console.log('[MESSAGES] profiles loaded', profilesData)
-
-      const profileMap = new Map<string, Profile>(
-        ((profilesData || []) as Profile[]).map((item) => [item.id, item])
-      )
-
-      const result = await Promise.all(
-        conversations.map(async (conversation) => {
-          const otherUserId =
-            conversation.user1_id === sessionUserId ? conversation.user2_id : conversation.user1_id
-
-          const { data: lastMessagesData, error: lastMessageError } = await db
-  .from('messages')
-  .select('*')
-  .eq('conversation_id', conversation.id)
-  .order('created_at', { ascending: false })
-  .limit(1);
-
-console.log('ERROR last message:', lastMessageError);
-
-          if (lastMessageError) {
-            console.error('[MESSAGES] last message error', {
-              conversationId: conversation.id,
-              error: lastMessageError,
-            })
-          }
-
-          const { count, error: unreadError } = await db
-  .from('messages')
-  .select('id', { count: 'exact', head: true })
-  .eq('conversation_id', conversation.id)
-  .neq('sender_id', sessionUserId)
-  .eq('is_read', false);
-
-console.log('ERROR unread:', unreadError);
-
-          if (unreadError) {
-            console.error('[MESSAGES] unread count error', {
-              conversationId: conversation.id,
-              error: unreadError,
-            })
-          }
-
-          return {
-            conversation,
-            otherUser: profileMap.get(otherUserId) || null,
-            lastMessage: ((lastMessagesData || [])[0] as Message) || null,
-            unreadCount: count || 0,
-          }
-        })
-      )
-
-      result.sort((a, b) => {
-        const aDate = a.lastMessage?.created_at || a.conversation.created_at
-        const bDate = b.lastMessage?.created_at || b.conversation.created_at
-        return new Date(bDate).getTime() - new Date(aDate).getTime()
-      })
-
-      console.log('[MESSAGES] rows ready', result)
-      setRows(result)
-    } catch (error) {
-      console.error('[MESSAGES] loadConversations catch', error)
-      toast.error('Erreur chargement conversations')
-    } finally {
-      setLoading(false)
+    for (const conversation of (conversationsData || []) as Conversation[]) {
+      if (!conversation?.id) continue
+      conversationsMap.set(conversation.id, conversation)
     }
-  }, [db, sessionUserId])
+
+    const conversations = Array.from(conversationsMap.values()).sort((a, b) => {
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    })
+
+    const otherUserIds = Array.from(
+      new Set(
+        conversations
+          .map((item) => (item.user1_id === userId ? item.user2_id : item.user1_id))
+          .filter(Boolean)
+      )
+    )
+
+    const { data: profilesData, error: profilesError } = otherUserIds.length
+      ? await db.from('profiles').select('*').in('id', otherUserIds)
+      : { data: [], error: null }
+
+    if (profilesError) {
+      console.error('[MESSAGES] profiles select error', profilesError)
+      toast.error(`Erreur profils: ${profilesError.message}`)
+    }
+
+    const profileMap = new Map<string, Profile>(
+      ((profilesData || []) as Profile[]).map((item) => [item.id, item])
+    )
+
+    const result = await Promise.all(
+      conversations.map(async (conversation) => {
+        const otherUserId =
+          conversation.user1_id === userId ? conversation.user2_id : conversation.user1_id
+
+        const { data: lastMessagesData, error: lastMessageError } = await db
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        if (lastMessageError) {
+          console.error('[MESSAGES] last message error', {
+            conversationId: conversation.id,
+            error: lastMessageError,
+          })
+        }
+
+        const { count, error: unreadError } = await db
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('conversation_id', conversation.id)
+          .neq('sender_id', userId)
+          .eq('is_read', false)
+
+        if (unreadError) {
+          console.error('[MESSAGES] unread count error', {
+            conversationId: conversation.id,
+            error: unreadError,
+          })
+        }
+
+        return {
+          conversation,
+          otherUser: profileMap.get(otherUserId) || null,
+          lastMessage: ((lastMessagesData || [])[0] as Message) || null,
+          unreadCount: count || 0,
+        }
+      })
+    )
+
+    result.sort((a, b) => {
+      const aDate = a.lastMessage?.created_at || a.conversation.created_at
+      const bDate = b.lastMessage?.created_at || b.conversation.created_at
+      return new Date(bDate || 0).getTime() - new Date(aDate || 0).getTime()
+    })
+
+    setRows(result)
+  } catch (error) {
+    console.error('[MESSAGES] loadConversations catch', error)
+    toast.error('Erreur chargement conversations')
+  } finally {
+    setLoading(false)
+  }
+}, [db, sessionUserId])
 
   useEffect(() => {
     let mounted = true
