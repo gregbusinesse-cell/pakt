@@ -138,6 +138,13 @@ export default function SwipeCard({
         <div className="flex flex-col items-center pb-32">
           <div className="max-w-md mx-auto px-4 py-6 space-y-6 w-full">
             <div className="relative z-0">
+            {hasLikedYou && (
+  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+    <span className="inline-flex items-center rounded-full bg-gold text-dark px-4 py-1.5 text-xs font-bold shadow-lg">
+      Cette personne vous a liké
+    </span>
+  </div>
+)}
               {photosArray.length > 0 ? (
                 <img
                   src={photosArray[safePhotoIndex]}
@@ -230,14 +237,7 @@ export default function SwipeCard({
               </div>
             )}
 
-            {hasLikedYou && (
-              <div className="pt-1">
-                <span className="inline-flex items-center rounded-full bg-gold/15 border border-gold/30 px-3 py-1 text-xs font-bold text-gold">
-                  Cette personne vous a like
-                </span>
-              </div>
-            )}
-
+            
             <div className="h-6" />
           </div>
         </div>

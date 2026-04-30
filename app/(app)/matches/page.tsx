@@ -17,11 +17,9 @@ type Tab = 'matches' | 'conversations'
 
 interface ConversationRow {
   id: string
-  participant1_id: string
-  participant2_id: string
-  last_message: string | null
-  last_message_at: string | null
-  created_at?: string | null
+  user1_id: string
+  user2_id: string
+  created_at: string
 }
 
 interface MatchRow {
@@ -118,9 +116,9 @@ export default function MatchesPage() {
 
       const { data: conversationsData, error: conversationsError } = await db
         .from('conversations')
-        .select('*')
-        .or(`participant1_id.eq.${currentUserId},participant2_id.eq.${currentUserId}`)
-        .order('last_message_at', { ascending: false, nullsFirst: false })
+.or(`user1_id.eq.${session.user.id},user2_id.eq.${session.user.id}`)
+.order('created_at', { ascending: false })
+
 
       if (conversationsError) {
         console.error('[MATCHES] conversations error', conversationsError)
@@ -146,10 +144,10 @@ export default function MatchesPage() {
       console.log('[MATCHES] matches loaded', matchRows)
 
       const conversationOtherIds = conversationRows.map((conversation) =>
-        conversation.participant1_id === currentUserId
-          ? conversation.participant2_id
-          : conversation.participant1_id
-      )
+        conversation.user1_id === session.user.id
+  ? conversation.user2_id
+  : conversation.user1_id
+        )
 
       const matchOtherIds = matchRows.map((match) =>
         match.user1_id === currentUserId ? match.user2_id : match.user1_id
@@ -182,30 +180,40 @@ export default function MatchesPage() {
       const conversationByPair = new Map<string, ConversationRow>()
 
       conversationRows.forEach((conversation) => {
-        conversationByPair.set(
-          getPairKey(conversation.participant1_id, conversation.participant2_id),
-          conversation
-        )
-      })
+  conversationByPair.set(
+    getPairKey(conversation.user1_id, conversation.user2_id),
+    conversation
+  )
+})
 
-      const conversationItems: ConversationItem[] = conversationRows
-        .map((conversation) => {
-          const otherUserId =
-            conversation.participant1_id === currentUserId
-              ? conversation.participant2_id
-              : conversation.participant1_id
+      const conversationItems: ConversationItem[] = await Promise.all(
+  conversationRows.map(async (conversation) => {
+    const otherUserId =
+      conversation.user1_id === currentUserId
+        ? conversation.user2_id
+        : conversation.user1_id
 
-          const otherUser = profileMap.get(otherUserId)
-          if (!otherUser) return null
+    const otherUser = profileMap.get(otherUserId)
+    if (!otherUser) return null
 
-          return {
-            id: conversation.id,
-            type: 'conversation' as const,
-            otherUser,
-            lastMessage: conversation.last_message,
-            lastMessageAt: conversation.last_message_at,
-          }
-        })
+    // 🔥 récupérer le dernier message
+    const { data: lastMessageData } = await db
+      .from('messages')
+      .select('content, created_at')
+      .eq('conversation_id', conversation.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    return {
+      id: conversation.id,
+      type: 'conversation' as const,
+      otherUser,
+      lastMessage: lastMessageData?.content || null,
+      lastMessageAt: lastMessageData?.created_at || null,
+    }
+  })
+)
         .filter(Boolean) as ConversationItem[]
 
       const matchItems: MatchItem[] = matchRows
@@ -216,12 +224,20 @@ export default function MatchesPage() {
           if (!otherUser) return null
 
           const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
+let conversationId = linkedConversation?.id || null
 
+if (!conversationId) {
+  const { data } = await db.rpc('get_or_create_conversation', {
+    other_user_id: otherUserId,
+  })
+
+  conversationId = data || null
+}
           return {
             id: match.id || getPairKey(match.user1_id, match.user2_id),
             type: 'match' as const,
             otherUser,
-            conversationId: linkedConversation?.id || null,
+            conversationId,
             createdAt: match.created_at || null,
           }
         })

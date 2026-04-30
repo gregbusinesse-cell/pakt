@@ -17,7 +17,7 @@ import toast from 'react-hot-toast'
 const FREE_SWIPE_LIMIT = 10
 const FREE_MESSAGE_LIMIT = 1
 const STACK_RENDER_COUNT = 3
-const DEFAULT_MESSAGE = 'Salut, ton profil m interesse.'
+
 
 type ProfileWithLocation = Profile & {
   city_lat?: number | null
@@ -175,11 +175,11 @@ export default function SwipePage() {
   )
 
   const sendDirectMessage = useCallback(
-    async (targetProfile: Profile, content = DEFAULT_MESSAGE) => {
+  async (targetProfile: Profile, content: string) => {
       console.log('[SWIPE] sendDirectMessage start', {
         sessionUserId,
         targetProfileId: targetProfile?.id,
-        content,
+        content: content || '',
       })
 
       if (!sessionUserId || !profile || !targetProfile?.id) {
@@ -625,15 +625,16 @@ export default function SwipePage() {
   }
 
   const handleMessageTap = async () => {
-    if (!currentProfile) return
+  if (!currentProfile) return
 
-    if (reachedMessageLimit) {
-      openPaywall()
-      return
-    }
-
-    await sendDirectMessage(currentProfile)
+  if (reachedMessageLimit) {
+    openPaywall()
+    return
   }
+
+  // 👉 ouvrir chat sans envoyer message
+  router.push(`/chat/new?userId=${currentProfile.id}`)
+}
 
   return (
     <div className="h-full flex flex-col bg-dark">
