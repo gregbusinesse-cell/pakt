@@ -216,8 +216,8 @@ export default function MatchesPage() {
 )
         .filter(Boolean) as ConversationItem[]
 
-      const matchItems: MatchItem[] = matchRows
-        .map((match) => {
+      const matchItems: MatchItem[] = await Promise.all(
+  matchRows.map(async (match) => {
           const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
           const otherUser = profileMap.get(otherUserId)
 
@@ -241,7 +241,9 @@ if (!conversationId) {
             createdAt: match.created_at || null,
           }
         })
-        .filter(Boolean) as MatchItem[]
+)
+
+const cleanMatchItems = matchItems.filter(Boolean) as MatchItem[]
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -259,7 +261,7 @@ if (!conversationId) {
       console.log('[MATCHES] match items', matchItems)
 
       setConversations(conversationItems)
-      setMatches(matchItems)
+      setMatches(cleanMatchItems)
     } catch (error) {
       console.error('[MATCHES] load catch', error)
       toast.error('Erreur chargement messages')
