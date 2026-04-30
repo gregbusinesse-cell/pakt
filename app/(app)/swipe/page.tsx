@@ -586,7 +586,8 @@ export default function SwipePage() {
       if (mutualLike) {
   const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
 
-  const { data: matchData, error: matchInsertError } = await db
+  // 🔹 Création du match (évite doublons)
+  const { error: matchInsertError } = await db
     .from('matches')
     .upsert(
       {
@@ -595,27 +596,25 @@ export default function SwipePage() {
       },
       {
         onConflict: 'user1_id,user2_id',
-        ignoreDuplicates: true,
       }
     )
-    .select('*')
-    .maybeSingle()
 
   if (matchInsertError) {
     console.error('[SWIPE] match insert error', matchInsertError)
-    toast.error(`Erreur création match: ${matchInsertError.message}`)
+    toast.error(`Erreur match: ${matchInsertError.message}`)
     return
   }
 
+  // 🔹 Création conversation
   const conversationId = await createConversationForMatch(swipedProfile.id)
 
   console.log('[SWIPE] MATCH CREATED', {
-    matchData,
     conversationId,
     me: sessionUserId,
     other: swipedProfile.id,
   })
 
+  // 🔹 UI
   setMatchedProfile(swipedProfile)
   setShowMatch(true)
 }

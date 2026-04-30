@@ -22,14 +22,6 @@ interface ConversationItem {
   unread?: boolean
 }
 
-interface MatchConversationRow {
-  id: string
-  participant1_id: string
-  participant2_id: string
-  last_message: string | null
-  last_message_at: string | null
-}
-
 interface DirectConversationRow {
   id: string
   sender_id: string
@@ -102,11 +94,10 @@ export default function MatchesPage() {
     setLoading(true)
 
     try {
-      const { data: matchConvsData } = await supabase
-        .from('conversations')
-        .select('*')
-        .or(`participant1_id.eq.${session.user.id},participant2_id.eq.${session.user.id}`)
-        .order('last_message_at', { ascending: false })
+      const { data: matchesData } = await supabase
+  .from('matches')
+  .select('*')
+  .or(`user1_id.eq.${session.user.id},user2_id.eq.${session.user.id}`)
 
       const { data: directConvsData } = await supabase
         .from('direct_conversations')
@@ -114,14 +105,14 @@ export default function MatchesPage() {
         .or(`sender_id.eq.${session.user.id},receiver_id.eq.${session.user.id}`)
         .order('last_message_at', { ascending: false })
 
-      const matchConvs = (matchConvsData ?? []) as MatchConversationRow[]
+      const matchConvs = matchesData ?? []
       const directConvs = (directConvsData ?? []) as DirectConversationRow[]
 
-      const matchUserIds = matchConvs.map((conversation) =>
-        conversation.participant1_id === session.user.id
-          ? conversation.participant2_id
-          : conversation.participant1_id,
-      )
+      const matchUserIds = matchConvs.map((match) =>
+  match.user1_id === session.user.id
+    ? match.user2_id
+    : match.user1_id
+)
 
       const directUserIds = directConvs.map((conversation) =>
         conversation.sender_id === session.user.id
@@ -146,23 +137,23 @@ export default function MatchesPage() {
         profiles.map((userProfile) => [userProfile.id, userProfile]),
       )
 
-      const matchItems: ConversationItem[] = (matchConvs || [])
-  .map((conversation) => {
-    if (!conversation) return null
-
+      const matchItems: ConversationItem[] = (matchesData || [])
+  .map((match) => {
     const otherUserId =
-      conversation.participant1_id === session.user.id
-        ? conversation.participant2_id
-        : conversation.participant1_id
+      match.user1_id === session.user.id
+        ? match.user2_id
+        : match.user1_id
 
     const otherUser = profileMap.get(otherUserId)
 
     if (!otherUser) return null
 
     return {
-      id: conversation.id,
+      id: match.id, // ⚠️ IMPORTANT
       type: 'match' as const,
       otherUser,
+      lastMessage: null,
+      lastMessageAt: null,
     }
   })
   .filter(Boolean) as ConversationItem[]
@@ -269,7 +260,7 @@ export default function MatchesPage() {
                 transition={{ delay: index * 0.05 }}
               >
                 <Link
-                  href={`/chat/${conversation.id}?type=${conversation.type}&userId=${conversation.otherUser.id}`}
+                  href={`/chat/${conversation.otherUser.id}?type=match`}
                   className="flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors"
                 >
                   <div className="relative shrink-0">
