@@ -192,8 +192,9 @@ console.log('ERROR unread:', unreadError);
   }, [router, supabase])
 
   useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+  if (!sessionUserId) return
+  loadConversations()
+}, [sessionUserId])
 
   useEffect(() => {
     if (!sessionUserId) return
