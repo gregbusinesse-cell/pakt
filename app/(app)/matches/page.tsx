@@ -1,768 +1,431 @@
 'use client'
 
-// app/(app)/swipe/page.tsx
+// app/(app)/matches/page.tsx
 
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
-import SwipeCard from '@/components/swipe/SwipeCard'
-import MatchModal from '@/components/swipe/MatchModal'
-import type { Profile } from '@/lib/supabase/types'
-import { MAX_FREE_SWIPES } from '@/lib/utils'
-import { Crown, RefreshCw, Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { formatTime } from '@/lib/utils'
+import type { Profile } from '@/lib/supabase/types'
+import { MessageCircle, Users, Crown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const FREE_SWIPE_LIMIT = 10
-const FREE_MESSAGE_LIMIT = 1
-const STACK_RENDER_COUNT = 3
+type Tab = 'matches' | 'conversations'
 
-type ProfileWithLocation = Profile & {
-  city_lat?: number | null
-  city_lng?: number | null
-  messages_today?: number | null
-  last_message_date?: string | null
-  preferences?: {
-    distance_km?: number
-  } | null
+interface ConversationRow {
+  id: string
+  participant1_id: string
+  participant2_id: string
+  last_message: string | null
+  last_message_at: string | null
+  created_at?: string | null
 }
 
-function getTodayKey() {
-  return new Date().toISOString().split('T')[0]
+interface MatchRow {
+  id?: string
+  user1_id: string
+  user2_id: string
+  created_at?: string | null
 }
 
-function PaywallModal({
-  open,
-  onClose,
-  onUpgrade,
-}: {
-  open: boolean
-  onClose: () => void
-  onUpgrade: () => void
-}) {
-  if (!open) return null
-
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="absolute inset-0 flex items-center justify-center px-5">
-        <div className="w-full max-w-md bg-dark-200 border border-dark-500 rounded-[12px] p-5">
-          <h3 className="text-white font-semibold text-lg">Continuer avec PAKT Business</h3>
-          <p className="text-white/60 text-sm mt-2 leading-relaxed">
-            Vous avez atteint la limite gratuite. Passez à PAKT Business pour continuer a swiper et
-            envoyer des messages sans limite.
-          </p>
-
-          <div className="mt-5 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={onUpgrade}
-              className="h-[48px] w-full flex items-center justify-center rounded-[12px] bg-gold text-dark font-bold hover:bg-gold-light transition-colors"
-            >
-              Passer a PAKT Business
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-[48px] w-full flex items-center justify-center rounded-[12px] border border-dark-500 bg-[#1e1e1e] text-white/70 hover:text-white hover:border-dark-400 transition-colors"
-            >
-              Pas interesse
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+interface ConversationItem {
+  id: string
+  type: 'conversation'
+  otherUser: Profile
+  lastMessage: string | null
+  lastMessageAt: string | null
 }
 
-export default function SwipePage() {
-  const supabase = createClient()
-  const db = supabase as any
-  const router = useRouter()
-  const { profile, setProfile } = useAppStore()
+interface MatchItem {
+  id: string
+  type: 'match'
+  otherUser: Profile
+  conversationId: string | null
+  createdAt: string | null
+}
 
-  const [session, setSession] = useState<any>(null)
-  const [sessionLoading, setSessionLoading] = useState(true)
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
-  const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
-  const [showMatch, setShowMatch] = useState(false)
-  const [paywallOpen, setPaywallOpen] = useState(false)
-  const [swipesCount, setSwipesCount] = useState(0)
-  const [messagesCount, setMessagesCount] = useState(0)
-  const [countsDate, setCountsDate] = useState(getTodayKey())
+function getPairKey(a: string, b: string) {
+  return [a, b].sort().join(':')
+}
 
-  const profileWithLocation = profile as ProfileWithLocation | null
-  const sessionUserId = session?.user?.id
-  const sessionProvider = session?.user?.app_metadata?.provider
-  const sessionEmailConfirmedAt = session?.user?.email_confirmed_at
-
-  const userLat = profileWithLocation?.city_lat ?? null
-  const userLng = profileWithLocation?.city_lng ?? null
-  const maxDistance = profileWithLocation?.preferences?.distance_km ?? 50
-  const todayKey = getTodayKey()
-
-  const isFree = profile?.plan === 'free'
-  const profileMessagesToday =
-    profileWithLocation?.last_message_date === todayKey ? profileWithLocation?.messages_today || 0 : 0
-  const reachedMessageLimit = isFree && profileMessagesToday >= FREE_MESSAGE_LIMIT
-  const reachedSwipeLimit = isFree && swipesCount >= FREE_SWIPE_LIMIT
-
-  const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
-
-  const persistCounts = useCallback(
-    (nextSwipes: number, nextMessages: number) => {
-      try {
-        localStorage.setItem(
-          'pakt:limits',
-          JSON.stringify({ date: countsDate, swipesCount: nextSwipes, messagesCount: nextMessages })
-        )
-      } catch {}
-    },
-    [countsDate]
-  )
-
-  const openPaywall = useCallback(() => {
-    setPaywallOpen(true)
-  }, [])
-
-  const getOrCreateConversation = useCallback(
-    async (otherUserId: string) => {
-      console.log('[SWIPE] RPC get_or_create_conversation', { sessionUserId, otherUserId })
-
-      if (!sessionUserId || !otherUserId) {
-        throw new Error('IDs conversation manquants')
-      }
-
-      const { data, error } = await db.rpc('get_or_create_conversation', {
-        other_user_id: otherUserId,
-      })
-
-      if (error) {
-        console.error('[SWIPE] RPC conversation error', error)
-        throw error
-      }
-
-      if (!data) {
-        throw new Error('Conversation ID vide')
-      }
-
-      console.log('[SWIPE] conversation ready', data)
-      return data as string
-    },
-    [db, sessionUserId]
-  )
-
-  const createConversationForMatch = useCallback(
-    async (otherUserId: string) => {
-      console.log('[SWIPE] createConversationForMatch', { otherUserId })
-
-      try {
-        const conversationId = await getOrCreateConversation(otherUserId)
-        console.log('[SWIPE] match conversation created/found', { conversationId })
-        return conversationId
-      } catch (error) {
-        console.error('[SWIPE] createConversationForMatch error', error)
-        toast.error('Erreur création conversation match')
-        return null
-      }
-    },
-    [getOrCreateConversation]
-  )
-
-  const createMatch = useCallback(
-    async (otherUserId: string) => {
-      if (!sessionUserId || !otherUserId) return null
-
-      const [user1_id, user2_id] = [sessionUserId, otherUserId].sort()
-
-      console.log('[SWIPE] upsert match', { user1_id, user2_id })
-
-      const { data, error } = await db
-        .from('matches')
-        .upsert(
-          {
-            user1_id,
-            user2_id,
-          },
-          {
-            onConflict: 'user1_id,user2_id',
-          }
-        )
-        .select('*')
-        .single()
-
-      if (error) {
-        console.error('[SWIPE] match upsert error', error)
-        toast.error(`Erreur match: ${error.message}`)
-        return null
-      }
-
-      console.log('[SWIPE] match upserted', data)
-      return data
-    },
-    [db, sessionUserId]
-  )
-
-  const openMessageConversation = useCallback(
-    async (targetProfile: Profile) => {
-      console.log('[SWIPE] openMessageConversation start', {
-        sessionUserId,
-        targetProfileId: targetProfile?.id,
-      })
-
-      if (!sessionUserId || !profile || !targetProfile?.id) {
-        console.error('[SWIPE] openMessageConversation missing data', {
-          sessionUserId,
-          profile,
-          targetProfile,
-        })
-        toast.error('Impossible ouvrir la conversation')
-        return false
-      }
-
-      const currentProfile = profile as ProfileWithLocation
-      const today = getTodayKey()
-      const currentMessagesToday =
-        currentProfile.last_message_date === today ? currentProfile.messages_today || 0 : 0
-
-      if (profile.plan === 'free' && currentMessagesToday >= FREE_MESSAGE_LIMIT) {
-        console.log('[SWIPE] message limit reached')
-        openPaywall()
-        return false
-      }
-
-      try {
-        const conversationId = await getOrCreateConversation(targetProfile.id)
-
-        if (profile.plan === 'free') {
-          const nextMessagesToday = currentMessagesToday + 1
-          const updatedProfile = {
-            ...profile,
-            messages_today: nextMessagesToday,
-            last_message_date: today,
-          } as Profile
-
-          setMessagesCount(nextMessagesToday)
-          persistCounts(swipesCount, nextMessagesToday)
-          setProfile(updatedProfile)
-
-          const { error: profileUpdateError } = await db
-            .from('profiles')
-            .update({
-              messages_today: nextMessagesToday,
-              last_message_date: today,
-            })
-            .eq('id', sessionUserId)
-
-          if (profileUpdateError) {
-            console.error('[SWIPE] profile message count update error', profileUpdateError)
-          }
+function BusinessBanner({ type }: { type: Tab }) {
+  const content =
+    type === 'matches'
+      ? {
+          title: 'Pssst... Trouve ton partenaire plus vite',
+          text: 'Les membres PAKT Business trouvent leur partenaire jusqu’à 4x plus rapidement.',
+        }
+      : {
+          title: 'Pssst... Passe à la vitesse supérieure',
+          text: 'Envoie des messages sans limite et maximise tes opportunités avec PAKT Business.',
         }
 
-        router.push(`/chat/${conversationId}?userId=${targetProfile.id}&type=direct`)
-        return true
-      } catch (error) {
-        console.error('[SWIPE] openMessageConversation catch', error)
-        toast.error('Erreur ouverture conversation')
-        return false
-      }
-    },
-    [
-      db,
-      getOrCreateConversation,
-      openPaywall,
-      persistCounts,
-      profile,
-      router,
-      sessionUserId,
-      setProfile,
-      swipesCount,
-    ]
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-gold/10 border border-gold/30 rounded-[12px] p-4 mb-4"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <Crown size={16} className="text-gold" />
+            <p className="font-semibold text-white text-sm">{content.title}</p>
+          </div>
+          <p className="text-white/60 text-sm leading-relaxed">{content.text}</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href =
+              'https://checkout.stripe.com/c/pay/cs_test_a1EOyhQb3zvA2y8kvEY2t5qaAFMEtLVxEExzPNpRIyx3EkYYmoqCtWQrwi'
+          }}
+          className="shrink-0 bg-gold text-dark px-4 py-2 rounded-[10px] text-sm font-bold transition-transform hover:scale-[1.03] active:scale-[0.99]"
+        >
+          Découvrir PAKT Business
+        </button>
+      </div>
+    </motion.div>
   )
+}
 
-  const loadProfiles = useCallback(async () => {
-    console.log('[SWIPE] loadProfiles start', { sessionUserId })
+export default function MatchesPage() {
+  const session = useSession()
+  const supabase = useMemo(() => createClient(), [])
+  const db = supabase as any
+  const router = useRouter()
+  const { profile } = useAppStore()
 
-    if (!sessionUserId) {
-      setLoading(false)
-      return
-    }
+  const [conversations, setConversations] = useState<ConversationItem[]>([])
+  const [matches, setMatches] = useState<MatchItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [openingConversation, setOpeningConversation] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('matches')
 
-    setLoading((prev) => (profiles.length === 0 ? true : prev))
+  const currentUserId = session?.user?.id
+
+  const loadConversations = useCallback(async () => {
+    if (!currentUserId) return
+
+    setLoading(true)
 
     try {
-      const { data: swipedData, error: swipedError } = await db
-        .from('swipes')
-        .select('target_id')
-        .eq('swiper_id', sessionUserId)
+      console.log('[MATCHES] load start', { currentUserId })
 
-      if (swipedError) {
-        console.error('[SWIPE] swipes select error', swipedError)
+      const { data: conversationsData, error: conversationsError } = await db
+        .from('conversations')
+        .select('*')
+        .or(`participant1_id.eq.${currentUserId},participant2_id.eq.${currentUserId}`)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+
+      if (conversationsError) {
+        console.error('[MATCHES] conversations error', conversationsError)
+        toast.error(`Erreur conversations: ${conversationsError.message}`)
+        return
       }
 
-      const swipedSet = new Set<string>([
-        sessionUserId,
-        ...((swipedData || []).map((swipe: { target_id: string }) => swipe.target_id) || []),
-      ])
+      const { data: matchesData, error: matchesError } = await db
+        .from('matches')
+        .select('*')
+        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+
+      if (matchesError) {
+        console.error('[MATCHES] matches error', matchesError)
+        toast.error(`Erreur matchs: ${matchesError.message}`)
+        return
+      }
+
+      const conversationRows = (conversationsData || []) as ConversationRow[]
+      const matchRows = (matchesData || []) as MatchRow[]
+
+      console.log('[MATCHES] conversations loaded', conversationRows)
+      console.log('[MATCHES] matches loaded', matchRows)
+
+      const conversationOtherIds = conversationRows.map((conversation) =>
+        conversation.participant1_id === currentUserId
+          ? conversation.participant2_id
+          : conversation.participant1_id
+      )
+
+      const matchOtherIds = matchRows.map((match) =>
+        match.user1_id === currentUserId ? match.user2_id : match.user1_id
+      )
+
+      const allUserIds = Array.from(new Set([...conversationOtherIds, ...matchOtherIds]))
+
+      if (allUserIds.length === 0) {
+        setConversations([])
+        setMatches([])
+        return
+      }
 
       const { data: profilesData, error: profilesError } = await db
         .from('profiles')
         .select('*')
-        .eq('is_onboarded', true)
-        .eq('is_suspended', false)
-        .eq('email_confirmed', true)
-        .neq('id', sessionUserId)
-        .limit(20)
+        .in('id', allUserIds)
 
       if (profilesError) {
-        console.error('[SWIPE] profiles select error', profilesError)
+        console.error('[MATCHES] profiles error', profilesError)
         toast.error(`Erreur profils: ${profilesError.message}`)
         return
       }
 
-      const filteredProfiles = ((profilesData || []) as ProfileWithLocation[]).filter((candidate) => {
-        if (swipedSet.has(candidate.id)) return false
+      const profiles = (profilesData || []) as Profile[]
+      const profileMap = new Map<string, Profile>(
+        profiles.map((userProfile) => [userProfile.id, userProfile])
+      )
 
-        if (!candidate.city_lat || !candidate.city_lng) return false
-        if (!userLat || !userLng) return true
+      const conversationByPair = new Map<string, ConversationRow>()
 
-        const radius = 6371
-        const dLat = ((candidate.city_lat - userLat) * Math.PI) / 180
-        const dLng = ((candidate.city_lng - userLng) * Math.PI) / 180
-
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((userLat * Math.PI) / 180) *
-            Math.cos((candidate.city_lat * Math.PI) / 180) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2)
-
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        const distance = radius * c
-
-        return distance <= maxDistance
+      conversationRows.forEach((conversation) => {
+        conversationByPair.set(
+          getPairKey(conversation.participant1_id, conversation.participant2_id),
+          conversation
+        )
       })
 
-      const { data: likesData, error: likesError } = await db
-        .from('likes')
-        .select('liker_id')
-        .eq('liked_id', sessionUserId)
+      const conversationItems: ConversationItem[] = conversationRows
+        .map((conversation) => {
+          const otherUserId =
+            conversation.participant1_id === currentUserId
+              ? conversation.participant2_id
+              : conversation.participant1_id
 
-      if (likesError) {
-        console.error('[SWIPE] received likes select error', likesError)
-      }
+          const otherUser = profileMap.get(otherUserId)
+          if (!otherUser) return null
 
-      console.log('[SWIPE] profiles loaded', {
-        profilesCount: filteredProfiles.length,
-        likedMeIds: likesData,
+          return {
+            id: conversation.id,
+            type: 'conversation' as const,
+            otherUser,
+            lastMessage: conversation.last_message,
+            lastMessageAt: conversation.last_message_at,
+          }
+        })
+        .filter(Boolean) as ConversationItem[]
+
+      const matchItems: MatchItem[] = matchRows
+        .map((match) => {
+          const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
+          const otherUser = profileMap.get(otherUserId)
+
+          if (!otherUser) return null
+
+          const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
+
+          return {
+            id: match.id || getPairKey(match.user1_id, match.user2_id),
+            type: 'match' as const,
+            otherUser,
+            conversationId: linkedConversation?.id || null,
+            createdAt: match.created_at || null,
+          }
+        })
+        .filter(Boolean) as MatchItem[]
+
+      conversationItems.sort((a, b) => {
+        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
+        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
+        return bTime - aTime
       })
 
-      setLikedMeIds(new Set((likesData || []).map((like: { liker_id: string }) => like.liker_id)))
-      setProfiles(filteredProfiles as Profile[])
+      matchItems.sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bTime - aTime
+      })
+
+      console.log('[MATCHES] conversation items', conversationItems)
+      console.log('[MATCHES] match items', matchItems)
+
+      setConversations(conversationItems)
+      setMatches(matchItems)
     } catch (error) {
-      console.error('[SWIPE] loadProfiles catch', error)
-      toast.error('Erreur chargement profils')
+      console.error('[MATCHES] load catch', error)
+      toast.error('Erreur chargement messages')
     } finally {
       setLoading(false)
     }
-  }, [db, maxDistance, profiles.length, sessionUserId, userLat, userLng])
+  }, [currentUserId, db])
 
   useEffect(() => {
-    let mounted = true
+    if (!currentUserId) return
+    loadConversations()
+  }, [currentUserId, loadConversations])
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return
+  const openConversation = async (otherUserId: string, existingConversationId?: string | null) => {
+    if (!currentUserId || !otherUserId) return
 
-      if (!data.session) {
-        router.replace('/auth')
+    setOpeningConversation(otherUserId)
+
+    try {
+      if (existingConversationId) {
+        router.push(`/chat/${existingConversationId}?type=match&userId=${otherUserId}`)
         return
       }
 
-      setSession(data.session)
-      setSessionLoading(false)
-    })
+      console.log('[MATCHES] RPC get_or_create_conversation', { otherUserId })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!nextSession) {
-        router.replace('/auth')
-        return
-      }
-
-      setSession(nextSession)
-      setSessionLoading(false)
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [supabase, router])
-
-  useEffect(() => {
-    const today = getTodayKey()
-    setCountsDate(today)
-
-    try {
-      const stored = localStorage.getItem('pakt:limits')
-
-      if (stored) {
-        const parsed = JSON.parse(stored)
-
-        if (parsed?.date === today) {
-          setSwipesCount(Number(parsed?.swipesCount) || 0)
-          setMessagesCount(Number(parsed?.messagesCount) || 0)
-          return
-        }
-      }
-    } catch {}
-
-    setSwipesCount(0)
-    setMessagesCount(0)
-
-    try {
-      localStorage.setItem(
-        'pakt:limits',
-        JSON.stringify({ date: today, swipesCount: 0, messagesCount: 0 })
-      )
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    if (!sessionUserId) return
-    if (sessionProvider !== 'google') return
-    if (profile?.email_confirmed === true) return
-
-    void (async () => {
-      try {
-        const { error } = await db
-          .from('profiles')
-          .update({ email_confirmed: true })
-          .eq('id', sessionUserId)
-
-        if (error) {
-          console.error('[SWIPE] google email_confirmed update error', error)
-          return
-        }
-
-        if (profile) setProfile({ ...profile, email_confirmed: true })
-      } catch (error) {
-        console.error('[SWIPE] google email_confirmed catch', error)
-      }
-    })()
-  }, [db, profile, sessionProvider, sessionUserId, setProfile])
-
-  useEffect(() => {
-    loadProfiles()
-  }, [loadProfiles])
-
-  if (sessionLoading) {
-    return (
-      <div className="h-full flex items-center justify-center bg-dark">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
-          <p className="text-white/40">Chargement...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const currentProfile = profiles[0]
-  const stackForRender = profiles.slice(0, STACK_RENDER_COUNT).slice().reverse()
-  const showInitialLoading = loading && profiles.length === 0
-
-  const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
-    console.log('[SWIPE] handleSwipe start', {
-      dir,
-      sessionUserId,
-      myProfileId: profile?.id,
-      targetId: swipedProfile?.id,
-    })
-
-    if (!sessionUserId || !profile || !swipedProfile?.id) {
-      console.error('[SWIPE] handleSwipe missing data', {
-        sessionUserId,
-        profile,
-        swipedProfile,
+      const { data: conversationId, error } = await db.rpc('get_or_create_conversation', {
+        other_user_id: otherUserId,
       })
-      toast.error('Swipe impossible')
-      return
-    }
 
-    if (reachedSwipeLimit) {
-      console.log('[SWIPE] swipe limit reached')
-      openPaywall()
-      return
-    }
-
-    try {
-      const { data: swipeData, error: swipeError } = await db
-        .from('swipes')
-        .upsert(
-          {
-            swiper_id: sessionUserId,
-            target_id: swipedProfile.id,
-            action: dir === 'right' ? 'like' : 'dislike',
-          },
-          {
-            onConflict: 'swiper_id,target_id',
-          }
-        )
-        .select('*')
-
-      if (swipeError) {
-        console.error('[SWIPE] swipe upsert error', swipeError)
-        toast.error(`Erreur swipe: ${swipeError.message}`)
+      if (error) {
+        console.error('[MATCHES] RPC conversation error', error)
+        toast.error(`Erreur conversation: ${error.message}`)
         return
       }
 
-      console.log('[SWIPE] swipe saved', swipeData)
-
-      if (profile.plan === 'free') {
-        const next = swipesCount + 1
-        setSwipesCount(next)
-        persistCounts(next, messagesCount)
-      }
-
-      setProfiles((prev) => prev.filter((item) => item.id !== swipedProfile.id))
-
-      try {
-        const today = new Date().toISOString().split('T')[0]
-        const newSwipesCount =
-          profile.last_swipe_date === today ? (profile.swipes_today || 0) + 1 : 1
-
-        const updatedProfile = { ...profile, swipes_today: newSwipesCount, last_swipe_date: today }
-        setProfile(updatedProfile)
-
-        const { error: profileUpdateError } = await db
-          .from('profiles')
-          .update({ swipes_today: newSwipesCount, last_swipe_date: today })
-          .eq('id', sessionUserId)
-
-        if (profileUpdateError) {
-          console.error('[SWIPE] profile swipe count update error', profileUpdateError)
-        }
-      } catch (error) {
-        console.error('[SWIPE] profile swipe count catch', error)
-      }
-
-      if (dir !== 'right') return
-
-      const likePayload = {
-        liker_id: sessionUserId,
-        liked_id: swipedProfile.id,
-      }
-
-      console.log('[SWIPE] upsert like', likePayload)
-
-      const { data: likeData, error: likeError } = await db
-        .from('likes')
-        .upsert(likePayload, {
-          onConflict: 'liker_id,liked_id',
-          ignoreDuplicates: true,
-        })
-        .select('*')
-
-      if (likeError) {
-        console.error('[SWIPE] like upsert error', likeError)
-        toast.error(`Erreur like: ${likeError.message}`)
+      if (!conversationId) {
+        toast.error('Conversation introuvable')
         return
       }
 
-      console.log('[SWIPE] like saved', likeData)
-
-      const { data: mutualLike, error: matchCheckError } = await db
-        .from('likes')
-        .select('*')
-        .eq('liker_id', swipedProfile.id)
-        .eq('liked_id', sessionUserId)
-        .maybeSingle()
-
-      if (matchCheckError) {
-        console.error('[SWIPE] mutual like check error', matchCheckError)
-        toast.error(`Erreur match: ${matchCheckError.message}`)
-        return
-      }
-
-      console.log('[SWIPE] mutual like result', mutualLike)
-
-      if (mutualLike) {
-        const match = await createMatch(swipedProfile.id)
-
-        if (!match) return
-
-        const conversationId = await createConversationForMatch(swipedProfile.id)
-
-        console.log('[SWIPE] MATCH CREATED', {
-          match,
-          conversationId,
-          me: sessionUserId,
-          other: swipedProfile.id,
-        })
-
-        setMatchedProfile(swipedProfile)
-        setShowMatch(true)
-      }
+      router.push(`/chat/${conversationId}?type=match&userId=${otherUserId}`)
     } catch (error) {
-      console.error('[SWIPE] handleSwipe catch', error)
-      toast.error('Erreur swipe')
+      console.error('[MATCHES] openConversation catch', error)
+      toast.error('Erreur ouverture conversation')
+    } finally {
+      setOpeningConversation(null)
     }
   }
 
-  const handleMessageTap = async () => {
-    if (!currentProfile) return
-
-    if (reachedMessageLimit) {
-      openPaywall()
-      return
-    }
-
-    await openMessageConversation(currentProfile)
-  }
+  const currentItems = tab === 'matches' ? matches : conversations
 
   return (
     <div className="h-full flex flex-col bg-dark">
-      <div className="flex items-center justify-between px-5 pt-5 pb-2 shrink-0">
-        <h1 className="text-2xl font-black tracking-wider text-gold-gradient">PAKT</h1>
+      <div className="px-5 pt-5 pb-3 shrink-0">
+        <h1 className="text-2xl font-bold mb-4">Messages</h1>
 
-        {profile?.plan !== 'premium' && (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-white/50">
-              {Math.max(0, MAX_FREE_SWIPES - (profile?.swipes_today || 0))} swipes restants
-            </span>
-          </div>
-        )}
+        <div className="flex bg-dark-200 rounded-2xl p-1">
+          <button
+            type="button"
+            onClick={() => setTab('matches')}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              tab === 'matches' ? 'bg-gold text-dark' : 'text-white/50'
+            }`}
+          >
+            <Users size={15} />
+            Matchs
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab('conversations')}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              tab === 'conversations' ? 'bg-gold text-dark' : 'text-white/50'
+            }`}
+          >
+            <MessageCircle size={15} />
+            Conversations
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 relative px-4 pb-2">
-        {showInitialLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
-              <p className="text-white/40">Chargement...</p>
+      <div className="flex-1 overflow-y-auto px-5 pb-4">
+        {profile?.plan === 'free' && <BusinessBanner type={tab} />}
+
+        {loading ? (
+          <div className="flex flex-col gap-3 pt-2">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="flex items-center gap-3 p-3">
+                <div className="w-14 h-14 rounded-full shimmer shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-24 rounded shimmer" />
+                  <div className="h-3 w-40 rounded shimmer" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : currentItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
+            <span className="text-5xl">{tab === 'matches' ? '⚔️' : '✉️'}</span>
+            <div>
+              <h3 className="font-semibold text-lg mb-1">
+                {tab === 'matches' ? 'Pas encore de matchs' : 'Aucune conversation pour le moment'}
+              </h3>
+              <p className="text-white/40 text-sm">
+                {tab === 'matches'
+                  ? 'Continue à swiper pour trouver tes matchs !'
+                  : "Tu peux envoyer un message depuis le profil de quelqu'un"}
+              </p>
             </div>
           </div>
-        ) : !isEmailVerified ? (
-          <EmailLocked />
-        ) : reachedSwipeLimit ? (
-          <LimitReached onUpgrade={() => router.push('/checkout')} />
-        ) : profiles.length === 0 ? (
-          <EmptyState onRefresh={loadProfiles} />
         ) : (
-          <div className="relative h-full">
-            {stackForRender.map((item, index) => {
-              const isTop = item.id === currentProfile?.id
-              const zIndex = isTop ? 20 : 10 + index
+          <div className="space-y-1 pt-2">
+            {currentItems.map((item, index) => {
+              const isConversation = item.type === 'conversation'
+              const lastMessage = isConversation
+                ? item.lastMessage || 'Nouveau message'
+                : '🎉 Nouveau match ! Dis bonjour'
+
+              const lastMessageAt = isConversation ? item.lastMessageAt : item.createdAt
+              const conversationId = isConversation ? item.id : item.conversationId
+              const isOpening = openingConversation === item.otherUser.id
 
               return (
-                <div key={item.id} className="absolute inset-0" style={{ zIndex }}>
-                  <SwipeCard
-                    profile={item}
-                    onSwipe={(swipeDirection) => {
-                      if (!isTop) return
-                      handleSwipe(swipeDirection, item)
-                    }}
-                    hasLikedYou={likedMeIds.has(item.id)}
-                    zIndex={zIndex}
-                    isTop={isTop}
-                    onMessage={() => {
-                      if (!isTop) return
-                      handleMessageTap()
-                    }}
-                    disabledActions={isTop ? reachedSwipeLimit : true}
-                  />
-                </div>
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <button
+                    type="button"
+                    disabled={isOpening}
+                    onClick={() => openConversation(item.otherUser.id, conversationId)}
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
+                  >
+                    <div className="relative shrink-0">
+                      <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                        {item.otherUser.photos?.[0] ? (
+                          <img
+                            src={(item.otherUser.photos as string[])[0]}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">
+                            👤
+                          </div>
+                        )}
+                      </div>
+
+                      {item.type === 'match' && (
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
+                          ✓
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="font-semibold truncate">
+                          {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                        </p>
+
+                        {lastMessageAt && (
+                          <span className="text-white/30 text-xs shrink-0 ml-2">
+                            {formatTime(lastMessageAt)}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-white/40 text-sm truncate">
+                        {isOpening ? 'Ouverture...' : lastMessage}
+                      </p>
+                    </div>
+                  </button>
+                </motion.div>
               )
             })}
           </div>
         )}
       </div>
-
-      <PaywallModal
-        open={paywallOpen}
-        onClose={() => setPaywallOpen(false)}
-        onUpgrade={() => router.push('/checkout')}
-      />
-
-      <MatchModal
-        isOpen={showMatch}
-        myProfile={profile}
-        matchedProfile={matchedProfile}
-        onClose={() => setShowMatch(false)}
-      />
-    </div>
-  )
-}
-
-function LimitReached({ onUpgrade }: { onUpgrade: () => void }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-center px-8 text-center">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="flex flex-col items-center gap-6"
-      >
-        <div className="w-20 h-20 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center">
-          <Crown size={32} className="text-gold" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold mb-2">Limite atteinte</h2>
-          <p className="text-white/50 text-sm leading-relaxed">
-            Vous avez atteint la limite gratuite.
-            <br />
-            Passez a PAKT Business pour continuer.
-          </p>
-        </div>
-        <button onClick={onUpgrade} className="btn-primary max-w-xs">
-          <div className="flex items-center justify-center gap-2">
-            <Crown size={16} />
-            Passer a PAKT Business
-          </div>
-        </button>
-      </motion.div>
-    </div>
-  )
-}
-
-function EmptyState({ onRefresh }: { onRefresh: () => void }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-center px-8 text-center">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col items-center gap-6"
-      >
-        <span className="text-6xl">🌍</span>
-        <div>
-          <h2 className="text-2xl font-bold mb-2">C'est calme par ici</h2>
-          <p className="text-white/50 text-sm">Tu as vu tous les profils disponibles pour l'instant.</p>
-        </div>
-        <button onClick={onRefresh} className="flex items-center gap-2 btn-ghost">
-          <RefreshCw size={16} />
-          Actualiser
-        </button>
-      </motion.div>
-    </div>
-  )
-}
-
-function EmailLocked() {
-  return (
-    <div className="h-full flex flex-col items-center justify-center px-8 text-center">
-      <div className="w-20 h-20 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center mb-6">
-        <Lock size={32} className="text-gold" />
-      </div>
-
-      <h2 className="text-2xl font-bold mb-2">Swipe verrouille</h2>
-
-      <p className="text-white/50 text-sm leading-relaxed">
-        Veuillez confirmer votre adresse email pour commencer a faire des rencontres.
-      </p>
     </div>
   )
 }
