@@ -60,10 +60,13 @@ export default function MessagesPage() {
 
     try {
       const { data: conversationsData, error: conversationsError } = await db
-        .from('conversations')
-        .select('*')
-        .or(`user1_id.eq.${sessionUserId},user2_id.eq.${sessionUserId}`)
-        .order('created_at', { ascending: false })
+  .from('conversations')
+  .select('*')
+  .or(`user1_id.eq.${sessionUserId},user2_id.eq.${sessionUserId}`)
+  .order('created_at', { ascending: false });
+
+console.log('ERROR conversations:', conversationsError);
+        
 
       if (conversationsError) {
         console.error('[MESSAGES] conversations select error', conversationsError)
@@ -99,11 +102,13 @@ export default function MessagesPage() {
             conversation.user1_id === sessionUserId ? conversation.user2_id : conversation.user1_id
 
           const { data: lastMessagesData, error: lastMessageError } = await db
-            .from('messages')
-            .select('*')
-            .eq('conversation_id', conversation.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
+  .from('messages')
+  .select('*')
+  .eq('conversation_id', conversation.id)
+  .order('created_at', { ascending: false })
+  .limit(1);
+
+console.log('ERROR last message:', lastMessageError);
 
           if (lastMessageError) {
             console.error('[MESSAGES] last message error', {
@@ -113,11 +118,13 @@ export default function MessagesPage() {
           }
 
           const { count, error: unreadError } = await db
-            .from('messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('conversation_id', conversation.id)
-            .neq('sender_id', sessionUserId)
-            .eq('is_read', false)
+  .from('messages')
+  .select('id', { count: 'exact', head: true })
+  .eq('conversation_id', conversation.id)
+  .neq('sender_id', sessionUserId)
+  .eq('is_read', false);
+
+console.log('ERROR unread:', unreadError);
 
           if (unreadError) {
             console.error('[MESSAGES] unread count error', {
