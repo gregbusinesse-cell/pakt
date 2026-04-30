@@ -186,7 +186,7 @@ export default function MatchesPage() {
   )
 })
 
-      const conversationItems: ConversationItem[] = await Promise.all(
+      const conversationItemsRaw = await Promise.all(
   conversationRows.map(async (conversation) => {
     const otherUserId =
       conversation.user1_id === currentUserId
@@ -196,7 +196,6 @@ export default function MatchesPage() {
     const otherUser = profileMap.get(otherUserId)
     if (!otherUser) return null
 
-    // 🔥 récupérer le dernier message
     const { data: lastMessageData } = await db
       .from('messages')
       .select('content, created_at')
@@ -214,8 +213,8 @@ export default function MatchesPage() {
     }
   })
 )
-        .filter(Boolean) as ConversationItem[]
 
+const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
       const matchItems: MatchItem[] = await Promise.all(
   matchRows.map(async (match) => {
           const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
