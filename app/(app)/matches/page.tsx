@@ -215,23 +215,15 @@ export default function MatchesPage() {
 )
 
 const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
-      const matchItemsRaw = await Promise.all(
-  matchRows.map(async (match) => {
+      const matchItemsRaw = matchRows.map((match) => {
           const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
           const otherUser = profileMap.get(otherUserId)
 
           if (!otherUser) return null
 
           const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
-let conversationId = linkedConversation?.id || null
+const conversationId = linkedConversation?.id || null
 
-if (!conversationId) {
-  const { data } = await db.rpc('get_or_create_conversation', {
-    other_user_id: otherUserId,
-  })
-
-  conversationId = data || null
-}
           return {
             id: match.id || getPairKey(match.user1_id, match.user2_id),
             type: 'match' as const,
@@ -240,7 +232,6 @@ if (!conversationId) {
             createdAt: match.created_at || null,
           }
         })
-)
 
 const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
 
@@ -281,7 +272,7 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
 
     try {
       if (existingConversationId) {
-        router.push(`/chat/${existingConversationId}?type=match&userId=${otherUserId}`)
+        router.push(`/chat/${existingConversationId || 'new'}?type=direct&userId=${otherUserId}`)
         return
       }
 
@@ -311,7 +302,10 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
     }
   }
 
-  const currentItems = tab === 'matches' ? matches : conversations
+  const currentItems =
+  tab === 'matches'
+    ? (matches.length > 0 ? matches : conversations)
+    : conversations
 
   return (
     <div className="h-full flex flex-col bg-dark">
