@@ -43,7 +43,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="bg-dark text-white antialiased min-h-screen overflow-y-auto">
+      <body className="bg-dark text-white antialiased">
         <SupabaseProvider>
           {children}
           <Toaster
