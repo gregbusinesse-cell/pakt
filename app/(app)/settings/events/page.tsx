@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 export default function SettingsEventsPage() {
   return (
-    <div className="min-h-screen bg-dark text-white px-5 pt-8 pb-[160px] overflow-y-auto">
+    <div className="min-h-screen bg-dark text-white px-5 py-8">
       <main className="max-w-3xl mx-auto space-y-6 pb-[120px]">
         <Link href="/settings" className="text-sm text-gold hover:text-gold-light">
           Retour aux événements
