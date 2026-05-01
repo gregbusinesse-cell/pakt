@@ -1,4 +1,4 @@
-app/api/webhook/route.ts
+// app/api/webhook/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET!
     )
   } catch (err) {
+    console.error('❌ Webhook signature error:', err)
     return NextResponse.json({ error: 'Webhook error' }, { status: 400 })
   }
 
@@ -33,16 +34,31 @@ export async function POST(req: NextRequest) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
 
-    const email = session.customer_email
+    const userId = session.metadata?.user_id
 
-    // 🔥 UPDATE USER
-    await supabase
+    if (!userId) {
+      console.error('❌ user_id manquant dans metadata')
+      return NextResponse.json({ error: 'No user_id' }, { status: 400 })
+    }
+
+    // 🔥 UPDATE PLAN
+    const { error: updateError } = await supabase
       .from('profiles')
-      .update({ plan: 'premium' })
-      .eq('email', email)
+      .update({ plan: 'business' }) // ⚠️ mets "business" pas premium
+      .eq('id', userId)
 
-    // 🔥 AJOUT CAGNOTTE (+4€)
-    await supabase.rpc('increment_funding', { amount: 4 })
+    if (updateError) {
+      console.error('❌ update error:', updateError)
+    }
+
+    // 🔥 AJOUT CAGNOTTE
+    const { error: fundingError } = await supabase.rpc('increment_funding', {
+      amount: 5,
+    })
+
+    if (fundingError) {
+      console.error('❌ funding error:', fundingError)
+    }
   }
 
   return NextResponse.json({ received: true })
