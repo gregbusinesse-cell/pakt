@@ -11,14 +11,14 @@ const completed = currentAmount >= goal
 
 export default function SettingsFundingPage() {
   const contribute = () => {
-    const link = process.env.NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK
-    if (!link) {
-      toast.error('Lien de contribution indisponible')
-      return
-    }
-
-    window.location.href = link
+  const link = process.env.NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK
+  if (!link) {
+    toast.error('Lien de contribution indisponible')
+    return
   }
+
+  window.open(link, '_blank')
+}
 
   return (
     <div className="min-h-screen bg-dark text-white px-5 py-8">
