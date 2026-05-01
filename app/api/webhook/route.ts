@@ -32,31 +32,35 @@ export async function POST(req: NextRequest) {
 
   // 🎯 BON EVENT
   if (event.type === 'invoice.payment_succeeded') {
-    const invoice = event.data.object as Stripe.Invoice
+  const invoice = event.data.object as Stripe.Invoice
 
-    // 🔥 récupérer metadata depuis subscription
-    const subscription = await stripe.subscriptions.retrieve(
-      invoice.subscription!
-    )
-
-    const userId = subscription.metadata.user_id
-
-    if (!userId) {
-      console.error('❌ user_id manquant')
-      return NextResponse.json({ error: 'No user_id' }, { status: 400 })
-    }
-
-    // 🔥 UPDATE PLAN
-    await supabase
-      .from('profiles')
-      .update({ plan: 'business' })
-      .eq('id', userId)
-
-    // 🔥 AJOUT CAGNOTTE
-    await supabase.rpc('increment_funding', {
-      amount: 5,
-    })
+  if (!invoice.subscription) {
+    console.error('❌ no subscription')
+    return NextResponse.json({ error: 'No subscription' }, { status: 400 })
   }
+
+  const subscription = await stripe.subscriptions.retrieve(
+    invoice.subscription as string
+  )
+
+  const userId = subscription.metadata.user_id
+
+  if (!userId) {
+    console.error('❌ user_id manquant')
+    return NextResponse.json({ error: 'No user_id' }, { status: 400 })
+  }
+
+  // update plan
+  await supabase
+    .from('profiles')
+    .update({ plan: 'business' })
+    .eq('id', userId)
+
+  // increment funding
+  await supabase.rpc('increment_funding', {
+    amount: 5,
+  })
+}
 
   return NextResponse.json({ received: true })
 }
