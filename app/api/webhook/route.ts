@@ -30,35 +30,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook error' }, { status: 400 })
   }
 
-  // 🎯 PAIEMENT RÉUSSI
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session
+  // 🎯 BON EVENT
+  if (event.type === 'invoice.payment_succeeded') {
+    const invoice = event.data.object as Stripe.Invoice
 
-    const userId = session.metadata?.user_id
+    // 🔥 récupérer metadata depuis subscription
+    const subscription = await stripe.subscriptions.retrieve(
+      invoice.subscription as string
+    )
+
+    const userId = subscription.metadata.user_id
 
     if (!userId) {
-      console.error('❌ user_id manquant dans metadata')
+      console.error('❌ user_id manquant')
       return NextResponse.json({ error: 'No user_id' }, { status: 400 })
     }
 
     // 🔥 UPDATE PLAN
-    const { error: updateError } = await supabase
+    await supabase
       .from('profiles')
-      .update({ plan: 'business' }) // ⚠️ mets "business" pas premium
+      .update({ plan: 'business' })
       .eq('id', userId)
 
-    if (updateError) {
-      console.error('❌ update error:', updateError)
-    }
-
     // 🔥 AJOUT CAGNOTTE
-    const { error: fundingError } = await supabase.rpc('increment_funding', {
+    await supabase.rpc('increment_funding', {
       amount: 5,
     })
-
-    if (fundingError) {
-      console.error('❌ funding error:', fundingError)
-    }
   }
 
   return NextResponse.json({ received: true })
