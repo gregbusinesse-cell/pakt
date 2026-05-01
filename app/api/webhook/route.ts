@@ -4,9 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-04-22.dahlia',
-})
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,37 +28,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook error' }, { status: 400 })
   }
 
-  // 🎯 BON EVENT
   if (event.type === 'invoice.payment_succeeded') {
-  const invoice = event.data.object as Stripe.Invoice
+    const invoice = event.data.object as any // ⚠️ FIX ICI
 
-  if (!invoice.subscription) {
-    console.error('❌ no subscription')
-    return NextResponse.json({ error: 'No subscription' }, { status: 400 })
+    const subscriptionId = invoice.subscription
+
+    if (!subscriptionId) {
+      console.error('❌ no subscription')
+      return NextResponse.json({ error: 'No subscription' }, { status: 400 })
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+
+    const userId = subscription.metadata.user_id
+
+    if (!userId) {
+      console.error('❌ user_id manquant')
+      return NextResponse.json({ error: 'No user_id' }, { status: 400 })
+    }
+
+    await supabase
+      .from('profiles')
+      .update({ plan: 'business' })
+      .eq('id', userId)
+
+    await supabase.rpc('increment_funding', {
+      amount: 5,
+    })
   }
-
-  const subscription = await stripe.subscriptions.retrieve(
-    invoice.subscription as string
-  )
-
-  const userId = subscription.metadata.user_id
-
-  if (!userId) {
-    console.error('❌ user_id manquant')
-    return NextResponse.json({ error: 'No user_id' }, { status: 400 })
-  }
-
-  // update plan
-  await supabase
-    .from('profiles')
-    .update({ plan: 'business' })
-    .eq('id', userId)
-
-  // increment funding
-  await supabase.rpc('increment_funding', {
-    amount: 5,
-  })
-}
 
   return NextResponse.json({ received: true })
 }
