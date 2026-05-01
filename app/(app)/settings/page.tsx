@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Check, ChevronRight, Crown } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { createClient } from '@/lib/supabase/client'
 
 type TabKey = 'plans' | 'events' | 'news' | 'legal'
 
@@ -111,8 +112,23 @@ export default function SettingsPage() {
     setUpgrading(true)
 
     try {
-      const response = await fetch('/api/checkout', { method: 'POST' })
-      const data = await response.json()
+      const supabase = createClient()
+const {
+  data: { session },
+} = await supabase.auth.getSession()
+
+if (!session?.access_token) {
+  throw new Error('Non authentifié')
+}
+
+const response = await fetch('/api/checkout', {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${session.access_token}`,
+  },
+})
+
+const data = await response.json()
 
       if (!response.ok) throw new Error(data.error || 'Erreur lors de la création du paiement')
       if (!data.url) throw new Error('URL de paiement introuvable')
