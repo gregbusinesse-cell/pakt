@@ -26,13 +26,15 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET!
     )
   } catch (err) {
-    console.error('❌ Webhook signature error:', err)
+    console.error('❌ signature error:', err)
     return NextResponse.json({ error: 'Webhook error' }, { status: 400 })
   }
 
-  // ✅ PAIEMENT INITIAL
+  // ✅ BON EVENT
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
+
+    console.log('🔥 paiement reçu')
 
     const userId = session.metadata?.user_id
 
@@ -41,27 +43,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No user_id' }, { status: 400 })
     }
 
-    console.log('🔥 paiement initial détecté')
-
+    // 🔥 update plan
     await supabase
       .from('profiles')
       .update({ plan: 'business' })
       .eq('id', userId)
 
-    await supabase.rpc('increment_funding', { amount: 5 })
-  }
-
-  // ✅ RENOUVELLEMENT (mensuel)
-  if (event.type === 'invoice.payment_succeeded') {
-    console.log('🔥 renouvellement abonnement')
-
+    // 🔥 increment funding
     const { data, error } = await supabase.rpc('increment_funding', {
-  amount: 5,
-})
+      amount: 5,
+    })
 
-console.log('RPC RESULT:', data)
-console.log('RPC ERROR:', error)
+    console.log('RESULT:', data)
+    console.log('ERROR:', error)
   }
 
+  return NextResponse.json({ received: true })
+}
   return NextResponse.json({ received: true })
 }
