@@ -1,49 +1,46 @@
+/app/api/checkout/route.ts
+
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    // 🔐 récupérer user connecté
+    // 🔥 récup user depuis header (fallback simple)
+    const authHeader = req.headers.get('authorization')
+
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies,
-      }
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data, error } = await supabase.auth.getUser(token)
 
-    if (!user) {
-      return NextResponse.json({ error: 'User non connecté' }, { status: 401 })
+    if (error || !data.user) {
+      return NextResponse.json({ error: 'User invalide' }, { status: 401 })
     }
 
-    // ⚠️ vérifs env
-    if (!process.env.STRIPE_PRICE_ID) {
-      return NextResponse.json({ error: 'PRICE_ID manquant' }, { status: 500 })
-    }
+    const user = data.user
 
-    if (!process.env.NEXT_PUBLIC_URL) {
-      return NextResponse.json({ error: 'URL manquante' }, { status: 500 })
-    }
-
-    // 🚀 création session
+    // 🚀 Stripe session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [
         {
-          price: process.env.STRIPE_PRICE_ID,
+          price: process.env.STRIPE_PRICE_ID!,
           quantity: 1,
         },
       ],
 
-      // 🔥 LE POINT CRUCIAL
+      // 🔥 CRUCIAL
       metadata: {
         user_id: user.id,
       },
