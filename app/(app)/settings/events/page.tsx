@@ -55,7 +55,7 @@ export default function SettingsEventsPage() {
             <div className="border-t border-dark-500 pt-4">
               <h2 className="font-semibold text-white">Pourquoi c’est différent</h2>
               <p className="mt-2">
-                Ici, tu ne viens pas “faire du réseau”. Tu viens rencontrer des personnes qui construisent vraiment,
+                Ici, tu viens rencontrer des personnes qui construisent vraiment,
                 avec une logique d’entraide, de progression et de résultats.
               </p>
             </div>

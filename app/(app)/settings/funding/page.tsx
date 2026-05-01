@@ -23,62 +23,78 @@ export default function SettingsFundingPage() {
   return (
     <div className="min-h-screen bg-dark text-white px-5 py-8">
       <main className="max-w-3xl mx-auto space-y-6">
-        <Link href="/settings" className="text-sm text-gold hover:text-gold-light">
-          Retour aux événements
-        </Link>
+        <div className="flex items-center gap-2">
+  <Link href="/settings" className="flex items-center gap-2 text-gold hover:text-gold-light">
+    <span className="text-lg">←</span>
+    <span className="text-sm">Retour</span>
+  </Link>
+</div>
 
-        <section className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 space-y-5">
-          <h1 className="text-2xl font-bold">Cagnotte du premier événement</h1>
+        <section className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 space-y-6">
 
-          <p className="text-sm leading-relaxed text-white/65">
-            Pour organiser le premier événement PAKT dans de bonnes conditions, nous avons fixé un
-            objectif de 3000€. Cette cagnotte sert à financer les éléments nécessaires pour créer un
-            événement sérieux, propre et utile pour les membres : réservation du lieu, organisation,
-            matériel, communication, accueil, logistique et expérience sur place.
-          </p>
+  <h1 className="text-2xl font-bold">Cagnotte du premier événement</h1>
 
-          <Section title="À quoi servira l’argent ?">
-            réservation du lieu, logistique, communication, matériel, organisation et amélioration
-            de l’expérience membre.
-          </Section>
+  <p className="text-sm leading-relaxed text-white/70">
+    Cette cagnotte permet de lancer le tout premier événement PAKT dans des conditions
+    à la hauteur de l’ambition du projet.
+  </p>
 
-          <div className="border-t border-dark-500 pt-4">
-            <h2 className="font-semibold text-white">Objectif : 3000€</h2>
-            <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-[#1e1e1e] border border-dark-500">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${completed ? 100 : progress}%` }}
-                transition={{ duration: 0.7, ease: 'easeOut' }}
-                className={`h-full rounded-full bg-gold ${
-                  completed ? 'animate-pulse shadow-[0_0_18px_rgba(212,168,83,0.55)]' : ''
-                }`}
-              />
-            </div>
-            <p className="mt-2 text-sm text-white/60">
-              {completed ? 'Objectif atteint' : `${currentAmount}€ / ${goal}€ collectés`}
-            </p>
-          </div>
+  <p className="text-sm leading-relaxed text-white/70">
+    L’objectif est simple : créer un environnement réel où les membres peuvent se rencontrer,
+    échanger, construire et accélérer leurs projets avec des personnes au même niveau d’exigence.
+  </p>
 
-          <Section title="Que se passe-t-il si l’objectif est atteint ?">
-            Lorsque l’objectif de 3000€ sera atteint, la cagnotte sera marquée comme complétée et
-            l’organisation du premier événement pourra être lancée.
-          </Section>
+  <div className="border-t border-dark-500 pt-4">
+    <h2 className="font-semibold text-white">À quoi sert concrètement la cagnotte ?</h2>
+    <p className="mt-2 text-sm text-white/60">
+      Accéder à de meilleurs lieux, proposer des intervenants plus expérimentés,
+      structurer les rencontres et offrir une expérience réellement utile pour chaque participant.
+    </p>
+  </div>
 
-          <Section title="Avantages contributeurs">
-            Les membres qui contribuent pourront bénéficier d’avantages lors des premiers événements
-            PAKT : accès prioritaire, visibilité renforcée, badge contributeur ou invitations
-            privilégiées selon l’organisation finale.
-          </Section>
+  <div className="border-t border-dark-500 pt-4">
+    <h2 className="font-semibold text-white">Pourquoi contribuer ?</h2>
+    <p className="mt-2 text-sm text-white/60">
+      Contribuer, c’est participer directement à la qualité des premiers événements
+      et faire partie des personnes qui posent les bases de l’écosystème PAKT.
+    </p>
+  </div>
 
-          <button
-            type="button"
-            onClick={contribute}
-            disabled={completed}
-            className="h-[48px] w-full rounded-[12px] bg-gold text-dark font-bold text-sm hover:bg-gold-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {completed ? 'Objectif atteint' : 'Contribuer à la cagnotte'}
-          </button>
-        </section>
+  <div className="border-t border-dark-500 pt-4">
+    <h2 className="font-semibold text-white">Avantages contributeurs</h2>
+    <p className="mt-2 text-sm text-white/60">
+      Accès prioritaire, meilleures conditions tarifaires, visibilité dans l’écosystème
+      et opportunités renforcées lors des premiers événements.
+    </p>
+  </div>
+
+  <div className="border-t border-dark-500 pt-4">
+    <h2 className="font-semibold text-white">Objectif : 3000€</h2>
+
+    <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-[#1e1e1e] border border-dark-500">
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${completed ? 100 : progress}%` }}
+        transition={{ duration: 0.7 }}
+        className="h-full rounded-full bg-gold"
+      />
+    </div>
+
+    <p className="mt-2 text-sm text-white/60">
+      {completed ? 'Objectif atteint' : `${currentAmount}€ / ${goal}€ collectés`}
+    </p>
+  </div>
+
+  <button
+    type="button"
+    onClick={contribute}
+    disabled={completed}
+    className="h-[52px] w-full rounded-[12px] bg-gold text-dark font-bold text-sm hover:bg-gold-light transition-all active:scale-[0.98] disabled:opacity-50"
+  >
+    {completed ? 'Objectif atteint' : 'Participer au lancement des événements'}
+  </button>
+
+</section>
       </main>
     </div>
   )
