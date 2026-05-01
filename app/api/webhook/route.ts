@@ -55,7 +55,12 @@ export async function POST(req: NextRequest) {
   if (event.type === 'invoice.payment_succeeded') {
     console.log('🔥 renouvellement abonnement')
 
-    await supabase.rpc('increment_funding', { amount: 5 })
+    const { data, error } = await supabase.rpc('increment_funding', {
+  amount: 5,
+})
+
+console.log('RPC RESULT:', data)
+console.log('RPC ERROR:', error)
   }
 
   return NextResponse.json({ received: true })
