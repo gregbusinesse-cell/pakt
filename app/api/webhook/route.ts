@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook error' }, { status: 400 })
   }
 
-  // ✅ BON EVENT
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
 
@@ -43,13 +42,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No user_id' }, { status: 400 })
     }
 
-    // 🔥 update plan
     await supabase
       .from('profiles')
       .update({ plan: 'business' })
       .eq('id', userId)
 
-    // 🔥 increment funding
     const { data, error } = await supabase.rpc('increment_funding', {
       amount: 5,
     })
@@ -58,7 +55,5 @@ export async function POST(req: NextRequest) {
     console.log('ERROR:', error)
   }
 
-  return NextResponse.json({ received: true })
-}
   return NextResponse.json({ received: true })
 }
