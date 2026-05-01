@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     // 🔥 récupérer metadata depuis subscription
     const subscription = await stripe.subscriptions.retrieve(
-      invoice.subscription as string
+      invoice.subscription!
     )
 
     const userId = subscription.metadata.user_id
