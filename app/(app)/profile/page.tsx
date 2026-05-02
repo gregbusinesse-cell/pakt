@@ -532,21 +532,25 @@ export default function ProfilePage() {
   }
 
   const handleResetPassword = async () => {
-    if (!session?.user?.email) return
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
-        redirectTo: `${window.location.origin}/update-password`,
-      })
-
-      if (error) throw error
-
-      toast.success('Email de réinitialisation envoyé')
-      setResetPwdOpen(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur')
-    }
+  if (!session?.user?.email) {
+    toast.error('Email introuvable')
+    return
   }
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
+      redirectTo: 'https://pakt-sigma.vercel.app/update-password',
+    })
+
+    if (error) throw error
+
+    toast.success('Email de réinitialisation envoyé')
+    setResetPwdOpen(false)
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  }
+}
+
 
   const handleDeleteAccount = async () => {
     if (!session?.user) return
