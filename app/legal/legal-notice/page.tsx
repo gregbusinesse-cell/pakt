@@ -7,7 +7,7 @@ export default function MentionsLegalesPage() {
   const router = useRouter()
 
   return (
-    <div className="h-screen overflow-y-auto bg-dark text-white">
+    <div className="fixed inset-0 overflow-y-auto bg-dark text-white pb-24">
       <div className="px-5 pt-5">
         <button
           onClick={() => router.back()}
