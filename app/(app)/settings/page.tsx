@@ -160,7 +160,7 @@ export default function SettingsPage() {
         <div className="max-w-3xl mx-auto">
           <h1 className="text-2xl font-bold text-white">PAKT</h1>
 
-          <div className="mt-4 flex gap-5 border-b border-dark-500 overflow-x-auto">
+          <div className="mt-4 flex gap-5 border-b border-dark-500">
             {tabs.map((t) => {
               const active = tab === t.key
 
