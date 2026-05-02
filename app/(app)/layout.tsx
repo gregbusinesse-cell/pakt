@@ -91,12 +91,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (!session) return null
 
   return (
-  <div className="h-screen flex flex-col">
-    <div className="flex-1 overflow-y-auto pb-[80px]">
-      {children}
-    </div>
+  <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col">
+  <div className="flex-1 overflow-y-auto pb-[100px]">
+    {children}
+  </div>
 
-<nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-2">      {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+  <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-2">      {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
         const isActive = pathname === href
         const showBadge = href === '/matches' && unreadCount > 0
 
