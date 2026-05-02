@@ -55,6 +55,7 @@ function EventsTab() {
     className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 hover:scale-[1.01] transition-all duration-200"
   >
     <h2 className="text-xl font-bold text-white">Cagnotte événement</h2>
+
     <p className="mt-3 text-sm leading-relaxed text-white/60">
       Aidez-nous à financer le premier événement PAKT. Objectif : 3000€.
     </p>
@@ -68,6 +69,7 @@ function EventsTab() {
           className="h-full rounded-full bg-gold"
         />
       </div>
+
       <p className="mt-2 text-sm text-white/60">
         {currentAmount}€ / {FUNDING_GOAL}€ collectés
       </p>
@@ -89,7 +91,9 @@ function EventsTab() {
       ) : (
         <button
           type="button"
-          onClick={() => toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK)')}
+          onClick={() =>
+            toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK)')
+          }
           className="px-4 py-2 bg-gold text-black rounded-xl font-semibold"
         >
           Contribuer
