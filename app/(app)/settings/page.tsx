@@ -48,58 +48,56 @@ function EventsTab() {
         </Link>
       </motion.div>
 
-      {/* CARD 2 — FUNDING */}
-      <motion.div
-        whileHover={{ scale: 1.01, y: -1 }}
-        transition={{ duration: 0.2 }}
-        className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 hover:scale-[1.01] transition-all duration-200"
-      >
-        <h2 className="text-xl font-bold text-white">Cagnotte événement</h2>
-        <p className="mt-3 text-sm leading-relaxed text-white/60">
-          Aidez-nous à financer le premier événement PAKT. Objectif : 3000€.
-        </p>
+     {false && (
+  <motion.div
+    whileHover={{ scale: 1.01, y: -1 }}
+    transition={{ duration: 0.2 }}
+    className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 hover:scale-[1.01] transition-all duration-200"
+  >
+    <h2 className="text-xl font-bold text-white">Cagnotte événement</h2>
+    <p className="mt-3 text-sm leading-relaxed text-white/60">
+      Aidez-nous à financer le premier événement PAKT. Objectif : 3000€.
+    </p>
 
-        <div className="mt-4">
-          <div className="h-3 w-full overflow-hidden rounded-full bg-[#1e1e1e] border border-dark-500">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.7, ease: 'easeOut' }}
-              className="h-full rounded-full bg-gold"
-            />
-          </div>
-          <p className="mt-2 text-sm text-white/60">
-            {currentAmount}€ / {FUNDING_GOAL}€ collectés
-          </p>
-        </div>
+    <div className="mt-4">
+      <div className="h-3 w-full overflow-hidden rounded-full bg-[#1e1e1e] border border-dark-500">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+          className="h-full rounded-full bg-gold"
+        />
+      </div>
+      <p className="mt-2 text-sm text-white/60">
+        {currentAmount}€ / {FUNDING_GOAL}€ collectés
+      </p>
+    </div>
 
-        <div className="flex gap-3 mt-4 flex-wrap">
-          <Link href="/settings/funding">
-            <button className="px-4 py-2 border border-gold text-gold rounded-xl">
-              En savoir plus
-            </button>
-          </Link>
+    <div className="flex gap-3 mt-4 flex-wrap">
+      <Link href="/settings/funding">
+        <button className="px-4 py-2 border border-gold text-gold rounded-xl">
+          En savoir plus
+        </button>
+      </Link>
 
-          {stripeLink ? (
-            <a href={stripeLink} target="_blank" rel="noreferrer">
-              <button className="px-4 py-2 bg-gold text-black rounded-xl font-semibold">
-                Contribuer
-              </button>
-            </a>
-          ) : (
-            <button
-              type="button"
-              onClick={() => toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK)')}
-              className="px-4 py-2 bg-gold text-black rounded-xl font-semibold"
-            >
-              Contribuer
-            </button>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
-  )
-}
+      {stripeLink ? (
+        <a href={stripeLink} target="_blank" rel="noreferrer">
+          <button className="px-4 py-2 bg-gold text-black rounded-xl font-semibold">
+            Contribuer
+          </button>
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={() => toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK)')}
+          className="px-4 py-2 bg-gold text-black rounded-xl font-semibold"
+        >
+          Contribuer
+        </button>
+      )}
+    </div>
+  </motion.div>
+)}
 
 export default function SettingsPage() {
   const { profile } = useAppStore()
