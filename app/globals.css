@@ -20,18 +20,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
-  height: 100%;
-  height: -webkit-fill-available;
-  overscroll-behavior: none;
-  background: var(--dark);
+html,
+body {
+  min-height: 100%;
 }
 
-/* Prevent body scroll on mobile */
 body {
-  position: fixed;
-  width: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Custom scrollbar */

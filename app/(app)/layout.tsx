@@ -89,7 +89,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex flex-col min-h-screen bg-dark text-white">
-      <main className="flex-1 overflow-y-auto pb-[100px]">
+      <main className="flex-1 pb-[100px]">
         {children}
       </main>
 
