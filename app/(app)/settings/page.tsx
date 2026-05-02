@@ -1,6 +1,6 @@
 'use client'
 
-// app/settings/page.tsx
+// app/(app)/settings/page.tsx
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -17,7 +17,6 @@ const currentAmount = 0
 
 function EventsTab() {
   const progress = Math.min(100, Math.max(0, (currentAmount / FUNDING_GOAL) * 100))
-
   const stripeLink = process.env.NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK
 
   return (
@@ -29,7 +28,6 @@ function EventsTab() {
       transition={{ duration: 0.18 }}
       className="space-y-4 pb-32"
     >
-      {/* CARD 1 — EVENTS */}
       <motion.div
         whileHover={{ scale: 1.01, y: -1 }}
         transition={{ duration: 0.2 }}
@@ -48,60 +46,63 @@ function EventsTab() {
         </Link>
       </motion.div>
 
-     {false && (
-  <motion.div
-    whileHover={{ scale: 1.01, y: -1 }}
-    transition={{ duration: 0.2 }}
-    className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 hover:scale-[1.01] transition-all duration-200"
-  >
-    <h2 className="text-xl font-bold text-white">Cagnotte événement</h2>
-
-    <p className="mt-3 text-sm leading-relaxed text-white/60">
-      Aidez-nous à financer le premier événement PAKT. Objectif : 3000€.
-    </p>
-
-    <div className="mt-4">
-      <div className="h-3 w-full overflow-hidden rounded-full bg-[#1e1e1e] border border-dark-500">
+      {false && (
         <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
-          className="h-full rounded-full bg-gold"
-        />
-      </div>
-
-      <p className="mt-2 text-sm text-white/60">
-        {currentAmount}€ / {FUNDING_GOAL}€ collectés
-      </p>
-    </div>
-
-    <div className="flex gap-3 mt-4 flex-wrap">
-      <Link href="/settings/funding">
-        <button className="px-4 py-2 border border-gold text-gold rounded-xl">
-          En savoir plus
-        </button>
-      </Link>
-
-      {stripeLink ? (
-        <a href={stripeLink} target="_blank" rel="noreferrer">
-          <button className="px-4 py-2 bg-gold text-black rounded-xl font-semibold">
-            Contribuer
-          </button>
-        </a>
-      ) : (
-        <button
-          type="button"
-          onClick={() =>
-            toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK)')
-          }
-          className="px-4 py-2 bg-gold text-black rounded-xl font-semibold"
+          whileHover={{ scale: 1.01, y: -1 }}
+          transition={{ duration: 0.2 }}
+          className="bg-dark-200 border border-gold/20 rounded-[12px] p-5 hover:scale-[1.01] transition-all duration-200"
         >
-          Contribuer
-        </button>
+          <h2 className="text-xl font-bold text-white">Cagnotte événement</h2>
+
+          <p className="mt-3 text-sm leading-relaxed text-white/60">
+            Aidez-nous à financer le premier événement PAKT. Objectif : 3000€.
+          </p>
+
+          <div className="mt-4">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-[#1e1e1e] border border-dark-500">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.7, ease: 'easeOut' }}
+                className="h-full rounded-full bg-gold"
+              />
+            </div>
+
+            <p className="mt-2 text-sm text-white/60">
+              {currentAmount}€ / {FUNDING_GOAL}€ collectés
+            </p>
+          </div>
+
+          <div className="flex gap-3 mt-4 flex-wrap">
+            <Link href="/settings/funding">
+              <button className="px-4 py-2 border border-gold text-gold rounded-xl">
+                En savoir plus
+              </button>
+            </Link>
+
+            {stripeLink ? (
+              <a href={stripeLink} target="_blank" rel="noreferrer">
+                <button className="px-4 py-2 bg-gold text-black rounded-xl font-semibold">
+                  Contribuer
+                </button>
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_EVENT_PAYMENT_LINK)')
+                }
+                className="px-4 py-2 bg-gold text-black rounded-xl font-semibold"
+              >
+                Contribuer
+              </button>
+            )}
+          </div>
+        </motion.div>
       )}
-    </div>
-  </motion.div>
-)}
+    </motion.div>
+  )
+}
 
 export default function SettingsPage() {
   const { profile } = useAppStore()
@@ -115,22 +116,22 @@ export default function SettingsPage() {
 
     try {
       const supabase = createClient()
-const {
-  data: { session },
-} = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-if (!session?.access_token) {
-  throw new Error('Non authentifié')
-}
+      if (!session?.access_token) {
+        throw new Error('Non authentifié')
+      }
 
-const response = await fetch('/api/checkout', {
-  method: 'POST',
-  headers: {
-    Authorization: `Bearer ${session.access_token}`,
-  },
-})
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
 
-const data = await response.json()
+      const data = await response.json()
 
       if (!response.ok) throw new Error(data.error || 'Erreur lors de la création du paiement')
       if (!data.url) throw new Error('URL de paiement introuvable')
@@ -341,13 +342,13 @@ const data = await response.json()
                 className="space-y-2 pb-32"
               >
                 {[
-  { label: 'Mentions légales', href: '/legal/legal-notice' },
-  { label: "Conditions générales d’utilisation", href: '/legal/cgu' },
-  { label: 'Politique de confidentialité', href: '/legal/privacy' },
-  { label: 'Conditions générales de vente', href: '/legal/billing' },
-  { label: 'Remboursement et résiliation', href: '/legal/remboursement-resiliation' },
-  { label: 'Politique cookies', href: '/legal/cookies' },
-].map((item) => (
+                  { label: 'Mentions légales', href: '/legal/legal-notice' },
+                  { label: "Conditions générales d’utilisation", href: '/legal/cgu' },
+                  { label: 'Politique de confidentialité', href: '/legal/privacy' },
+                  { label: 'Conditions générales de vente', href: '/legal/billing' },
+                  { label: 'Remboursement et résiliation', href: '/legal/remboursement-resiliation' },
+                  { label: 'Politique cookies', href: '/legal/cookies' },
+                ].map((item) => (
                   <a
                     key={item.href}
                     href={item.href}
