@@ -18,7 +18,6 @@ const FREE_SWIPE_LIMIT = 10
 const FREE_MESSAGE_LIMIT = 1
 const STACK_RENDER_COUNT = 3
 
-
 type ProfileWithLocation = Profile & {
   city_lat?: number | null
   city_lng?: number | null
@@ -47,11 +46,13 @@ function PaywallModal({
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+
       <div className="absolute inset-0 flex items-center justify-center px-5">
         <div className="w-full max-w-md bg-dark-200 border border-dark-500 rounded-[12px] p-5">
           <h3 className="text-white font-semibold text-lg">Continuer avec PAKT Business</h3>
+
           <p className="text-white/60 text-sm mt-2 leading-relaxed">
-            Vous avez atteint la limite gratuite. Passez à PAKT Business pour continuer a swiper et
+            Vous avez atteint la limite gratuite. Passez à PAKT Business pour continuer à swiper et
             envoyer des messages sans limite.
           </p>
 
@@ -61,7 +62,7 @@ function PaywallModal({
               onClick={onUpgrade}
               className="h-[48px] w-full flex items-center justify-center rounded-[12px] bg-gold text-dark font-bold hover:bg-gold-light transition-colors"
             >
-              Passer a PAKT Business
+              Passer à PAKT Business
             </button>
 
             <button
@@ -69,7 +70,7 @@ function PaywallModal({
               onClick={onClose}
               className="h-[48px] w-full flex items-center justify-center rounded-[12px] border border-dark-500 bg-[#1e1e1e] text-white/70 hover:text-white hover:border-dark-400 transition-colors"
             >
-              Pas interesse
+              Pas intéressé
             </button>
           </div>
         </div>
@@ -108,7 +109,10 @@ export default function SwipePage() {
 
   const isFree = profile?.plan === 'free'
   const profileMessagesToday =
-    profileWithLocation?.last_message_date === todayKey ? profileWithLocation?.messages_today || 0 : 0
+    profileWithLocation?.last_message_date === todayKey
+      ? profileWithLocation?.messages_today || 0
+      : 0
+
   const reachedMessageLimit = isFree && profileMessagesToday >= FREE_MESSAGE_LIMIT
   const reachedSwipeLimit = isFree && swipesCount >= FREE_SWIPE_LIMIT
 
@@ -119,7 +123,11 @@ export default function SwipePage() {
       try {
         localStorage.setItem(
           'pakt:limits',
-          JSON.stringify({ date: countsDate, swipesCount: nextSwipes, messagesCount: nextMessages })
+          JSON.stringify({
+            date: countsDate,
+            swipesCount: nextSwipes,
+            messagesCount: nextMessages,
+          })
         )
       } catch {}
     },
@@ -132,8 +140,6 @@ export default function SwipePage() {
 
   const getOrCreateConversation = useCallback(
     async (otherUserId: string) => {
-      console.log('[SWIPE] RPC get_or_create_conversation', { sessionUserId, otherUserId })
-
       if (!sessionUserId || !otherUserId) {
         throw new Error('IDs conversation manquants')
       }
@@ -151,7 +157,6 @@ export default function SwipePage() {
         throw new Error('Conversation ID vide')
       }
 
-      console.log('[SWIPE] conversation ready', data)
       return data as string
     },
     [db, sessionUserId]
@@ -159,12 +164,8 @@ export default function SwipePage() {
 
   const createConversationForMatch = useCallback(
     async (otherUserId: string) => {
-      console.log('[SWIPE] createConversationForMatch', { otherUserId })
-
       try {
-        const conversationId = await getOrCreateConversation(otherUserId)
-        console.log('[SWIPE] match conversation created/found', { conversationId })
-        return conversationId
+        return await getOrCreateConversation(otherUserId)
       } catch (error) {
         console.error('[SWIPE] createConversationForMatch error', error)
         toast.error('Erreur création conversation match')
@@ -174,111 +175,7 @@ export default function SwipePage() {
     [getOrCreateConversation]
   )
 
-  const sendDirectMessage = useCallback(
-  async (targetProfile: Profile, content: string) => {
-      console.log('[SWIPE] sendDirectMessage start', {
-        sessionUserId,
-        targetProfileId: targetProfile?.id,
-        content: content || '',
-      })
-
-      if (!sessionUserId || !profile || !targetProfile?.id) {
-        console.error('[SWIPE] sendDirectMessage missing data', {
-          sessionUserId,
-          profile,
-          targetProfile,
-        })
-        toast.error('Impossible envoyer le message')
-        return false
-      }
-
-      const currentProfile = profile as ProfileWithLocation
-      const today = getTodayKey()
-      const currentMessagesToday =
-        currentProfile.last_message_date === today ? currentProfile.messages_today || 0 : 0
-
-      if (profile.plan === 'free' && currentMessagesToday >= FREE_MESSAGE_LIMIT) {
-        console.log('[SWIPE] message limit reached')
-        openPaywall()
-        return false
-      }
-
-      try {
-        const conversationId = await getOrCreateConversation(targetProfile.id)
-
-        const payload = {
-          conversation_id: conversationId,
-          sender_id: sessionUserId,
-          content,
-          message_type: 'text',
-          is_read: false,
-        }
-
-        console.log('[SWIPE] insert message payload', payload)
-
-        const { data: insertedMessage, error: messageError } = await db
-          .from('messages')
-          .insert(payload)
-          .select('*')
-          .single()
-
-        if (messageError) {
-          console.error('[SWIPE] message insert error', messageError)
-          toast.error(`Erreur message: ${messageError.message}`)
-          return false
-        }
-
-        console.log('[SWIPE] message inserted', insertedMessage)
-
-        if (profile.plan === 'free') {
-          const nextMessagesToday = currentMessagesToday + 1
-          const updatedProfile = {
-            ...profile,
-            messages_today: nextMessagesToday,
-            last_message_date: today,
-          } as Profile
-
-          setMessagesCount(nextMessagesToday)
-          persistCounts(swipesCount, nextMessagesToday)
-          setProfile(updatedProfile)
-
-          const { error: profileUpdateError } = await db
-            .from('profiles')
-            .update({
-              messages_today: nextMessagesToday,
-              last_message_date: today,
-            })
-            .eq('id', sessionUserId)
-
-          if (profileUpdateError) {
-            console.error('[SWIPE] profile message count update error', profileUpdateError)
-          }
-        }
-
-        router.push(`/chat/${conversationId}?userId=${targetProfile.id}&type=direct`)
-        return true
-      } catch (error) {
-        console.error('[SWIPE] sendDirectMessage catch', error)
-        toast.error('Erreur envoi message')
-        return false
-      }
-    },
-    [
-      db,
-      getOrCreateConversation,
-      openPaywall,
-      persistCounts,
-      profile,
-      router,
-      sessionUserId,
-      setProfile,
-      swipesCount,
-    ]
-  )
-
   const loadProfiles = useCallback(async () => {
-    console.log('[SWIPE] loadProfiles start', { sessionUserId })
-
     if (!sessionUserId) {
       setLoading(false)
       return
@@ -347,11 +244,6 @@ export default function SwipePage() {
       if (likesError) {
         console.error('[SWIPE] received likes select error', likesError)
       }
-
-      console.log('[SWIPE] profiles loaded', {
-        profilesCount: filteredProfiles.length,
-        likedMeIds: likesData,
-      })
 
       setLikedMeIds(new Set((likesData || []).map((like: { liker_id: string }) => like.liker_id)))
       setProfiles(filteredProfiles as Profile[])
@@ -455,7 +347,7 @@ export default function SwipePage() {
 
   if (sessionLoading) {
     return (
-      <div className="h-full flex items-center justify-center bg-dark">
+      <div className="min-h-[calc(100dvh-100px)] flex items-center justify-center bg-dark">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
           <p className="text-white/40">Chargement...</p>
@@ -469,31 +361,18 @@ export default function SwipePage() {
   const showInitialLoading = loading && profiles.length === 0
 
   const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
-    console.log('[SWIPE] handleSwipe start', {
-      dir,
-      sessionUserId,
-      myProfileId: profile?.id,
-      targetId: swipedProfile?.id,
-    })
-
     if (!sessionUserId || !profile || !swipedProfile?.id) {
-      console.error('[SWIPE] handleSwipe missing data', {
-        sessionUserId,
-        profile,
-        swipedProfile,
-      })
       toast.error('Swipe impossible')
       return
     }
 
     if (reachedSwipeLimit) {
-      console.log('[SWIPE] swipe limit reached')
       openPaywall()
       return
     }
 
     try {
-      const { data: swipeData, error: swipeError } = await db
+      const { error: swipeError } = await db
         .from('swipes')
         .upsert(
           {
@@ -505,15 +384,12 @@ export default function SwipePage() {
             onConflict: 'swiper_id,target_id',
           }
         )
-        .select('*')
 
       if (swipeError) {
         console.error('[SWIPE] swipe upsert error', swipeError)
         toast.error(`Erreur swipe: ${swipeError.message}`)
         return
       }
-
-      console.log('[SWIPE] swipe saved', swipeData)
 
       if (profile.plan === 'free') {
         const next = swipesCount + 1
@@ -524,16 +400,24 @@ export default function SwipePage() {
       setProfiles((prev) => prev.filter((item) => item.id !== swipedProfile.id))
 
       try {
-        const today = new Date().toISOString().split('T')[0]
+        const today = getTodayKey()
         const newSwipesCount =
           profile.last_swipe_date === today ? (profile.swipes_today || 0) + 1 : 1
 
-        const updatedProfile = { ...profile, swipes_today: newSwipesCount, last_swipe_date: today }
+        const updatedProfile = {
+          ...profile,
+          swipes_today: newSwipesCount,
+          last_swipe_date: today,
+        }
+
         setProfile(updatedProfile)
 
         const { error: profileUpdateError } = await db
           .from('profiles')
-          .update({ swipes_today: newSwipesCount, last_swipe_date: today })
+          .update({
+            swipes_today: newSwipesCount,
+            last_swipe_date: today,
+          })
           .eq('id', sessionUserId)
 
         if (profileUpdateError) {
@@ -545,28 +429,24 @@ export default function SwipePage() {
 
       if (dir !== 'right') return
 
-      const likePayload = {
-        liker_id: sessionUserId,
-        liked_id: swipedProfile.id,
-      }
-
-      console.log('[SWIPE] upsert like', likePayload)
-
-      const { data: likeData, error: likeError } = await db
+      const { error: likeError } = await db
         .from('likes')
-        .upsert(likePayload, {
-          onConflict: 'liker_id,liked_id',
-          ignoreDuplicates: true,
-        })
-        .select('*')
+        .upsert(
+          {
+            liker_id: sessionUserId,
+            liked_id: swipedProfile.id,
+          },
+          {
+            onConflict: 'liker_id,liked_id',
+            ignoreDuplicates: true,
+          }
+        )
 
       if (likeError) {
         console.error('[SWIPE] like upsert error', likeError)
         toast.error(`Erreur like: ${likeError.message}`)
         return
       }
-
-      console.log('[SWIPE] like saved', likeData)
 
       const { data: mutualLike, error: matchCheckError } = await db
         .from('likes')
@@ -581,43 +461,30 @@ export default function SwipePage() {
         return
       }
 
-      console.log('[SWIPE] mutual like result', mutualLike)
-
       if (mutualLike) {
-  const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
+        const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
 
-  // 🔹 Création du match (évite doublons)
-  const { error: matchInsertError } = await db
-    .from('matches')
-    .upsert(
-      {
-        user1_id,
-        user2_id,
-      },
-      {
-        onConflict: 'user1_id,user2_id',
+        const { error: matchInsertError } = await db.from('matches').upsert(
+          {
+            user1_id,
+            user2_id,
+          },
+          {
+            onConflict: 'user1_id,user2_id',
+          }
+        )
+
+        if (matchInsertError) {
+          console.error('[SWIPE] match insert error', matchInsertError)
+          toast.error(`Erreur match: ${matchInsertError.message}`)
+          return
+        }
+
+        await createConversationForMatch(swipedProfile.id)
+
+        setMatchedProfile(swipedProfile)
+        setShowMatch(true)
       }
-    )
-
-  if (matchInsertError) {
-    console.error('[SWIPE] match insert error', matchInsertError)
-    toast.error(`Erreur match: ${matchInsertError.message}`)
-    return
-  }
-
-  // 🔹 Création conversation
-  const conversationId = await createConversationForMatch(swipedProfile.id)
-
-  console.log('[SWIPE] MATCH CREATED', {
-    conversationId,
-    me: sessionUserId,
-    other: swipedProfile.id,
-  })
-
-  // 🔹 UI
-  setMatchedProfile(swipedProfile)
-  setShowMatch(true)
-}
     } catch (error) {
       console.error('[SWIPE] handleSwipe catch', error)
       toast.error('Erreur swipe')
@@ -625,19 +492,18 @@ export default function SwipePage() {
   }
 
   const handleMessageTap = async () => {
-  if (!currentProfile) return
+    if (!currentProfile) return
 
-  if (reachedMessageLimit) {
-    openPaywall()
-    return
+    if (reachedMessageLimit) {
+      openPaywall()
+      return
+    }
+
+    router.push(`/chat/new?userId=${currentProfile.id}`)
   }
 
-  // 👉 ouvrir chat sans envoyer message
-  router.push(`/chat/new?userId=${currentProfile.id}`)
-}
-
   return (
-    <div className="h-full flex flex-col bg-dark">
+    <div className="min-h-[calc(100dvh-100px)] flex flex-col bg-dark">
       <div className="flex items-center justify-between px-5 pt-5 pb-2 shrink-0">
         <h1 className="text-2xl font-black tracking-wider text-gold-gradient">PAKT</h1>
 
@@ -650,9 +516,9 @@ export default function SwipePage() {
         )}
       </div>
 
-      <div className="flex-1 relative px-4 pb-2">
+      <div className="flex-1 relative px-4 pb-2 min-h-[calc(100dvh-185px)]">
         {showInitialLoading ? (
-          <div className="h-full flex items-center justify-center">
+          <div className="min-h-[calc(100dvh-185px)] flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
               <div className="w-12 h-12 rounded-full border-2 border-gold border-t-transparent animate-spin" />
               <p className="text-white/40">Chargement...</p>
@@ -665,7 +531,7 @@ export default function SwipePage() {
         ) : profiles.length === 0 ? (
           <EmptyState onRefresh={loadProfiles} />
         ) : (
-          <div className="relative h-full">
+          <div className="relative h-full min-h-[calc(100dvh-185px)]">
             {stackForRender.map((item, index) => {
               const isTop = item.id === currentProfile?.id
               const zIndex = isTop ? 20 : 10 + index
@@ -712,7 +578,7 @@ export default function SwipePage() {
 
 function LimitReached({ onUpgrade }: { onUpgrade: () => void }) {
   return (
-    <div className="h-full flex flex-col items-center justify-center px-8 text-center">
+    <div className="min-h-[calc(100dvh-185px)] flex flex-col items-center justify-center px-8 text-center">
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -721,18 +587,20 @@ function LimitReached({ onUpgrade }: { onUpgrade: () => void }) {
         <div className="w-20 h-20 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center">
           <Crown size={32} className="text-gold" />
         </div>
+
         <div>
           <h2 className="text-2xl font-bold mb-2">Limite atteinte</h2>
           <p className="text-white/50 text-sm leading-relaxed">
             Vous avez atteint la limite gratuite.
             <br />
-            Passez a PAKT Business pour continuer.
+            Passez à PAKT Business pour continuer.
           </p>
         </div>
+
         <button onClick={onUpgrade} className="btn-primary max-w-xs">
           <div className="flex items-center justify-center gap-2">
             <Crown size={16} />
-            Passer a PAKT Business
+            Passer à PAKT Business
           </div>
         </button>
       </motion.div>
@@ -742,17 +610,21 @@ function LimitReached({ onUpgrade }: { onUpgrade: () => void }) {
 
 function EmptyState({ onRefresh }: { onRefresh: () => void }) {
   return (
-    <div className="h-full flex flex-col items-center justify-center px-8 text-center">
+    <div className="min-h-[calc(100dvh-185px)] flex flex-col items-center justify-center px-8 text-center">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-col items-center gap-6"
       >
         <span className="text-6xl">🌍</span>
+
         <div>
-          <h2 className="text-2xl font-bold mb-2">C'est calme par ici</h2>
-          <p className="text-white/50 text-sm">Tu as vu tous les profils disponibles pour l'instant.</p>
+          <h2 className="text-2xl font-bold mb-2">C’est calme par ici</h2>
+          <p className="text-white/50 text-sm">
+            Tu as vu tous les profils disponibles pour l’instant.
+          </p>
         </div>
+
         <button onClick={onRefresh} className="flex items-center gap-2 btn-ghost">
           <RefreshCw size={16} />
           Actualiser
@@ -764,15 +636,15 @@ function EmptyState({ onRefresh }: { onRefresh: () => void }) {
 
 function EmailLocked() {
   return (
-    <div className="h-full flex flex-col items-center justify-center px-8 text-center">
+    <div className="min-h-[calc(100dvh-185px)] flex flex-col items-center justify-center px-8 text-center">
       <div className="w-20 h-20 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center mb-6">
         <Lock size={32} className="text-gold" />
       </div>
 
-      <h2 className="text-2xl font-bold mb-2">Swipe verrouille</h2>
+      <h2 className="text-2xl font-bold mb-2">Swipe verrouillé</h2>
 
       <p className="text-white/50 text-sm leading-relaxed">
-        Veuillez confirmer votre adresse email pour commencer a faire des rencontres.
+        Veuillez confirmer votre adresse email pour commencer à faire des rencontres.
       </p>
     </div>
   )
