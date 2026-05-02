@@ -7,10 +7,10 @@ export default function MentionsLegalesPage() {
   const router = useRouter()
 
   return (
-    <div className="min-h-screen bg-dark text-white">
+    <div className="h-screen overflow-y-auto bg-dark text-white">
       <div className="px-5 pt-5">
         <button
-          onClick={() => router.replace('/settings')}
+          onClick={() => router.back()}
           className="flex items-center gap-2 text-white/70 hover:text-white"
         >
           <ArrowLeft size={18} />
