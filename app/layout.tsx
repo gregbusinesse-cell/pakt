@@ -1,5 +1,3 @@
-// app/layout.tsx
-
 import type { Metadata, Viewport } from 'next'
 import { Sora } from 'next/font/google'
 import './globals.css'
@@ -46,6 +44,7 @@ export default function RootLayout({
       <body className="bg-dark text-white antialiased">
         <SupabaseProvider>
           {children}
+
           <Toaster
             position="top-center"
             toastOptions={{

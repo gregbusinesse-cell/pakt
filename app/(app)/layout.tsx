@@ -1,13 +1,10 @@
 'use client'
 
-// app/(app)/layout.tsx
-
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
-import { motion } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
 import { Flame, MessageCircle, User } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
@@ -91,44 +88,44 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (!session) return null
 
   return (
-  <div className="min-h-screen flex flex-col">
-    <div className="flex-1 overflow-y-auto pb-[100px]">
-      {children}
+    <div className="flex flex-col min-h-screen bg-dark text-white">
+      <main className="flex-1 overflow-y-auto pb-[100px]">
+        {children}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-2">
+        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+          const isActive = pathname === href
+          const showBadge = href === '/matches' && unreadCount > 0
+
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-label={label}
+              onClick={() => setUnreadCount(0)}
+              className={`flex flex-col items-center gap-1 px-5 py-1 rounded-xl ${
+                isActive ? 'text-gold' : 'text-white/40'
+              }`}
+            >
+              <div className="relative h-[22px] flex items-center justify-center">
+                {Icon ? (
+                  <>
+                    <Icon size={22} />
+                    {showBadge && (
+                      <span className="badge text-[10px] w-4 h-4">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-[10px] font-bold text-gold">PAKT</div>
+                )}
+              </div>
+            </Link>
+          )
+        })}
+      </nav>
     </div>
-
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-2">
-      {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
-        const isActive = pathname === href
-        const showBadge = href === '/matches' && unreadCount > 0
-
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-label={label}
-            onClick={() => setUnreadCount(0)}
-            className={`flex flex-col items-center gap-1 px-5 py-1 rounded-xl ${
-              isActive ? 'text-gold' : 'text-white/40'
-            }`}
-          >
-            <div className="relative h-[22px] flex items-center justify-center">
-              {Icon ? (
-                <>
-                  <Icon size={22} />
-                  {showBadge && (
-                    <span className="badge text-[10px] w-4 h-4">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <div className="text-[10px] font-bold text-gold">PAKT</div>
-              )}
-            </div>
-          </Link>
-        )
-      })}
-    </nav>
-  </div>
-)
+  )
 }
