@@ -339,10 +339,13 @@ const data = await response.json()
                 className="space-y-2 pb-32"
               >
                 {[
-                  { label: 'CGU', href: '/legal/cgu' },
-                  { label: 'Politique de confidentialité', href: '/legal/privacy' },
-                  { label: 'Paiement & abonnements', href: '/legal/billing' },
-                ].map((item) => (
+  { label: 'Mentions légales', href: '/legal/legal-notice' },
+  { label: "Conditions générales d’utilisation", href: '/legal/cgu' },
+  { label: 'Politique de confidentialité', href: '/legal/privacy' },
+  { label: 'Conditions générales de vente', href: '/legal/billing' },
+  { label: 'Remboursement et résiliation', href: '/legal/remboursement-resiliation' },
+  { label: 'Politique cookies', href: '/legal/cookies' },
+].map((item) => (
                   <a
                     key={item.href}
                     href={item.href}
