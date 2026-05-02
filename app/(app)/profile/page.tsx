@@ -553,25 +553,40 @@ export default function ProfilePage() {
 
 
   const handleDeleteAccount = async () => {
-    if (!session?.user) return
+  if (!session?.user) return
 
-    setDangerLoading(true)
+  setDangerLoading(true)
 
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', session.user.id)
+  try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
 
-      if (error) throw error
-
-      await supabase.auth.signOut()
-      router.push('/auth')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur')
-      setDangerLoading(false)
+    if (!accessToken) {
+      throw new Error('Session introuvable')
     }
+
+    const response = await fetch('/api/delete-account', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Erreur lors de la demande')
+    }
+
+    toast.success('Email de confirmation envoyé')
+    setDeleteOpen(false)
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  } finally {
+    setDangerLoading(false)
   }
+}
+
 
   const allDisplayPhotos = editing
     ? photoItems.map((item) => item.url).slice(0, MAX_PHOTOS)
