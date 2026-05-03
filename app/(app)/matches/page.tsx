@@ -136,6 +136,8 @@ export default function MatchesPage() {
   const db = supabase as any
   const router = useRouter()
   const { profile } = useAppStore()
+  const isFree = profile?.plan !== 'premium'
+  
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
