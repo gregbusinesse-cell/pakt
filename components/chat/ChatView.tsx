@@ -1,7 +1,5 @@
 'use client'
 
-// components/chat/ChatView.tsx
-
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
@@ -30,6 +28,9 @@ interface Props {
   otherUser: Profile
 }
 
+const MIN_AUDIO_SIZE_BYTES = 3000
+const MIN_RECORDING_MS = 700
+
 function getSupportedAudioMimeType() {
   if (typeof MediaRecorder === 'undefined') return ''
 
@@ -41,6 +42,12 @@ function getSupportedAudioMimeType() {
   ]
 
   return types.find((type) => MediaRecorder.isTypeSupported(type)) || ''
+}
+
+function getAudioExtension(mimeType: string) {
+  if (mimeType.includes('mp4')) return 'm4a'
+  if (mimeType.includes('ogg')) return 'ogg'
+  return 'webm'
 }
 
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
@@ -65,6 +72,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingRef = useRef(false)
+  const recordingStartedAtRef = useRef(0)
 
   const currentUserId = session?.user?.id
 
@@ -129,12 +137,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         },
         async (payload) => {
           const newMessage = payload.new as Message
-
           setMessages((prev) => [...prev, newMessage])
 
           if (currentUserId && newMessage.sender_id !== currentUserId) {
             const { error } = await db.from('messages').update({ is_read: true }).eq('id', newMessage.id)
-
             if (!error) refreshNotifications()
           }
 
@@ -199,8 +205,13 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       let fileSize: number | undefined
 
       if (file) {
+        if (type === 'audio' && file.size < MIN_AUDIO_SIZE_BYTES) {
+          toast.error('Message vocal trop court')
+          return
+        }
+
         if (file.size <= 0) {
-          toast.error('Audio vide, veuillez réessayer')
+          toast.error('Fichier vide, veuillez réessayer')
           return
         }
 
@@ -252,12 +263,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const startRecording = async () => {
     if (recordingRef.current || sending) return
 
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("L'enregistrement audio n'est pas supporté sur ce navigateur")
-      return
-    }
-
-    if (typeof MediaRecorder === 'undefined') {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       toast.error("L'enregistrement audio n'est pas supporté sur ce navigateur")
       return
     }
@@ -271,6 +277,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       mediaStreamRef.current = stream
       mediaRecorderRef.current = recorder
       recordingRef.current = true
+      recordingStartedAtRef.current = Date.now()
       setIsRecording(true)
 
       recorder.ondataavailable = (event) => {
@@ -287,6 +294,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       }
 
       recorder.onstop = async () => {
+        const durationMs = Date.now() - recordingStartedAtRef.current
         const chunks = audioChunksRef.current
         const blobType = recorder.mimeType || mimeType || 'audio/webm'
         const audioBlob = new Blob(chunks, { type: blobType })
@@ -299,12 +307,13 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         mediaRecorderRef.current = null
         audioChunksRef.current = []
 
-        if (audioBlob.size <= 0) {
-          toast.error('Audio vide, veuillez maintenir le bouton plus longtemps')
+        if (durationMs < MIN_RECORDING_MS || audioBlob.size < MIN_AUDIO_SIZE_BYTES) {
+          toast.error('Message vocal trop court')
           return
         }
 
-        const file = new File([audioBlob], `audio-${Date.now()}.webm`, {
+        const extension = getAudioExtension(blobType)
+        const file = new File([audioBlob], `audio-${Date.now()}.${extension}`, {
           type: blobType,
         })
 
@@ -570,9 +579,9 @@ function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
 
   if (msg.message_type === 'audio' && msg.file_url) {
     return (
-      <div className={`max-w-[75%] px-4 py-3 flex items-center gap-3 ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
+      <div className={`max-w-[85%] px-4 py-3 flex items-center gap-3 ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
         <Play size={16} />
-        <audio src={msg.file_url} controls className="h-8 w-40 accent-current" />
+        <audio src={msg.file_url} controls preload="metadata" className="h-8 w-44 max-w-full accent-current" />
       </div>
     )
   }
