@@ -1,12 +1,25 @@
 'use client'
 
+// components/chat/ChatView.tsx
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Message, Profile } from '@/lib/supabase/types'
 import { formatTime, formatFileSize } from '@/lib/utils'
-import { Send, Paperclip, Mic, Image, X, Download, FileText, Play, Square, ChevronLeft } from 'lucide-react'
+import {
+  Send,
+  Paperclip,
+  Mic,
+  Image,
+  X,
+  Download,
+  FileText,
+  Play,
+  Square,
+  ChevronLeft,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
@@ -15,6 +28,19 @@ interface Props {
   conversationId: string
   conversationType: 'match' | 'direct'
   otherUser: Profile
+}
+
+function getSupportedAudioMimeType() {
+  if (typeof MediaRecorder === 'undefined') return ''
+
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ]
+
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) || ''
 }
 
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
@@ -29,13 +55,16 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const recordingRef = useRef(false)
 
   const currentUserId = session?.user?.id
 
@@ -104,10 +133,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           setMessages((prev) => [...prev, newMessage])
 
           if (currentUserId && newMessage.sender_id !== currentUserId) {
-            const { error } = await db
-              .from('messages')
-              .update({ is_read: true })
-              .eq('id', newMessage.id)
+            const { error } = await db.from('messages').update({ is_read: true }).eq('id', newMessage.id)
 
             if (!error) refreshNotifications()
           }
@@ -119,16 +145,25 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
     return () => {
       supabase.removeChannel(channel)
+
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
   }, [conversationId, currentUserId, db, markMessagesAsRead, supabase, refreshNotifications])
 
   const uploadFile = async (file: File): Promise<string> => {
     if (!session?.user) throw new Error('Session manquante')
 
-    const ext = file.name.split('.').pop()
+    const ext = file.name.split('.').pop() || 'webm'
     const path = `messages/${session.user.id}/${Date.now()}.${ext}`
 
-    const { data, error } = await supabase.storage.from('messages').upload(path, file)
+    const { data, error } = await supabase.storage.from('messages').upload(path, file, {
+      contentType: file.type || 'audio/webm',
+      upsert: false,
+    })
 
     if (error) throw error
 
@@ -164,6 +199,11 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       let fileSize: number | undefined
 
       if (file) {
+        if (file.size <= 0) {
+          toast.error('Audio vide, veuillez réessayer')
+          return
+        }
+
         fileUrl = await uploadFile(file)
         fileName = file.name
         fileSize = file.size
@@ -209,6 +249,104 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     }
   }
 
+  const startRecording = async () => {
+    if (recordingRef.current || sending) return
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("L'enregistrement audio n'est pas supporté sur ce navigateur")
+      return
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      toast.error("L'enregistrement audio n'est pas supporté sur ce navigateur")
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = getSupportedAudioMimeType()
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+
+      audioChunksRef.current = []
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+      recordingRef.current = true
+      setIsRecording(true)
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onerror = () => {
+        toast.error('Erreur pendant l’enregistrement audio')
+        recordingRef.current = false
+        setIsRecording(false)
+        stream.getTracks().forEach((track) => track.stop())
+      }
+
+      recorder.onstop = async () => {
+        const chunks = audioChunksRef.current
+        const blobType = recorder.mimeType || mimeType || 'audio/webm'
+        const audioBlob = new Blob(chunks, { type: blobType })
+
+        recordingRef.current = false
+        setIsRecording(false)
+
+        stream.getTracks().forEach((track) => track.stop())
+        mediaStreamRef.current = null
+        mediaRecorderRef.current = null
+        audioChunksRef.current = []
+
+        if (audioBlob.size <= 0) {
+          toast.error('Audio vide, veuillez maintenir le bouton plus longtemps')
+          return
+        }
+
+        const file = new File([audioBlob], `audio-${Date.now()}.webm`, {
+          type: blobType,
+        })
+
+        await sendMessage(undefined, 'audio', file)
+      }
+
+      recorder.start(250)
+    } catch {
+      recordingRef.current = false
+      setIsRecording(false)
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
+      mediaRecorderRef.current = null
+      toast.error('Accès micro refusé')
+    }
+  }
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current
+
+    if (!recordingRef.current || !recorder) return
+
+    try {
+      if (recorder.state === 'recording') {
+        recorder.requestData()
+        recorder.stop()
+      }
+    } catch {
+      recordingRef.current = false
+      setIsRecording(false)
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
+      mediaRecorderRef.current = null
+      toast.error('Erreur arrêt enregistrement')
+    }
+  }
+
+  const cancelRecording = () => {
+    if (!recordingRef.current) return
+    stopRecording()
+  }
+
   const handleSendText = () => {
     if (!text.trim()) return
     sendMessage(text.trim())
@@ -226,35 +364,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     if (file) sendMessage(undefined, type, file)
     event.target.value = ''
     setShowAttachMenu(false)
-  }
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-
-      audioChunksRef.current = []
-
-      recorder.ondataavailable = (event) => audioChunksRef.current.push(event.data)
-      recorder.onstop = async () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        const file = new File([blob], 'audio.webm', { type: 'audio/webm' })
-        await sendMessage(undefined, 'audio', file)
-        stream.getTracks().forEach((track) => track.stop())
-      }
-
-      recorder.start()
-      setMediaRecorder(recorder)
-      setIsRecording(true)
-    } catch {
-      toast.error('Accès micro refusé')
-    }
-  }
-
-  const stopRecording = () => {
-    mediaRecorder?.stop()
-    setIsRecording(false)
-    setMediaRecorder(null)
   }
 
   return (
@@ -379,11 +488,24 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             </button>
           ) : (
             <button
+              type="button"
               onMouseDown={startRecording}
               onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              className={`p-2.5 rounded-xl shrink-0 transition-all ${
+              onMouseLeave={cancelRecording}
+              onTouchStart={(event) => {
+                event.preventDefault()
+                startRecording()
+              }}
+              onTouchEnd={(event) => {
+                event.preventDefault()
+                stopRecording()
+              }}
+              onTouchCancel={(event) => {
+                event.preventDefault()
+                cancelRecording()
+              }}
+              disabled={sending}
+              className={`p-2.5 rounded-xl shrink-0 transition-all disabled:opacity-50 ${
                 isRecording
                   ? 'bg-red-500 text-white animate-pulse-gold scale-110'
                   : 'bg-dark-300 text-white/50 hover:text-white'
@@ -395,8 +517,12 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         </div>
 
         {isRecording && (
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-red-400 text-xs mt-2">
-            🔴 Enregistrement en cours... Relâche pour envoyer
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center text-red-400 text-xs mt-2"
+          >
+            Enregistrement en cours... Relâche pour envoyer
           </motion.p>
         )}
       </div>
