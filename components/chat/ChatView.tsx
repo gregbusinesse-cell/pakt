@@ -50,6 +50,32 @@ function getAudioExtension(mimeType: string) {
   return 'webm'
 }
 
+function normalizeContentType(type: string) {
+  if (type.includes('audio/webm')) return 'audio/webm'
+  if (type.includes('audio/mp4')) return 'audio/mp4'
+  if (type.includes('audio/ogg')) return 'audio/ogg'
+  return type || 'application/octet-stream'
+}
+
+function getStoragePathFromUrl(fileUrl: string) {
+  const publicMarker = '/storage/v1/object/public/messages/'
+  const signedMarker = '/storage/v1/object/sign/messages/'
+
+  if (fileUrl.includes(publicMarker)) {
+    return decodeURIComponent(fileUrl.split(publicMarker)[1].split('?')[0])
+  }
+
+  if (fileUrl.includes(signedMarker)) {
+    return decodeURIComponent(fileUrl.split(signedMarker)[1].split('?')[0])
+  }
+
+  if (!fileUrl.startsWith('http')) {
+    return fileUrl
+  }
+
+  return null
+}
+
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
@@ -179,17 +205,13 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     const path = `messages/${session.user.id}/${Date.now()}.${ext}`
 
     const { data, error } = await supabase.storage.from('messages').upload(path, file, {
-      contentType: file.type || 'audio/webm',
+      contentType: normalizeContentType(file.type),
       upsert: false,
     })
 
     if (error) throw error
 
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from('messages').getPublicUrl(data.path)
-
-    return publicUrl
+    return data.path
   }
 
   const sendMessage = async (
@@ -253,14 +275,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         toast.error(`Erreur envoi: ${insertError.message}`)
         return
       }
-
-      await db
-        .from('conversations')
-        .update({
-          last_message: payload.content,
-          last_message_at: new Date().toISOString(),
-        })
-        .eq('id', conversationId)
 
       setMessages((prev) => [...prev, insertedMessage as Message])
       setText('')
@@ -350,7 +364,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
         const extension = getAudioExtension(blobType)
         const file = new File([blob], `audio-${Date.now()}.${extension}`, {
-          type: blobType,
+          type: normalizeContentType(blobType),
         })
 
         await sendMessage(undefined, 'audio', file)
@@ -612,6 +626,67 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   )
 }
 
+function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
+  const supabase = useMemo(() => createClient(), [])
+  const [audioSrc, setAudioSrc] = useState(msg.file_url || '')
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadAudioUrl = async () => {
+      if (!msg.file_url) return
+
+      const path = getStoragePathFromUrl(msg.file_url)
+
+      if (!path) {
+        setAudioSrc(msg.file_url)
+        return
+      }
+
+      const { data, error } = await supabase.storage
+        .from('messages')
+        .createSignedUrl(path, 60 * 60)
+
+      if (!mounted) return
+
+      if (error || !data?.signedUrl) {
+        console.error('audio signed url error', error)
+        setAudioSrc(msg.file_url)
+        return
+      }
+
+      setAudioSrc(data.signedUrl)
+    }
+
+    loadAudioUrl()
+
+    return () => {
+      mounted = false
+    }
+  }, [msg.file_url, supabase])
+
+  return (
+    <div className={`max-w-[85%] px-4 py-3 flex items-center gap-3 ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
+      <Play size={16} />
+      <audio
+        key={audioSrc}
+        src={audioSrc}
+        controls
+        preload="metadata"
+        className="h-8 w-44 max-w-full accent-current"
+        onLoadedMetadata={(event) => {
+          console.log('audio duration', event.currentTarget.duration)
+          console.log('audio src', audioSrc)
+        }}
+        onError={(event) => {
+          console.error('audio load error', event.currentTarget.error)
+          console.error('audio src', audioSrc)
+        }}
+      />
+    </div>
+  )
+}
+
 function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   if (msg.message_type === 'text') {
     return (
@@ -635,12 +710,7 @@ function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   }
 
   if (msg.message_type === 'audio' && msg.file_url) {
-    return (
-      <div className={`max-w-[85%] px-4 py-3 flex items-center gap-3 ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
-        <Play size={16} />
-        <audio src={msg.file_url} controls preload="metadata" className="h-8 w-44 max-w-full accent-current" />
-      </div>
-    )
+    return <AudioBubble msg={msg} isMine={isMine} />
   }
 
   if (msg.message_type === 'file' && msg.file_url) {
