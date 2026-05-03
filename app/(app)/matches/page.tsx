@@ -30,6 +30,13 @@ interface MatchRow {
   is_viewed?: boolean | null
 }
 
+interface LastMessageRow {
+  content: string | null
+  created_at: string | null
+  message_type: 'audio' | 'image' | 'file' | 'text' | string | null
+  sender_id: string | null
+}
+
 interface ConversationItem {
   id: string
   type: 'conversation'
@@ -49,6 +56,36 @@ interface MatchItem {
 
 function getPairKey(a: string, b: string) {
   return [a, b].sort().join(':')
+}
+
+function formatLastMessage(
+  lastMessage: LastMessageRow | null,
+  currentUserId: string,
+  otherUser: Profile
+) {
+  if (!lastMessage) return null
+
+  const isMine = lastMessage.sender_id === currentUserId
+  const otherUserName = otherUser.first_name || 'Cette personne'
+  const prefix = isMine ? 'Vous avez envoyé' : `${otherUserName} vous a envoyé`
+
+  if (lastMessage.message_type === 'audio') {
+    return `${prefix} un vocal`
+  }
+
+  if (lastMessage.message_type === 'image') {
+    return `${prefix} une photo`
+  }
+
+  if (lastMessage.message_type === 'file') {
+    return `${prefix} un document`
+  }
+
+  if (lastMessage.message_type === 'text' || !lastMessage.message_type) {
+    return lastMessage.content || null
+  }
+
+  return null
 }
 
 function BusinessBanner({ type }: { type: Tab }) {
@@ -185,18 +222,20 @@ export default function MatchesPage() {
 
           const { data: lastMessageData } = await db
             .from('messages')
-            .select('content, created_at')
+            .select('content, created_at, message_type, sender_id')
             .eq('conversation_id', conversation.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
 
+          const lastMessage = (lastMessageData || null) as LastMessageRow | null
+
           return {
             id: conversation.id,
             type: 'conversation' as const,
             otherUser,
-            lastMessage: lastMessageData?.content || null,
-            lastMessageAt: lastMessageData?.created_at || null,
+            lastMessage: formatLastMessage(lastMessage, currentUserId, otherUser),
+            lastMessageAt: lastMessage?.created_at || null,
           }
         })
       )
