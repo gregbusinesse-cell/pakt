@@ -14,6 +14,13 @@ export const metadata: Metadata = {
   title: 'PAKT – Connecte les ambitieux',
   description: 'La plateforme de mise en relation entre personnes ambitieuses.',
   manifest: '/manifest.json',
+
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
+
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
