@@ -259,9 +259,19 @@ export default function MessagesPage() {
           {rows.map((row) => {
             const name = row.otherUser?.first_name || row.otherUser?.email || 'Profil'
             const avatar = row.otherUser?.photos?.[0] || null
-            const lastText =
-              row.lastMessage?.content ||
-              (row.lastMessage?.message_type ? `[${row.lastMessage.message_type}]` : 'Nouvelle conversation')
+            const isMe = row.lastMessage?.sender_id === sessionUserId
+
+const lastText = (() => {
+  if (!row.lastMessage) return 'Nouvelle conversation'
+
+  const prefix = isMe ? 'Vous avez envoyé ' : `${name} vous a envoyé `
+
+  if (row.lastMessage.message_type === 'audio') return `${prefix}un vocal`
+  if (row.lastMessage.message_type === 'image') return `${prefix}une photo`
+  if (row.lastMessage.message_type === 'file') return `${prefix}un document`
+
+  return row.lastMessage.content || 'Nouveau message'
+})()
 
             return (
               <button
