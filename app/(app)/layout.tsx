@@ -22,32 +22,44 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const db = supabase as any
   const router = useRouter()
   const pathname = usePathname()
-  const { setProfile } = useAppStore()
+  const { setProfile, notificationsVersion } = useAppStore()
   const [totalNotifications, setTotalNotifications] = useState(0)
 
   const userId = session?.user?.id
 
-  const refreshNotifications = useCallback(async () => {
+  const refreshNotificationCount = useCallback(async () => {
     if (!userId) {
       setTotalNotifications(0)
       return
     }
 
-    const [{ count: unreadMatches }, { count: unreadMessages }] = await Promise.all([
-      db
-        .from('matches')
-        .select('id', { count: 'exact', head: true })
-        .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
-        .eq('is_viewed', false),
+    const { count: unreadMatches } = await db
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+      .eq('is_viewed', false)
 
-      db
+    const { data: conversationsData } = await db
+      .from('conversations')
+      .select('id')
+      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+
+    const conversationIds = ((conversationsData || []) as { id: string }[]).map((item) => item.id)
+
+    let unreadMessages = 0
+
+    if (conversationIds.length > 0) {
+      const { count } = await db
         .from('messages')
         .select('id', { count: 'exact', head: true })
+        .in('conversation_id', conversationIds)
         .neq('sender_id', userId)
-        .eq('is_read', false),
-    ])
+        .eq('is_read', false)
 
-    setTotalNotifications((unreadMatches || 0) + (unreadMessages || 0))
+      unreadMessages = count || 0
+    }
+
+    setTotalNotifications((unreadMatches || 0) + unreadMessages)
   }, [db, userId])
 
   useEffect(() => {
@@ -92,40 +104,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, [session, router, setProfile, supabase])
 
   useEffect(() => {
-    if (!userId) return
+    refreshNotificationCount()
+  }, [refreshNotificationCount, notificationsVersion])
 
-    refreshNotifications()
+  useEffect(() => {
+    if (!userId) return
 
     const channel = supabase
       .channel(`navbar-notifications-${userId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-        },
-        () => {
-          refreshNotifications()
-        }
+        { event: '*', schema: 'public', table: 'messages' },
+        () => refreshNotificationCount()
       )
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'matches',
-        },
-        () => {
-          refreshNotifications()
-        }
+        { event: '*', schema: 'public', table: 'matches' },
+        () => refreshNotificationCount()
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [refreshNotifications, supabase, userId])
+  }, [refreshNotificationCount, supabase, userId])
 
   if (!session) return null
 

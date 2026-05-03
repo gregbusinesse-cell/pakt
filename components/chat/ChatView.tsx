@@ -1,8 +1,6 @@
 'use client'
 
-// components/chat/ChatView.tsx
-
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,6 +9,7 @@ import { formatTime, formatFileSize } from '@/lib/utils'
 import { Send, Paperclip, Mic, Image, X, Download, FileText, Play, Square, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
+import { useAppStore } from '@/lib/store'
 
 interface Props {
   conversationId: string
@@ -23,6 +22,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
+  const { refreshNotifications } = useAppStore()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -46,13 +46,15 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const markMessagesAsRead = useCallback(async () => {
     if (!conversationId || !currentUserId) return
 
-    await db
+    const { error } = await db
       .from('messages')
       .update({ is_read: true })
       .eq('conversation_id', conversationId)
       .neq('sender_id', currentUserId)
       .eq('is_read', false)
-  }, [conversationId, currentUserId, db])
+
+    if (!error) refreshNotifications()
+  }, [conversationId, currentUserId, db, refreshNotifications])
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -102,7 +104,12 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           setMessages((prev) => [...prev, newMessage])
 
           if (currentUserId && newMessage.sender_id !== currentUserId) {
-            await db.from('messages').update({ is_read: true }).eq('id', newMessage.id)
+            const { error } = await db
+              .from('messages')
+              .update({ is_read: true })
+              .eq('id', newMessage.id)
+
+            if (!error) refreshNotifications()
           }
 
           setTimeout(scrollToBottom, 100)
@@ -113,7 +120,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [conversationId, currentUserId, db, markMessagesAsRead, supabase])
+  }, [conversationId, currentUserId, db, markMessagesAsRead, supabase, refreshNotifications])
 
   const uploadFile = async (file: File): Promise<string> => {
     if (!session?.user) throw new Error('Session manquante')
@@ -288,11 +295,17 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             const isMine = msg.sender_id === session?.user?.id
             const showTime =
               idx === 0 ||
-              new Date(msg.created_at).getTime() - new Date(messages[idx - 1].created_at).getTime() > 300000
+              new Date(msg.created_at).getTime() -
+                new Date(messages[idx - 1].created_at).getTime() >
+                300000
 
             return (
               <div key={msg.id}>
-                {showTime && <p className="text-center text-white/25 text-xs my-3">{formatTime(msg.created_at)}</p>}
+                {showTime && (
+                  <p className="text-center text-white/25 text-xs my-3">
+                    {formatTime(msg.created_at)}
+                  </p>
+                )}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -371,7 +384,9 @@ export default function ChatView({ conversationId, conversationType, otherUser }
               onTouchStart={startRecording}
               onTouchEnd={stopRecording}
               className={`p-2.5 rounded-xl shrink-0 transition-all ${
-                isRecording ? 'bg-red-500 text-white animate-pulse-gold scale-110' : 'bg-dark-300 text-white/50 hover:text-white'
+                isRecording
+                  ? 'bg-red-500 text-white animate-pulse-gold scale-110'
+                  : 'bg-dark-300 text-white/50 hover:text-white'
               }`}
             >
               {isRecording ? <Square size={18} /> : <Mic size={18} />}
