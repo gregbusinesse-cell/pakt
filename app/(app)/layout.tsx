@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -19,10 +19,36 @@ const NAV_ITEMS = [
 export default function AppLayout({ children }: { children: ReactNode }) {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
+  const db = supabase as any
   const router = useRouter()
   const pathname = usePathname()
   const { setProfile } = useAppStore()
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [totalNotifications, setTotalNotifications] = useState(0)
+
+  const userId = session?.user?.id
+
+  const refreshNotifications = useCallback(async () => {
+    if (!userId) {
+      setTotalNotifications(0)
+      return
+    }
+
+    const [{ count: unreadMatches }, { count: unreadMessages }] = await Promise.all([
+      db
+        .from('matches')
+        .select('id', { count: 'exact', head: true })
+        .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+        .eq('is_viewed', false),
+
+      db
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .neq('sender_id', userId)
+        .eq('is_read', false),
+    ])
+
+    setTotalNotifications((unreadMatches || 0) + (unreadMessages || 0))
+  }, [db, userId])
 
   useEffect(() => {
     if (!session?.user) return
@@ -63,47 +89,60 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
 
     loadProfile()
+  }, [session, router, setProfile, supabase])
+
+  useEffect(() => {
+    if (!userId) return
+
+    refreshNotifications()
 
     const channel = supabase
-      .channel('unread-messages')
+      .channel(`navbar-notifications-${userId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'messages',
-          filter: `sender_id=neq.${session.user.id}`,
         },
         () => {
-          setUnreadCount((prev) => prev + 1)
+          refreshNotifications()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'matches',
+        },
+        () => {
+          refreshNotifications()
         }
       )
       .subscribe()
 
     return () => {
-      channel.unsubscribe()
+      supabase.removeChannel(channel)
     }
-  }, [session, router, setProfile, supabase])
+  }, [refreshNotifications, supabase, userId])
 
   if (!session) return null
 
   return (
     <div className="flex flex-col min-h-screen bg-dark text-white">
-      <main className="flex-1 pb-[100px]">
-        {children}
-      </main>
+      <main className="flex-1 pb-[100px]">{children}</main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-2">
         {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href
-          const showBadge = href === '/matches' && unreadCount > 0
+          const showBadge = href === '/matches' && totalNotifications > 0
 
           return (
             <Link
               key={href}
               href={href}
               aria-label={label}
-              onClick={() => setUnreadCount(0)}
               className={`flex flex-col items-center gap-1 px-5 py-1 rounded-xl ${
                 isActive ? 'text-gold' : 'text-white/40'
               }`}
@@ -113,8 +152,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <>
                     <Icon size={22} />
                     {showBadge && (
-                      <span className="badge text-[10px] w-4 h-4">
-                        {unreadCount > 9 ? '9+' : unreadCount}
+                      <span className="absolute -top-2 -right-3 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-dark-100">
+                        {totalNotifications > 9 ? '9+' : totalNotifications}
                       </span>
                     )}
                   </>

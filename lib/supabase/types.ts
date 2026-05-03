@@ -1,6 +1,3 @@
-// lib/supabase/types.ts
-// Full TypeScript types for PAKT database
-
 export type Json =
   | string
   | number
@@ -95,14 +92,18 @@ export interface Database {
           user1_id: string
           user2_id: string
           created_at: string
+          is_viewed: boolean
         }
         Insert: {
           id?: string
           user1_id: string
           user2_id: string
           created_at?: string
+          is_viewed?: boolean
         }
-        Update: never
+        Update: {
+          is_viewed?: boolean
+        }
       }
       conversations: {
         Row: {

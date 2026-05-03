@@ -2,7 +2,7 @@
 
 // app/(app)/messages/page.tsx
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/supabase/types'
@@ -36,7 +36,7 @@ type ConversationRow = {
 }
 
 export default function MessagesPage() {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
 
@@ -48,124 +48,121 @@ export default function MessagesPage() {
   const sessionUserId = session?.user?.id
 
   const loadConversations = useCallback(async () => {
-  setLoading(true)
+    setLoading(true)
 
-  try {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
 
-    if (userError) {
-      console.error('[MESSAGES] getUser error', userError)
-      toast.error(`Erreur session: ${userError.message}`)
-      setRows([])
-      return
+      if (userError) {
+        toast.error(`Erreur session: ${userError.message}`)
+        setRows([])
+        return
+      }
+
+      const userId = user?.id || sessionUserId
+
+      if (!userId) {
+        setRows([])
+        return
+      }
+
+      const [{ data: conv1 }, { data: conv2 }] = await Promise.all([
+        db.from('conversations').select('*').eq('user1_id', userId),
+        db.from('conversations').select('*').eq('user2_id', userId),
+      ])
+
+      const conversationsMap = new Map<string, Conversation>()
+
+      for (const conversation of ([...(conv1 || []), ...(conv2 || [])] as Conversation[])) {
+        if (!conversation?.id) continue
+        conversationsMap.set(conversation.id, conversation)
+      }
+
+      const conversations = Array.from(conversationsMap.values()).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      )
+
+      const otherUserIds = Array.from(
+        new Set(
+          conversations
+            .map((conversation) =>
+              conversation.user1_id === userId ? conversation.user2_id : conversation.user1_id
+            )
+            .filter(Boolean)
+        )
+      )
+
+      const { data: profilesData } = otherUserIds.length
+        ? await db.from('profiles').select('*').in('id', otherUserIds)
+        : { data: [] }
+
+      const profileMap = new Map<string, Profile>(
+        ((profilesData || []) as Profile[]).map((item) => [item.id, item])
+      )
+
+      const result = await Promise.all(
+        conversations.map(async (conversation) => {
+          const otherUserId =
+            conversation.user1_id === userId ? conversation.user2_id : conversation.user1_id
+
+          const { data: lastMessagesData } = await db
+            .from('messages')
+            .select('*')
+            .eq('conversation_id', conversation.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+          const { count } = await db
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('conversation_id', conversation.id)
+            .neq('sender_id', userId)
+            .eq('is_read', false)
+
+          return {
+            conversation,
+            otherUser: profileMap.get(otherUserId) || null,
+            lastMessage: ((lastMessagesData || [])[0] as Message) || null,
+            unreadCount: count || 0,
+          }
+        })
+      )
+
+      result.sort((a, b) => {
+        const aDate = a.lastMessage?.created_at || a.conversation.created_at
+        const bDate = b.lastMessage?.created_at || b.conversation.created_at
+        return new Date(bDate || 0).getTime() - new Date(aDate || 0).getTime()
+      })
+
+      setRows(result)
+    } catch {
+      toast.error('Erreur chargement conversations')
+    } finally {
+      setLoading(false)
     }
+  }, [db, sessionUserId, supabase])
 
-    const userId = user?.id || sessionUserId
-    console.log('[MESSAGES] CURRENT USER ID =', userId)
+  const openConversation = async (row: ConversationRow) => {
+    if (!sessionUserId) return
 
-    if (!userId) {
-      setRows([])
-      return
-    }
+    await db
+      .from('messages')
+      .update({ is_read: true })
+      .eq('conversation_id', row.conversation.id)
+      .neq('sender_id', sessionUserId)
+      .eq('is_read', false)
 
-    const [{ data: conv1, error: err1 }, { data: conv2, error: err2 }] = await Promise.all([
-      db.from('conversations').select('*').eq('user1_id', userId),
-      db.from('conversations').select('*').eq('user2_id', userId),
-    ])
-
-    if (err1 || err2) {
-      console.error('[MESSAGES] conversations select error', { err1, err2 })
-      toast.error('Erreur conversations')
-    }
-
-    const conversationsMap = new Map<string, Conversation>()
-
-    for (const conversation of ([...(conv1 || []), ...(conv2 || [])] as Conversation[])) {
-      if (!conversation?.id) continue
-      conversationsMap.set(conversation.id, conversation)
-    }
-
-    const conversations = Array.from(conversationsMap.values()).sort(
-      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-    )
-
-    console.log(
-      '[MESSAGES] CONVERSATION USER IDS =',
-      conversations.map((c) => ({ id: c.id, user1_id: c.user1_id, user2_id: c.user2_id }))
-    )
-
-    const otherUserIds = Array.from(
-      new Set(
-        conversations
-          .map((c) => (c.user1_id === userId ? c.user2_id : c.user1_id))
-          .filter(Boolean)
+    setRows((prev) =>
+      prev.map((item) =>
+        item.conversation.id === row.conversation.id ? { ...item, unreadCount: 0 } : item
       )
     )
 
-    const { data: profilesData, error: profilesError } = otherUserIds.length
-      ? await db.from('profiles').select('*').in('id', otherUserIds)
-      : { data: [], error: null }
-
-    if (profilesError) {
-      console.error('[MESSAGES] profiles select error', profilesError)
-    }
-
-    const profileMap = new Map<string, Profile>(
-      ((profilesData || []) as Profile[]).map((item) => [item.id, item])
-    )
-
-    const result = await Promise.all(
-      conversations.map(async (conversation) => {
-        const otherUserId = conversation.user1_id === userId ? conversation.user2_id : conversation.user1_id
-
-        const { data: lastMessagesData, error: lastMessageError } = await db
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conversation.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-
-        if (lastMessageError) {
-          console.error('[MESSAGES] last message error', { conversationId: conversation.id, error: lastMessageError })
-        }
-
-        const { count, error: unreadError } = await db
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('conversation_id', conversation.id)
-          .neq('sender_id', userId)
-          .eq('is_read', false)
-
-        if (unreadError) {
-          console.error('[MESSAGES] unread count error', { conversationId: conversation.id, error: unreadError })
-        }
-
-        return {
-          conversation,
-          otherUser: profileMap.get(otherUserId) || null,
-          lastMessage: ((lastMessagesData || [])[0] as Message) || null,
-          unreadCount: count || 0,
-        }
-      })
-    )
-
-    result.sort((a, b) => {
-      const aDate = a.lastMessage?.created_at || a.conversation.created_at
-      const bDate = b.lastMessage?.created_at || b.conversation.created_at
-      return new Date(bDate || 0).getTime() - new Date(aDate || 0).getTime()
-    })
-
-    setRows(result)
-  } catch (error) {
-    console.error('[MESSAGES] loadConversations catch', error)
-    toast.error('Erreur chargement conversations')
-  } finally {
-    setLoading(false)
+    router.push(`/chat/${row.conversation.id}?userId=${row.otherUser?.id || ''}&type=direct`)
   }
-}, [db, sessionUserId, supabase])
 
   useEffect(() => {
     let mounted = true
@@ -201,9 +198,9 @@ export default function MessagesPage() {
   }, [router, supabase])
 
   useEffect(() => {
-  if (!sessionUserId) return
-  loadConversations()
-}, [sessionUserId])
+    if (!sessionUserId) return
+    loadConversations()
+  }, [loadConversations, sessionUserId])
 
   useEffect(() => {
     if (!sessionUserId) return
@@ -217,8 +214,7 @@ export default function MessagesPage() {
           schema: 'public',
           table: 'messages',
         },
-        (payload) => {
-          console.log('[MESSAGES] realtime messages change', payload)
+        () => {
           loadConversations()
         }
       )
@@ -229,14 +225,11 @@ export default function MessagesPage() {
           schema: 'public',
           table: 'conversations',
         },
-        (payload) => {
-          console.log('[MESSAGES] realtime conversations change', payload)
+        () => {
           loadConversations()
         }
       )
-      .subscribe((status) => {
-        console.log('[MESSAGES] realtime status', status)
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
@@ -274,11 +267,7 @@ export default function MessagesPage() {
               <button
                 key={row.conversation.id}
                 type="button"
-                onClick={() =>
-                  router.push(
-                    `/chat/${row.conversation.id}?userId=${row.otherUser?.id || ''}&type=direct`
-                  )
-                }
+                onClick={() => openConversation(row)}
                 className="w-full flex items-center gap-3 px-2 py-3 rounded-[8px] hover:bg-white/5 transition-colors text-left"
               >
                 <div className="relative w-14 h-14 rounded-full bg-dark-200 overflow-hidden shrink-0">
@@ -291,23 +280,22 @@ export default function MessagesPage() {
                   )}
 
                   {row.unreadCount > 0 && (
-                    <span className="absolute right-0 top-0 w-3 h-3 rounded-full bg-gold border-2 border-dark" />
+                    <span className="absolute right-0 top-0 w-3 h-3 rounded-full bg-red-500 border-2 border-dark" />
                   )}
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-semibold truncate">{name}</p>
+
                     {row.unreadCount > 0 && (
-                      <span className="min-w-5 h-5 px-1 rounded-full bg-gold text-dark text-xs font-bold flex items-center justify-center">
+                      <span className="min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
                         {row.unreadCount}
                       </span>
                     )}
                   </div>
 
-                  <p className="text-sm text-white/50 truncate mt-1">
-                    {lastText}
-                  </p>
+                  <p className="text-sm text-white/50 truncate mt-1">{lastText}</p>
                 </div>
               </button>
             )

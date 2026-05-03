@@ -23,10 +23,11 @@ interface ConversationRow {
 }
 
 interface MatchRow {
-  id?: string
+  id: string
   user1_id: string
   user2_id: string
   created_at?: string | null
+  is_viewed?: boolean | null
 }
 
 interface ConversationItem {
@@ -43,6 +44,7 @@ interface MatchItem {
   otherUser: Profile
   conversationId: string | null
   createdAt: string | null
+  isViewed: boolean
 }
 
 function getPairKey(a: string, b: string) {
@@ -112,17 +114,13 @@ export default function MatchesPage() {
     setLoading(true)
 
     try {
-      console.log('[MATCHES] load start', { currentUserId })
-
       const { data: conversationsData, error: conversationsError } = await db
-  .from('conversations')
-  .select('*')
-  .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
-  .order('created_at', { ascending: false })
-
+        .from('conversations')
+        .select('*')
+        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+        .order('created_at', { ascending: false })
 
       if (conversationsError) {
-        console.error('[MATCHES] conversations error', conversationsError)
         toast.error(`Erreur conversations: ${conversationsError.message}`)
         return
       }
@@ -133,7 +131,6 @@ export default function MatchesPage() {
         .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
 
       if (matchesError) {
-        console.error('[MATCHES] matches error', matchesError)
         toast.error(`Erreur matchs: ${matchesError.message}`)
         return
       }
@@ -141,14 +138,9 @@ export default function MatchesPage() {
       const conversationRows = (conversationsData || []) as ConversationRow[]
       const matchRows = (matchesData || []) as MatchRow[]
 
-      console.log('[MATCHES] conversations loaded', conversationRows)
-      console.log('[MATCHES] matches loaded', matchRows)
-
       const conversationOtherIds = conversationRows.map((conversation) =>
-        conversation.user1_id === currentUserId
-  ? conversation.user2_id
-  : conversation.user1_id
-        )
+        conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
+      )
 
       const matchOtherIds = matchRows.map((match) =>
         match.user1_id === currentUserId ? match.user2_id : match.user1_id
@@ -168,7 +160,6 @@ export default function MatchesPage() {
         .in('id', allUserIds)
 
       if (profilesError) {
-        console.error('[MATCHES] profiles error', profilesError)
         toast.error(`Erreur profils: ${profilesError.message}`)
         return
       }
@@ -181,60 +172,57 @@ export default function MatchesPage() {
       const conversationByPair = new Map<string, ConversationRow>()
 
       conversationRows.forEach((conversation) => {
-  conversationByPair.set(
-    getPairKey(conversation.user1_id, conversation.user2_id),
-    conversation
-  )
-})
+        conversationByPair.set(getPairKey(conversation.user1_id, conversation.user2_id), conversation)
+      })
 
       const conversationItemsRaw = await Promise.all(
-  conversationRows.map(async (conversation) => {
-    const otherUserId =
-      conversation.user1_id === currentUserId
-        ? conversation.user2_id
-        : conversation.user1_id
+        conversationRows.map(async (conversation) => {
+          const otherUserId =
+            conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
 
-    const otherUser = profileMap.get(otherUserId)
-    if (!otherUser) return null
-
-    const { data: lastMessageData } = await db
-      .from('messages')
-      .select('content, created_at')
-      .eq('conversation_id', conversation.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    return {
-      id: conversation.id,
-      type: 'conversation' as const,
-      otherUser,
-      lastMessage: lastMessageData?.content || null,
-      lastMessageAt: lastMessageData?.created_at || null,
-    }
-  })
-)
-
-const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
-      const matchItemsRaw = matchRows.map((match) => {
-          const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
           const otherUser = profileMap.get(otherUserId)
-
           if (!otherUser) return null
 
-          const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
-const conversationId = linkedConversation?.id || null
+          const { data: lastMessageData } = await db
+            .from('messages')
+            .select('content, created_at')
+            .eq('conversation_id', conversation.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
 
           return {
-            id: match.id || getPairKey(match.user1_id, match.user2_id),
-            type: 'match' as const,
+            id: conversation.id,
+            type: 'conversation' as const,
             otherUser,
-            conversationId,
-            createdAt: match.created_at || null,
+            lastMessage: lastMessageData?.content || null,
+            lastMessageAt: lastMessageData?.created_at || null,
           }
         })
+      )
 
-const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
+      const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
+
+      const matchItemsRaw = matchRows.map((match) => {
+        const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
+        const otherUser = profileMap.get(otherUserId)
+
+        if (!otherUser) return null
+
+        const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
+        const conversationId = linkedConversation?.id || null
+
+        return {
+          id: match.id,
+          type: 'match' as const,
+          otherUser,
+          conversationId,
+          createdAt: match.created_at || null,
+          isViewed: Boolean(match.is_viewed),
+        }
+      })
+
+      const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -248,43 +236,54 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
         return bTime - aTime
       })
 
-      console.log('[MATCHES] conversation items', conversationItems)
-      console.log('[MATCHES] match items', cleanMatchItems)
-
       setConversations(conversationItems)
       setMatches(cleanMatchItems)
-    } catch (error) {
-      console.error('[MATCHES] load catch', error)
+    } catch {
       toast.error('Erreur chargement messages')
     } finally {
       setLoading(false)
     }
-  }, [currentUserId, db, session?.user?.id])
+  }, [currentUserId, db])
 
   useEffect(() => {
     if (!currentUserId) return
     loadConversations()
   }, [currentUserId, loadConversations])
 
-  const openConversation = async (otherUserId: string, existingConversationId?: string | null) => {
+  const openConversation = async (
+    otherUserId: string,
+    existingConversationId?: string | null,
+    matchId?: string | null
+  ) => {
     if (!currentUserId || !otherUserId) return
 
     setOpeningConversation(otherUserId)
 
     try {
-      if (existingConversationId) {
-        router.push(`/chat/${existingConversationId || 'new'}?type=direct&userId=${otherUserId}`)
-        return
+      if (matchId) {
+        await db.from('matches').update({ is_viewed: true }).eq('id', matchId)
+        setMatches((prev) =>
+          prev.map((item) => (item.id === matchId ? { ...item, isViewed: true } : item))
+        )
       }
 
-      console.log('[MATCHES] RPC get_or_create_conversation', { otherUserId })
+      if (existingConversationId) {
+        await db
+          .from('messages')
+          .update({ is_read: true })
+          .eq('conversation_id', existingConversationId)
+          .neq('sender_id', currentUserId)
+          .eq('is_read', false)
+
+        router.push(`/chat/${existingConversationId}?type=direct&userId=${otherUserId}`)
+        return
+      }
 
       const { data: conversationId, error } = await db.rpc('get_or_create_conversation', {
         other_user_id: otherUserId,
       })
 
       if (error) {
-        console.error('[MATCHES] RPC conversation error', error)
         toast.error(`Erreur conversation: ${error.message}`)
         return
       }
@@ -295,18 +294,14 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
       }
 
       router.push(`/chat/${conversationId}?type=match&userId=${otherUserId}`)
-    } catch (error) {
-      console.error('[MATCHES] openConversation catch', error)
+    } catch {
       toast.error('Erreur ouverture conversation')
     } finally {
       setOpeningConversation(null)
     }
   }
 
-  const currentItems =
-  tab === 'matches'
-    ? (matches.length > 0 ? matches : conversations)
-    : conversations
+  const currentItems = tab === 'matches' ? (matches.length > 0 ? matches : conversations) : conversations
 
   return (
     <div className="h-full flex flex-col bg-dark">
@@ -378,6 +373,7 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
               const lastMessageAt = isConversation ? item.lastMessageAt : item.createdAt
               const conversationId = isConversation ? item.id : item.conversationId
               const isOpening = openingConversation === item.otherUser.id
+              const showUnreadMatch = item.type === 'match' && !item.isViewed
 
               return (
                 <motion.div
@@ -389,7 +385,13 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
                   <button
                     type="button"
                     disabled={isOpening}
-                    onClick={() => openConversation(item.otherUser.id, conversationId)}
+                    onClick={() =>
+                      openConversation(
+                        item.otherUser.id,
+                        conversationId,
+                        item.type === 'match' ? item.id : null
+                      )
+                    }
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">
@@ -411,6 +413,10 @@ const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
                         <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
                           ✓
                         </div>
+                      )}
+
+                      {showUnreadMatch && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                       )}
                     </div>
 
