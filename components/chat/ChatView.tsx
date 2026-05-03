@@ -29,24 +29,24 @@ interface Props {
 }
 
 const MIN_AUDIO_SIZE_BYTES = 3000
-const MIN_RECORDING_MS = 700
+const MIN_RECORDING_MS = 900
 
 function getSupportedAudioMimeType() {
   if (typeof MediaRecorder === 'undefined') return ''
 
-  const types = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/mp4',
-    'audio/ogg;codecs=opus',
-  ]
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+    return 'audio/webm;codecs=opus'
+  }
 
-  return types.find((type) => MediaRecorder.isTypeSupported(type)) || ''
+  if (MediaRecorder.isTypeSupported('audio/webm')) {
+    return 'audio/webm'
+  }
+
+  return ''
 }
 
 function getAudioExtension(mimeType: string) {
-  if (mimeType.includes('mp4')) return 'm4a'
-  if (mimeType.includes('ogg')) return 'ogg'
+  if (mimeType.includes('webm')) return 'webm'
   return 'webm'
 }
 
@@ -72,13 +72,25 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingRef = useRef(false)
+  const stoppingRef = useRef(false)
   const recordingStartedAtRef = useRef(0)
+  const ignoreMouseUntilRef = useRef(0)
 
   const currentUserId = session?.user?.id
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
+
+  const cleanupRecorder = useCallback(() => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    mediaStreamRef.current = null
+    mediaRecorderRef.current = null
+    audioChunksRef.current = []
+    recordingRef.current = false
+    stoppingRef.current = false
+    setIsRecording(false)
+  }, [])
 
   const markMessagesAsRead = useCallback(async () => {
     if (!conversationId || !currentUserId) return
@@ -261,94 +273,126 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   }
 
   const startRecording = async () => {
-    if (recordingRef.current || sending) return
+    if (recordingRef.current || stoppingRef.current || sending) return
 
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    if (!navigator.mediaDevices?.getUserMedia) {
       toast.error("L'enregistrement audio n'est pas supporté sur ce navigateur")
       return
     }
 
+    if (typeof MediaRecorder === 'undefined') {
+      toast.error("MediaRecorder n'est pas supporté sur ce navigateur")
+      return
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+
       const mimeType = getSupportedAudioMimeType()
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
 
       audioChunksRef.current = []
       mediaStreamRef.current = stream
       mediaRecorderRef.current = recorder
-      recordingRef.current = true
       recordingStartedAtRef.current = Date.now()
+      recordingRef.current = true
+      stoppingRef.current = false
       setIsRecording(true)
 
+      console.log('mimeType', recorder.mimeType || mimeType || 'default')
+
       recorder.ondataavailable = (event) => {
+        console.log('dataavailable size', event.data?.size || 0)
+
         if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data)
         }
       }
 
-      recorder.onerror = () => {
+      recorder.onerror = (event) => {
+        console.error('MediaRecorder error', event)
         toast.error('Erreur pendant l’enregistrement audio')
-        recordingRef.current = false
-        setIsRecording(false)
-        stream.getTracks().forEach((track) => track.stop())
+        cleanupRecorder()
       }
 
       recorder.onstop = async () => {
-        const durationMs = Date.now() - recordingStartedAtRef.current
-        const chunks = audioChunksRef.current
+        const chunks = [...audioChunksRef.current]
         const blobType = recorder.mimeType || mimeType || 'audio/webm'
-        const audioBlob = new Blob(chunks, { type: blobType })
+        const blob = new Blob(chunks, { type: blobType })
+        const durationMs = Date.now() - recordingStartedAtRef.current
 
-        recordingRef.current = false
-        setIsRecording(false)
+        console.log('chunks', chunks)
+        console.log('blob size', blob.size)
+        console.log('mimeType', blobType)
 
-        stream.getTracks().forEach((track) => track.stop())
-        mediaStreamRef.current = null
-        mediaRecorderRef.current = null
-        audioChunksRef.current = []
+        cleanupRecorder()
 
-        if (durationMs < MIN_RECORDING_MS || audioBlob.size < MIN_AUDIO_SIZE_BYTES) {
+        if (durationMs < MIN_RECORDING_MS) {
           toast.error('Message vocal trop court')
           return
         }
 
+        if (chunks.length === 0 || blob.size <= 0) {
+          toast.error('Aucun son capturé, veuillez réessayer')
+          return
+        }
+
+        if (blob.size < MIN_AUDIO_SIZE_BYTES) {
+          toast.error('Message vocal trop court ou silencieux')
+          return
+        }
+
         const extension = getAudioExtension(blobType)
-        const file = new File([audioBlob], `audio-${Date.now()}.${extension}`, {
+        const file = new File([blob], `audio-${Date.now()}.${extension}`, {
           type: blobType,
         })
 
         await sendMessage(undefined, 'audio', file)
       }
 
-      recorder.start(250)
-    } catch {
-      recordingRef.current = false
-      setIsRecording(false)
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
-      mediaStreamRef.current = null
-      mediaRecorderRef.current = null
-      toast.error('Accès micro refusé')
+      recorder.start()
+    } catch (error) {
+      console.error('startRecording error', error)
+      cleanupRecorder()
+      toast.error('Accès micro refusé ou micro indisponible')
     }
   }
 
   const stopRecording = () => {
     const recorder = mediaRecorderRef.current
 
-    if (!recordingRef.current || !recorder) return
+    if (!recordingRef.current || stoppingRef.current || !recorder) return
 
-    try {
-      if (recorder.state === 'recording') {
-        recorder.requestData()
-        recorder.stop()
+    stoppingRef.current = true
+
+    const elapsedMs = Date.now() - recordingStartedAtRef.current
+    const delay = Math.max(0, MIN_RECORDING_MS - elapsedMs)
+
+    window.setTimeout(() => {
+      const currentRecorder = mediaRecorderRef.current
+
+      if (!currentRecorder || currentRecorder.state !== 'recording') return
+
+      try {
+        currentRecorder.requestData()
+
+        window.setTimeout(() => {
+          if (currentRecorder.state === 'recording') {
+            currentRecorder.stop()
+          }
+        }, 120)
+      } catch (error) {
+        console.error('stopRecording error', error)
+        cleanupRecorder()
+        toast.error('Erreur arrêt enregistrement')
       }
-    } catch {
-      recordingRef.current = false
-      setIsRecording(false)
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
-      mediaStreamRef.current = null
-      mediaRecorderRef.current = null
-      toast.error('Erreur arrêt enregistrement')
-    }
+    }, delay)
   }
 
   const cancelRecording = () => {
@@ -424,6 +468,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
                     {formatTime(msg.created_at)}
                   </p>
                 )}
+
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -498,19 +543,31 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           ) : (
             <button
               type="button"
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onMouseLeave={cancelRecording}
+              onMouseDown={() => {
+                if (Date.now() < ignoreMouseUntilRef.current) return
+                startRecording()
+              }}
+              onMouseUp={() => {
+                if (Date.now() < ignoreMouseUntilRef.current) return
+                stopRecording()
+              }}
+              onMouseLeave={() => {
+                if (Date.now() < ignoreMouseUntilRef.current) return
+                cancelRecording()
+              }}
               onTouchStart={(event) => {
                 event.preventDefault()
+                ignoreMouseUntilRef.current = Date.now() + 700
                 startRecording()
               }}
               onTouchEnd={(event) => {
                 event.preventDefault()
+                ignoreMouseUntilRef.current = Date.now() + 700
                 stopRecording()
               }}
               onTouchCancel={(event) => {
                 event.preventDefault()
+                ignoreMouseUntilRef.current = Date.now() + 700
                 cancelRecording()
               }}
               disabled={sending}
