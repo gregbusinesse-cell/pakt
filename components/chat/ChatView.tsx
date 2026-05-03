@@ -55,7 +55,9 @@ function normalizeContentType(type: string) {
   if (type.includes('audio/webm')) return 'audio/webm'
   if (type.includes('audio/mp4')) return 'audio/mp4'
   if (type.includes('audio/ogg')) return 'audio/ogg'
-  return type || 'application/octet-stream'
+  if (type.startsWith('image/')) return type
+  if (type) return type
+  return 'application/octet-stream'
 }
 
 function getStoragePathFromUrl(fileUrl: string) {
@@ -84,6 +86,17 @@ function formatAudioTime(value: number) {
   const seconds = Math.floor(value % 60)
 
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function createMessageStoragePath(userId: string, file: File, type: Message['message_type']) {
+  const rawExtension = file.name.split('.').pop()
+  const extension = rawExtension || (type === 'audio' ? 'webm' : 'file')
+  const safeName = file.name
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9-_]/g, '-')
+    .slice(0, 50)
+
+  return `messages/${userId}/${Date.now()}-${safeName || type}.${extension}`
 }
 
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
@@ -208,11 +221,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     }
   }, [conversationId, currentUserId, db, markMessagesAsRead, supabase, refreshNotifications])
 
-  const uploadFile = async (file: File): Promise<string> => {
+  const uploadFile = async (file: File, type: Message['message_type']): Promise<string> => {
     if (!session?.user) throw new Error('Session manquante')
 
-    const ext = file.name.split('.').pop() || 'webm'
-    const path = `messages/${session.user.id}/${Date.now()}.${ext}`
+    const path = createMessageStoragePath(session.user.id, file, type)
 
     const { data, error } = await supabase.storage.from('messages').upload(path, file, {
       contentType: normalizeContentType(file.type),
@@ -259,7 +271,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           return
         }
 
-        fileUrl = await uploadFile(file)
+        fileUrl = await uploadFile(file, type)
         fileName = file.name
         fileSize = file.size
       }
@@ -329,18 +341,13 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       stoppingRef.current = false
       setIsRecording(true)
 
-      console.log('mimeType', recorder.mimeType || mimeType || 'default')
-
       recorder.ondataavailable = (event) => {
-        console.log('dataavailable size', event.data?.size || 0)
-
         if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data)
         }
       }
 
-      recorder.onerror = (event) => {
-        console.error('MediaRecorder error', event)
+      recorder.onerror = () => {
         toast.error('Erreur pendant l’enregistrement audio')
         cleanupRecorder()
       }
@@ -350,10 +357,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         const blobType = recorder.mimeType || mimeType || 'audio/webm'
         const blob = new Blob(chunks, { type: blobType })
         const durationMs = Date.now() - recordingStartedAtRef.current
-
-        console.log('chunks', chunks)
-        console.log('blob size', blob.size)
-        console.log('mimeType', blobType)
 
         cleanupRecorder()
 
@@ -381,8 +384,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       }
 
       recorder.start()
-    } catch (error) {
-      console.error('startRecording error', error)
+    } catch {
       cleanupRecorder()
       toast.error('Accès micro refusé ou micro indisponible')
     }
@@ -411,8 +413,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             currentRecorder.stop()
           }
         }, 120)
-      } catch (error) {
-        console.error('stopRecording error', error)
+      } catch {
         cleanupRecorder()
         toast.error('Erreur arrêt enregistrement')
       }
@@ -636,30 +637,23 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   )
 }
 
-function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
+function useMessageFileUrl(fileUrl: string | null) {
   const supabase = useMemo(() => createClient(), [])
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  const [audioSrc, setAudioSrc] = useState(msg.file_url || '')
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [loadingAudio, setLoadingAudio] = useState(true)
+  const [resolvedUrl, setResolvedUrl] = useState(fileUrl || '')
 
   useEffect(() => {
     let mounted = true
 
-    const loadAudioUrl = async () => {
-      if (!msg.file_url) {
-        setLoadingAudio(false)
+    const loadUrl = async () => {
+      if (!fileUrl) {
+        setResolvedUrl('')
         return
       }
 
-      const path = getStoragePathFromUrl(msg.file_url)
+      const path = getStoragePathFromUrl(fileUrl)
 
       if (!path) {
-        setAudioSrc(msg.file_url)
-        setLoadingAudio(false)
+        setResolvedUrl(fileUrl)
         return
       }
 
@@ -670,22 +664,31 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
       if (!mounted) return
 
       if (error || !data?.signedUrl) {
-        console.error('audio signed url error', error)
-        setAudioSrc(msg.file_url)
-        setLoadingAudio(false)
+        console.error('file signed url error', error)
+        setResolvedUrl(fileUrl)
         return
       }
 
-      setAudioSrc(data.signedUrl)
-      setLoadingAudio(false)
+      setResolvedUrl(data.signedUrl)
     }
 
-    loadAudioUrl()
+    loadUrl()
 
     return () => {
       mounted = false
     }
-  }, [msg.file_url, supabase])
+  }, [fileUrl, supabase])
+
+  return resolvedUrl
+}
+
+function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const audioSrc = useMessageFileUrl(msg.file_url)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
 
   useEffect(() => {
     setIsPlaying(false)
@@ -714,9 +717,6 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
       ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
       : 0
 
-  const shownDuration = duration > 0 ? duration : 0
-  const rightTime = isPlaying ? shownDuration : shownDuration
-
   return (
     <div
       className={`max-w-[85%] min-w-[230px] px-4 py-3 flex items-center gap-3 rounded-[20px] ${
@@ -726,7 +726,7 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
       <button
         type="button"
         onClick={togglePlay}
-        disabled={loadingAudio || !audioSrc}
+        disabled={!audioSrc}
         className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${
           isMine
             ? 'bg-dark/15 text-dark hover:bg-dark/25'
@@ -750,7 +750,7 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
           isMine ? 'text-dark/70' : 'text-white/50'
         }`}>
           <span>{formatAudioTime(currentTime)}</span>
-          <span>{loadingAudio ? '--:--' : formatAudioTime(rightTime)}</span>
+          <span>{formatAudioTime(duration)}</span>
         </div>
       </div>
 
@@ -776,13 +776,97 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
           setIsPlaying(false)
           setCurrentTime(0)
         }}
-        onError={(event) => {
-          console.error('audio load error', event.currentTarget.error)
+        onError={() => {
           setIsPlaying(false)
-          setLoadingAudio(false)
         }}
       />
     </div>
+  )
+}
+
+function ImageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
+  const imageUrl = useMessageFileUrl(msg.file_url)
+
+  if (!imageUrl) return null
+
+  return (
+    <button
+      type="button"
+      onClick={() => window.open(imageUrl, '_blank', 'noopener,noreferrer')}
+      className={`max-w-[78%] rounded-[16px] overflow-hidden border text-left ${
+        isMine ? 'border-gold/30 bg-gold/10' : 'border-dark-500 bg-dark-200'
+      }`}
+    >
+      <img
+        src={imageUrl}
+        alt={msg.file_name || 'Image'}
+        className="block max-h-72 w-full object-cover"
+      />
+
+      {msg.file_name && (
+        <div className={`px-3 py-2 text-xs truncate ${isMine ? 'text-dark/70 bg-gold' : 'text-white/60 bg-dark-200'}`}>
+          {msg.file_name}
+        </div>
+      )}
+    </button>
+  )
+}
+
+function FileBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
+  const fileUrl = useMessageFileUrl(msg.file_url)
+  const fileName = msg.file_name || 'Fichier'
+  const fileSize = msg.file_size ? formatFileSize(msg.file_size) : null
+
+  const handleOpen = () => {
+    if (!fileUrl) {
+      toast.error('Fichier indisponible')
+      return
+    }
+
+    window.open(fileUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleOpen}
+      className={`max-w-[85%] min-w-[240px] px-4 py-3 flex items-center gap-3 rounded-[16px] text-left ${
+        isMine ? 'bubble-sent' : 'bubble-received'
+      }`}
+    >
+      <div
+        className={`w-11 h-11 rounded-[12px] flex items-center justify-center shrink-0 ${
+          isMine ? 'bg-dark/15 text-dark' : 'bg-white/10 text-gold'
+        }`}
+      >
+        <FileText size={22} />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold truncate">{fileName}</p>
+        {fileSize && (
+          <p className={`text-xs mt-0.5 ${isMine ? 'text-dark/60' : 'text-white/45'}`}>
+            {fileSize}
+          </p>
+        )}
+      </div>
+
+      <a
+        href={fileUrl || '#'}
+        download={fileName}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(event) => {
+          event.stopPropagation()
+          if (!fileUrl) event.preventDefault()
+        }}
+        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+          isMine ? 'bg-dark/15 text-dark hover:bg-dark/25' : 'bg-white/10 text-white hover:bg-white/15'
+        }`}
+      >
+        <Download size={17} />
+      </a>
+    </button>
   )
 }
 
@@ -796,16 +880,7 @@ function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   }
 
   if (msg.message_type === 'image' && msg.file_url) {
-    return (
-      <div className={`max-w-[75%] rounded-2xl overflow-hidden border ${isMine ? 'border-gold/30' : 'border-dark-500'}`}>
-        <img
-          src={msg.file_url}
-          alt="image"
-          className="max-w-full max-h-64 object-cover cursor-pointer"
-          onClick={() => window.open(msg.file_url!, '_blank')}
-        />
-      </div>
-    )
+    return <ImageBubble msg={msg} isMine={isMine} />
   }
 
   if (msg.message_type === 'audio' && msg.file_url) {
@@ -813,21 +888,7 @@ function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   }
 
   if (msg.message_type === 'file' && msg.file_url) {
-    return (
-      <a
-        href={msg.file_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`max-w-[75%] px-4 py-3 flex items-center gap-3 no-underline ${isMine ? 'bubble-sent' : 'bubble-received'}`}
-      >
-        <FileText size={20} className="shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{msg.file_name || 'Fichier'}</p>
-          {msg.file_size && <p className="text-xs opacity-70">{formatFileSize(msg.file_size)}</p>}
-        </div>
-        <Download size={16} className="shrink-0" />
-      </a>
-    )
+    return <FileBubble msg={msg} isMine={isMine} />
   }
 
   return null
