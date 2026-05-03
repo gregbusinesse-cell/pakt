@@ -439,25 +439,28 @@ export default function MatchesPage() {
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">
-                      {item.otherUser.photos?.[0] ? (
-  <div className="relative w-full h-full">
-    <img
-      src={(item.otherUser.photos as string[])[0]}
-      alt=""
-      className={`w-full h-full object-cover ${isFree ? 'blur-md scale-110' : ''}`}
-    />
+  <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+    {item.otherUser.photos?.[0] ? (
+      <div className="relative w-full h-full">
+        <img
+          src={(item.otherUser.photos as string[])[0]}
+          alt=""
+          className={`w-full h-full object-cover ${isFree ? 'blur-md scale-110' : ''}`}
+        />
 
-    {isFree && (
-      <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <Crown size={16} className="text-gold" />
+        {isFree && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <Crown size={16} className="text-gold" />
+          </div>
+        )}
+      </div>
+    ) : (
+      <div className="w-full h-full flex items-center justify-center text-2xl">
+        👤
       </div>
     )}
   </div>
-) : (
-  <div className="w-full h-full flex items-center justify-center text-2xl">
-    👤
-  </div>
-)}
+</div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
