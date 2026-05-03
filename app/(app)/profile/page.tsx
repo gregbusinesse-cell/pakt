@@ -3,7 +3,7 @@
 // app/(app)/profile/page.tsx
 // User profile page with edit capabilities
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
@@ -205,30 +205,6 @@ function PhotoSection(props: {
               }`}
             >
               {editing && <input {...getInputProps()} />}
-
-              {url ? (
-                <img src={url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Plus size={20} className="text-white/30" />
-                </div>
-              )}
-
-              {idx === 0 && url && (
-                <div className="absolute top-1 left-1 bg-gold text-dark text-[10px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none">
-                  Principal
-                </div>
-              )}
-
-              {editing && url && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    removePhoto(idx)
-                  }}
-                  className="absolute top-1 right-1 bg-black/70 rounded-full p-1"
-                >
                   <X size={10} className="text-white" />
                 </button>
               )}
@@ -269,6 +245,15 @@ export default function ProfilePage() {
     city: profile?.city || '',
     interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
   })
+  
+  const cityInputRef = useRef<HTMLInputElement | null>(null)
+const autocompleteRef = useRef<any>(null)
+
+const [cityData, setCityData] = useState({
+  city: form.city || '',
+  lat: profile?.city_lat || null,
+  lng: profile?.city_lng || null,
+})
 
   const initialPhotos = normalizePhotos(profile?.photos)
 
@@ -365,6 +350,44 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
+useEffect(() => {
+  if (mode !== 'edit') return
+  if (!cityInputRef.current) return
+  if (!window.google?.maps?.places?.Autocomplete) return
+
+  const autocomplete = new window.google.maps.places.Autocomplete(
+    cityInputRef.current,
+    {
+      types: ['(cities)'],
+      fields: ['place_id', 'name', 'geometry', 'address_components'],
+    }
+  )
+
+  autocompleteRef.current = autocomplete
+
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace()
+    const location = place.geometry?.location
+    if (!location) return
+
+    const cityName =
+      place.address_components?.find((c: any) =>
+        c.types.includes('locality')
+      )?.long_name || place.name
+
+    setCityData({
+      city: cityName,
+      lat: location.lat(),
+      lng: location.lng(),
+    })
+
+    setForm((prev) => ({
+      ...prev,
+      city: cityName,
+    }))
+  })
+}, [mode])
+
   useEffect(() => {
     if (mode !== 'edit') return
 
@@ -441,7 +464,9 @@ export default function ProfilePage() {
         first_name: form.first_name.trim() || null,
         age: normalizedAge,
         bio: form.bio.trim() || null,
-        city: form.city.trim() || null,
+        city: cityData.city || null,
+city_lat: cityData.lat,
+city_lng: cityData.lng,
         interests: nextInterests,
         photos: allPhotos,
         preferences,
@@ -714,8 +739,24 @@ export default function ProfilePage() {
               <div className={cardBase}>
                 <p className="text-xs uppercase tracking-widest text-white/40 mb-3">VILLE</p>
                 <input
-                  value={form.city}
-                  onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+  ref={cityInputRef}
+  value={cityData.city}
+  onChange={(e) => {
+    setCityData((prev) => ({
+      ...prev,
+      city: e.target.value,
+      lat: null,
+      lng: null,
+    }))
+
+    setForm((prev) => ({
+      ...prev,
+      city: e.target.value,
+    }))
+  }}
+  placeholder="Paris, Lyon..."
+  className={inputBase}
+/>
                   placeholder="Paris, Lyon..."
                   className={inputBase}
                 />
