@@ -15,6 +15,7 @@ import {
   Download,
   FileText,
   Play,
+  Pause,
   Square,
   ChevronLeft,
 } from 'lucide-react'
@@ -74,6 +75,15 @@ function getStoragePathFromUrl(fileUrl: string) {
   }
 
   return null
+}
+
+function formatAudioTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) return '0:00'
+
+  const minutes = Math.floor(value / 60)
+  const seconds = Math.floor(value % 60)
+
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
@@ -628,18 +638,28 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
 function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   const supabase = useMemo(() => createClient(), [])
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
   const [audioSrc, setAudioSrc] = useState(msg.file_url || '')
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [loadingAudio, setLoadingAudio] = useState(true)
 
   useEffect(() => {
     let mounted = true
 
     const loadAudioUrl = async () => {
-      if (!msg.file_url) return
+      if (!msg.file_url) {
+        setLoadingAudio(false)
+        return
+      }
 
       const path = getStoragePathFromUrl(msg.file_url)
 
       if (!path) {
         setAudioSrc(msg.file_url)
+        setLoadingAudio(false)
         return
       }
 
@@ -652,10 +672,12 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
       if (error || !data?.signedUrl) {
         console.error('audio signed url error', error)
         setAudioSrc(msg.file_url)
+        setLoadingAudio(false)
         return
       }
 
       setAudioSrc(data.signedUrl)
+      setLoadingAudio(false)
     }
 
     loadAudioUrl()
@@ -665,22 +687,99 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
     }
   }, [msg.file_url, supabase])
 
+  useEffect(() => {
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+  }, [audioSrc])
+
+  const togglePlay = async () => {
+    const audio = audioRef.current
+    if (!audio || !audioSrc) return
+
+    try {
+      if (isPlaying) {
+        audio.pause()
+        return
+      }
+
+      await audio.play()
+    } catch {
+      toast.error('Lecture audio impossible')
+    }
+  }
+
+  const progress =
+    duration > 0 && Number.isFinite(duration)
+      ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
+      : 0
+
+  const shownDuration = duration > 0 ? duration : 0
+  const rightTime = isPlaying ? shownDuration : shownDuration
+
   return (
-    <div className={`max-w-[85%] px-4 py-3 flex items-center gap-3 ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
-      <Play size={16} />
+    <div
+      className={`max-w-[85%] min-w-[230px] px-4 py-3 flex items-center gap-3 rounded-[20px] ${
+        isMine ? 'bubble-sent' : 'bubble-received'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={togglePlay}
+        disabled={loadingAudio || !audioSrc}
+        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+          isMine
+            ? 'bg-dark/15 text-dark hover:bg-dark/25'
+            : 'bg-white/10 text-white hover:bg-white/15'
+        } disabled:opacity-40`}
+      >
+        {isPlaying ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div className={`h-1.5 rounded-full overflow-hidden ${isMine ? 'bg-dark/20' : 'bg-white/10'}`}>
+          <div
+            className={`h-full rounded-full transition-[width] duration-100 ${
+              isMine ? 'bg-dark/70' : 'bg-gold'
+            }`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        <div className={`mt-1.5 flex items-center justify-between text-[11px] ${
+          isMine ? 'text-dark/70' : 'text-white/50'
+        }`}>
+          <span>{formatAudioTime(currentTime)}</span>
+          <span>{loadingAudio ? '--:--' : formatAudioTime(rightTime)}</span>
+        </div>
+      </div>
+
       <audio
-        key={audioSrc}
+        ref={audioRef}
         src={audioSrc}
-        controls
         preload="metadata"
-        className="h-8 w-44 max-w-full accent-current"
+        className="hidden"
         onLoadedMetadata={(event) => {
-          console.log('audio duration', event.currentTarget.duration)
-          console.log('audio src', audioSrc)
+          const nextDuration = event.currentTarget.duration
+          setDuration(Number.isFinite(nextDuration) ? nextDuration : 0)
+        }}
+        onDurationChange={(event) => {
+          const nextDuration = event.currentTarget.duration
+          setDuration(Number.isFinite(nextDuration) ? nextDuration : 0)
+        }}
+        onTimeUpdate={(event) => {
+          setCurrentTime(event.currentTarget.currentTime)
+        }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setIsPlaying(false)
+          setCurrentTime(0)
         }}
         onError={(event) => {
           console.error('audio load error', event.currentTarget.error)
-          console.error('audio src', audioSrc)
+          setIsPlaying(false)
+          setLoadingAudio(false)
         }}
       />
     </div>
