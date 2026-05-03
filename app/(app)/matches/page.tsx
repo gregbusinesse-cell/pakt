@@ -424,45 +424,45 @@ export default function MatchesPage() {
                   <button
                     type="button"
                     disabled={isOpening}
-                    onClick={() =>
-                      openConversation(
-                        item.otherUser.id,
-                        conversationId,
-                        item.type === 'match' ? item.id : null
-                      )
-                    }
+                    onClick={() => {
+  if (isFree) {
+    toast.error('Passe à PAKT Business pour voir ce match')
+    return
+  }
+
+  openConversation(
+    item.otherUser.id,
+    conversationId,
+    item.type === 'match' ? item.id : null
+  )
+}}
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">
-                      <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
-                        {item.otherUser.photos?.[0] ? (
-                          <img
-                            src={(item.otherUser.photos as string[])[0]}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl">
-                            👤
-                          </div>
-                        )}
-                      </div>
+                      {item.otherUser.photos?.[0] ? (
+  <div className="relative w-full h-full">
+    <img
+      src={(item.otherUser.photos as string[])[0]}
+      alt=""
+      className={`w-full h-full object-cover ${isFree ? 'blur-md scale-110' : ''}`}
+    />
 
-                      {item.type === 'match' && (
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          ✓
-                        </div>
-                      )}
-
-                      {showUnreadMatch && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
-                      )}
-                    </div>
+    {isFree && (
+      <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <Crown size={16} className="text-gold" />
+      </div>
+    )}
+  </div>
+) : (
+  <div className="w-full h-full flex items-center justify-center text-2xl">
+    👤
+  </div>
+)}
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className="font-semibold truncate">
-                          {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                          {isFree ? 'Quelqu’un t’a liké' : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                         </p>
 
                         {lastMessageAt && (
@@ -473,7 +473,11 @@ export default function MatchesPage() {
                       </div>
 
                       <p className="text-white/40 text-sm truncate">
-                        {isOpening ? 'Ouverture...' : lastMessage}
+                        {isFree
+  ? '🔒 Débloque avec PAKT Business'
+  : isOpening
+  ? 'Ouverture...'
+  : lastMessage}
                       </p>
                     </div>
                   </button>
