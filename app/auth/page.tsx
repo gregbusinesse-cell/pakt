@@ -78,7 +78,7 @@ export default function AuthPage() {
 }
 
   return (
-    <div className="app-height flex flex-col items-center justify-center bg-dark px-6 overflow-y-auto">
+    <div className="app-height flex flex-col items-center justify-center bg-dark px-6 pt-16 overflow-y-auto">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-gold/5 blur-[100px]" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-gold/3 blur-[80px]" />
