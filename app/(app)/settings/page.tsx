@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Check, ChevronRight, Crown } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { createClient } from '@/lib/supabase/client'
 
 type TabKey = 'plans' | 'events' | 'news' | 'legal'
 type PlanKey = 'free' | 'business' | 'business_pro'
@@ -118,8 +117,7 @@ function EventsTab() {
 }
 
 export default function SettingsPage() {
-  const { profile, setProfile } = useAppStore()
-  const [upgrading, setUpgrading] = useState<PlanKey | null>(null)
+  const { profile } = useAppStore()
   const [tab, setTab] = useState<TabKey>('plans')
 
   const currentPlan = normalizePlan((profile as any)?.plan)
@@ -134,7 +132,7 @@ export default function SettingsPage() {
 
   const isPlanBlocked = (plan: PlanKey) => PLAN_RANK[currentPlan] >= PLAN_RANK[plan]
 
-  const handleUpgrade = async (plan: PlanKey) => {
+  const handleUpgrade = (plan: PlanKey) => {
     if (plan === 'free') return
 
     if (isPlanBlocked(plan)) {
@@ -142,51 +140,17 @@ export default function SettingsPage() {
       return
     }
 
-    if (upgrading) return
-
     const paymentLink =
       plan === 'business'
         ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
         : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
 
     if (!paymentLink) {
-      toast.error(
-        plan === 'business'
-          ? 'Lien Stripe manquant (NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS)'
-          : 'Lien Stripe manquant (NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO)'
-      )
+      toast.error('Lien Stripe manquant')
       return
     }
 
-    setUpgrading(plan)
-
-    try {
-      window.open(paymentLink, '_blank')
-
-      const supabase = createClient()
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (!session?.user?.id) {
-        throw new Error('Non authentifié')
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({ plan } as never)
-        .eq('id', session.user.id)
-
-      if (error) throw error
-
-      if (profile) {
-        setProfile({ ...profile, plan } as any)
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à niveau')
-    } finally {
-      setUpgrading(null)
-    }
+    window.open(paymentLink, '_blank')
   }
 
   const tabs = useMemo(
@@ -217,7 +181,7 @@ export default function SettingsPage() {
       badge: 'BUSINESS',
       features: [
         '20 swipes / jour',
-        '1 message / jour',
+        'Messages illimités',
         'Accès anticipé aux futures fonctionnalités',
       ],
       button: isPlanActive('business') ? 'Plan actuel' : 'Passer Business',
@@ -233,7 +197,6 @@ export default function SettingsPage() {
         'Messages illimités',
         'Filtres avancés (âge + distance personnalisée)',
         'Accès prioritaire aux événements',
-        'Accès anticipé aux futures fonctionnalités',
       ],
       button: isPlanActive('business_pro') ? 'Plan actuel' : 'Passer Pro',
     },
@@ -286,9 +249,7 @@ export default function SettingsPage() {
                 <div className="bg-dark-200 border border-dark-500 rounded-[12px] px-4 py-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-white/60">Plan actuel :</span>
-                    <span className="text-sm font-semibold text-white">
-                      {getPlanLabel()}
-                    </span>
+                    <span className="text-sm font-semibold text-white">{getPlanLabel()}</span>
                   </div>
 
                   <span
@@ -307,7 +268,6 @@ export default function SettingsPage() {
                     const active = isPlanActive(plan.key)
                     const blocked = isPlanBlocked(plan.key)
                     const isFreePlan = plan.key === 'free'
-                    const loading = upgrading === plan.key
 
                     return (
                       <motion.div
@@ -373,14 +333,14 @@ export default function SettingsPage() {
                               if (isFreePlan) return
                               handleUpgrade(plan.key)
                             }}
-                            disabled={isFreePlan || blocked || Boolean(upgrading)}
+                            disabled={isFreePlan || active}
                             className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-60 ${
-                              isFreePlan || blocked
+                              isFreePlan || active || blocked
                                 ? 'border border-dark-500 bg-white/10 text-white/70'
                                 : 'bg-gold text-dark hover:bg-gold-light'
                             }`}
                           >
-                            {loading ? 'Ouverture...' : blocked && !isFreePlan ? 'Plan actuel' : plan.button}
+                            {active ? 'Plan actuel' : blocked && !isFreePlan ? 'Déjà inclus' : plan.button}
                           </button>
                         </div>
                       </motion.div>
