@@ -55,10 +55,7 @@ export default function AuthPage() {
   }
 
   const handleGoogleAuth = async () => {
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'https://pakt-sigma.vercel.app'
-
+  const siteUrl = window.location.origin
   if (!siteUrl) {
     toast.error('NEXT_PUBLIC_SITE_URL manquant')
     return
