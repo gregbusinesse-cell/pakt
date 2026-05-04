@@ -69,21 +69,10 @@ function formatLastMessage(
   const otherUserName = otherUser.first_name || 'Cette personne'
   const prefix = isMine ? 'Vous avez envoyé' : `${otherUserName} vous a envoyé`
 
-  if (lastMessage.message_type === 'audio') {
-    return `${prefix} un vocal`
-  }
-
-  if (lastMessage.message_type === 'image') {
-    return `${prefix} une photo`
-  }
-
-  if (lastMessage.message_type === 'file') {
-    return `${prefix} un document`
-  }
-
-  if (lastMessage.message_type === 'text' || !lastMessage.message_type) {
-    return lastMessage.content || null
-  }
+  if (lastMessage.message_type === 'audio') return `${prefix} un vocal`
+  if (lastMessage.message_type === 'image') return `${prefix} une photo`
+  if (lastMessage.message_type === 'file') return `${prefix} un document`
+  if (lastMessage.message_type === 'text' || !lastMessage.message_type) return lastMessage.content || null
 
   return null
 }
@@ -112,10 +101,10 @@ function createFallbackProfile(userId: string): Profile {
 
 function BusinessBanner({ type }: { type: Tab }) {
   const content =
-    type === 'matches'
+    type === 'likes'
       ? {
-          title: 'Pssst... Trouve ton partenaire plus vite',
-          text: 'Les membres PAKT Business trouvent leur partenaire jusqu’à 4x plus rapidement.',
+          title: 'Pssst... Découvre qui t’a liké',
+          text: 'Débloque tes likes avec PAKT Business.',
         }
       : {
           title: 'Pssst... Passe à la vitesse supérieure',
@@ -193,15 +182,8 @@ export default function MatchesPage() {
           .order('created_at', { ascending: false }),
       ])
 
-      if (conversationsError) {
-        toast.error(`Erreur conversations: ${conversationsError.message}`)
-        setConversations([])
-      }
-
-      if (matchesError) {
-        toast.error(`Erreur matchs: ${matchesError.message}`)
-        setMatches([])
-      }
+      if (conversationsError) toast.error(`Erreur conversations: ${conversationsError.message}`)
+      if (matchesError) toast.error(`Erreur matchs: ${matchesError.message}`)
 
       const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
       const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
@@ -239,7 +221,7 @@ export default function MatchesPage() {
         conversationByPair.set(getPairKey(conversation.user1_id, conversation.user2_id), conversation)
       })
 
-      const conversationItemsRaw = await Promise.all(
+      const conversationItems = await Promise.all(
         conversationRows.map(async (conversation) => {
           const otherUserId =
             conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
@@ -266,23 +248,44 @@ export default function MatchesPage() {
         })
       )
 
-      const matchItemsRaw = matchRows.map((match) => {
-        const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
-        const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
-        const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
+      const matchItemsByPair = new Map<string, MatchItem>()
 
-        return {
+      matchRows.forEach((match) => {
+        const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
+        const pairKey = getPairKey(currentUserId, otherUserId)
+        const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
+        const linkedConversation = conversationByPair.get(pairKey)
+
+        matchItemsByPair.set(pairKey, {
           id: match.id,
-          type: 'match' as const,
+          type: 'match',
           otherUser,
           conversationId: linkedConversation?.id || null,
           createdAt: match.created_at || null,
           isViewed: Boolean(match.is_viewed),
-        }
+        })
       })
 
-      const conversationItems = conversationItemsRaw as ConversationItem[]
-      const cleanMatchItems = matchItemsRaw as MatchItem[]
+      conversationRows.forEach((conversation) => {
+        const otherUserId =
+          conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
+        const pairKey = getPairKey(currentUserId, otherUserId)
+
+        if (matchItemsByPair.has(pairKey)) return
+
+        const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
+
+        matchItemsByPair.set(pairKey, {
+          id: `conversation-match-${conversation.id}`,
+          type: 'match',
+          otherUser,
+          conversationId: conversation.id,
+          createdAt: conversation.created_at || null,
+          isViewed: true,
+        })
+      })
+
+      const cleanMatchItems = Array.from(matchItemsByPair.values())
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -321,7 +324,7 @@ export default function MatchesPage() {
     setOpeningConversation(otherUserId)
 
     try {
-      if (matchId) {
+      if (matchId && !matchId.startsWith('conversation-match-')) {
         await db.from('matches').update({ is_viewed: true }).eq('id', matchId)
         setMatches((prev) =>
           prev.map((item) => (item.id === matchId ? { ...item, isViewed: true } : item))
@@ -424,9 +427,7 @@ export default function MatchesPage() {
               <span className="text-5xl">⚔️</span>
               <div>
                 <h3 className="font-semibold text-lg mb-1">Pas encore de matchs</h3>
-                <p className="text-white/40 text-sm">
-                  Continue à swiper pour trouver tes matchs !
-                </p>
+                <p className="text-white/40 text-sm">Continue à swiper pour trouver tes matchs !</p>
               </div>
             </div>
           ) : (
@@ -456,9 +457,7 @@ export default function MatchesPage() {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl">
-                              👤
-                            </div>
+                            <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
                           )}
                         </div>
 
@@ -510,9 +509,7 @@ export default function MatchesPage() {
             <span className="text-5xl">✉️</span>
             <div>
               <h3 className="font-semibold text-lg mb-1">Aucune conversation pour le moment</h3>
-              <p className="text-white/40 text-sm">
-                Tu peux envoyer un message depuis le profil de quelqu'un
-              </p>
+              <p className="text-white/40 text-sm">Tu peux envoyer un message depuis le profil de quelqu'un</p>
             </div>
           </div>
         ) : (
@@ -543,9 +540,7 @@ export default function MatchesPage() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl">
-                            👤
-                          </div>
+                          <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
                         )}
                       </div>
                     </div>
