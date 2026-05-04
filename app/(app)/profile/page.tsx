@@ -18,6 +18,12 @@ import type { Database, Profile } from '@/lib/supabase/types'
 
 type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 
+declare global {
+  interface Window {
+    google?: any
+  }
+}
+
 type PhotoItem =
   | { type: 'existing'; url: string }
   | { type: 'new'; url: string; file: File }
@@ -205,7 +211,27 @@ function PhotoSection(props: {
               }`}
             >
               {editing && <input {...getInputProps()} />}
-            
+
+              {url ? (
+                <img src={url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/30">
+                  <Plus size={22} />
+                </div>
+              )}
+
+              {editing && url && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    removePhoto(idx)
+                  }}
+                  className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/70 border border-white/10 flex items-center justify-center text-white hover:bg-red-500/80 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           )
         })}
@@ -243,15 +269,15 @@ export default function ProfilePage() {
     city: profile?.city || '',
     interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
   })
-  
-  const cityInputRef = useRef<HTMLInputElement | null>(null)
-const autocompleteRef = useRef<any>(null)
 
-const [cityData, setCityData] = useState({
-  city: form.city || '',
-  lat: profile?.city_lat || null,
-  lng: profile?.city_lng || null,
-})
+  const cityInputRef = useRef<HTMLInputElement | null>(null)
+  const autocompleteRef = useRef<any>(null)
+
+  const [cityData, setCityData] = useState({
+    city: form.city || '',
+    lat: (profile as any)?.city_lat || null,
+    lng: (profile as any)?.city_lng || null,
+  })
 
   const initialPhotos = normalizePhotos(profile?.photos)
 
@@ -327,6 +353,12 @@ const [cityData, setCityData] = useState({
       interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
     })
 
+    setCityData({
+      city: profile?.city || '',
+      lat: (profile as any)?.city_lat || null,
+      lng: (profile as any)?.city_lng || null,
+    })
+
     setPreferences(getInitialPreferences(profile?.preferences))
     setNewPhotos([])
     setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
@@ -348,43 +380,39 @@ const [cityData, setCityData] = useState({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-useEffect(() => {
-  if (mode !== 'edit') return
-  if (!cityInputRef.current) return
-  if (!window.google?.maps?.places?.Autocomplete) return
+  useEffect(() => {
+    if (mode !== 'edit') return
+    if (!cityInputRef.current) return
+    if (!window.google?.maps?.places?.Autocomplete) return
 
-  const autocomplete = new window.google.maps.places.Autocomplete(
-    cityInputRef.current,
-    {
+    const autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
       types: ['(cities)'],
       fields: ['place_id', 'name', 'geometry', 'address_components'],
-    }
-  )
-
-  autocompleteRef.current = autocomplete
-
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace()
-    const location = place.geometry?.location
-    if (!location) return
-
-    const cityName =
-      place.address_components?.find((c: any) =>
-        c.types.includes('locality')
-      )?.long_name || place.name
-
-    setCityData({
-      city: cityName,
-      lat: location.lat(),
-      lng: location.lng(),
     })
 
-    setForm((prev) => ({
-      ...prev,
-      city: cityName,
-    }))
-  })
-}, [mode])
+    autocompleteRef.current = autocomplete
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace()
+      const location = place.geometry?.location
+      if (!location) return
+
+      const cityName =
+        place.address_components?.find((c: any) => c.types.includes('locality'))?.long_name ||
+        place.name
+
+      setCityData({
+        city: cityName,
+        lat: location.lat(),
+        lng: location.lng(),
+      })
+
+      setForm((prev) => ({
+        ...prev,
+        city: cityName,
+      }))
+    })
+  }, [mode])
 
   useEffect(() => {
     if (mode !== 'edit') return
@@ -463,12 +491,12 @@ useEffect(() => {
         age: normalizedAge,
         bio: form.bio.trim() || null,
         city: cityData.city || null,
-city_lat: cityData.lat,
-city_lng: cityData.lng,
+        city_lat: cityData.lat,
+        city_lng: cityData.lng,
         interests: nextInterests,
         photos: allPhotos,
         preferences,
-      }
+      } as any
 
       const { error } = await supabase
         .from('profiles')
@@ -555,61 +583,59 @@ city_lng: cityData.lng,
   }
 
   const handleResetPassword = async () => {
-  if (!session?.user?.email) {
-    toast.error('Email introuvable')
-    return
+    if (!session?.user?.email) {
+      toast.error('Email introuvable')
+      return
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
+        redirectTo: 'https://pakt-sigma.vercel.app/update-password',
+      })
+
+      if (error) throw error
+
+      toast.success('Email de réinitialisation envoyé')
+      setResetPwdOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur')
+    }
   }
-
-  try {
-    const { error } = await supabase.auth.resetPasswordForEmail(session.user.email, {
-      redirectTo: 'https://pakt-sigma.vercel.app/update-password',
-    })
-
-    if (error) throw error
-
-    toast.success('Email de réinitialisation envoyé')
-    setResetPwdOpen(false)
-  } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'Erreur')
-  }
-}
-
 
   const handleDeleteAccount = async () => {
-  if (!session?.user) return
+    if (!session?.user) return
 
-  setDangerLoading(true)
+    setDangerLoading(true)
 
-  try {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const accessToken = sessionData.session?.access_token
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token
 
-    if (!accessToken) {
-      throw new Error('Session introuvable')
+      if (!accessToken) {
+        throw new Error('Session introuvable')
+      }
+
+      const response = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur lors de la demande')
+      }
+
+      toast.success('Email de confirmation envoyé')
+      setDeleteOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur')
+    } finally {
+      setDangerLoading(false)
     }
-
-    const response = await fetch('/api/delete-account', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
-
-    const result = await response.json()
-
-    if (!response.ok) {
-      throw new Error(result.error || 'Erreur lors de la demande')
-    }
-
-    toast.success('Email de confirmation envoyé')
-    setDeleteOpen(false)
-  } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'Erreur')
-  } finally {
-    setDangerLoading(false)
   }
-}
-
 
   const allDisplayPhotos = editing
     ? photoItems.map((item) => item.url).slice(0, MAX_PHOTOS)
@@ -737,24 +763,21 @@ city_lng: cityData.lng,
               <div className={cardBase}>
                 <p className="text-xs uppercase tracking-widest text-white/40 mb-3">VILLE</p>
                 <input
-  ref={cityInputRef}
-  value={cityData.city}
-  onChange={(e) => {
-    setCityData((prev) => ({
-      ...prev,
-      city: e.target.value,
-      lat: null,
-      lng: null,
-    }))
+                  ref={cityInputRef}
+                  value={cityData.city}
+                  onChange={(event) => {
+                    setCityData((prev) => ({
+                      ...prev,
+                      city: event.target.value,
+                      lat: null,
+                      lng: null,
+                    }))
 
-    setForm((prev) => ({
-      ...prev,
-      city: e.target.value,
-    }))
-  }}
-  placeholder="Paris, Lyon..."
-  className={inputBase}
-/>
+                    setForm((prev) => ({
+                      ...prev,
+                      city: event.target.value,
+                    }))
+                  }}
                   placeholder="Paris, Lyon..."
                   className={inputBase}
                 />
