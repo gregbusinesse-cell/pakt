@@ -161,11 +161,7 @@ export default function SettingsPage() {
     setUpgrading(plan)
 
     try {
-      const paymentWindow = window.open(paymentLink, '_blank', 'noopener,noreferrer')
-
-      if (!paymentWindow) {
-        throw new Error('Impossible d’ouvrir le paiement')
-      }
+      window.open(paymentLink, '_blank')
 
       const supabase = createClient()
       const {
