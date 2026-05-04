@@ -166,37 +166,45 @@ export default function MatchesPage() {
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
 
+  const currentUserId = session?.user?.id
+
   const loadConversations = useCallback(async () => {
-    const currentUserId = session?.user?.id
-    if (!currentUserId) return
+    if (!currentUserId) {
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
 
     try {
-      const { data: conversationsData, error: conversationsError } = await db
-        .from('conversations')
-        .select('*')
-        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
-        .order('created_at', { ascending: false })
+      const [
+        { data: conversationsData, error: conversationsError },
+        { data: matchesData, error: matchesError },
+      ] = await Promise.all([
+        db
+          .from('conversations')
+          .select('*')
+          .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+          .order('created_at', { ascending: false }),
+        db
+          .from('matches')
+          .select('*')
+          .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+          .order('created_at', { ascending: false }),
+      ])
 
       if (conversationsError) {
         toast.error(`Erreur conversations: ${conversationsError.message}`)
-        return
+        setConversations([])
       }
-
-      const { data: matchesData, error: matchesError } = await db
-        .from('matches')
-        .select('*')
-        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
-        .order('created_at', { ascending: false })
 
       if (matchesError) {
         toast.error(`Erreur matchs: ${matchesError.message}`)
-        return
+        setMatches([])
       }
 
-      const conversationRows = (conversationsData || []) as ConversationRow[]
-      const matchRows = (matchesData || []) as MatchRow[]
+      const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
+      const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
 
       const conversationOtherIds = conversationRows.map((conversation) =>
         conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
@@ -207,26 +215,23 @@ export default function MatchesPage() {
       )
 
       const allUserIds = Array.from(new Set([...conversationOtherIds, ...matchOtherIds]))
+      let profileMap = new Map<string, Profile>()
 
-      if (allUserIds.length === 0) {
-        setConversations([])
-        setMatches([])
-        return
+      if (allUserIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await db
+          .from('profiles')
+          .select('*')
+          .in('id', allUserIds)
+
+        if (profilesError) {
+          toast.error(`Erreur profils: ${profilesError.message}`)
+        } else {
+          const profiles = (profilesData || []) as Profile[]
+          profileMap = new Map<string, Profile>(
+            profiles.map((userProfile) => [userProfile.id, userProfile])
+          )
+        }
       }
-
-      const { data: profilesData, error: profilesError } = await db
-        .from('profiles')
-        .select('*')
-        .in('id', allUserIds)
-
-      if (profilesError) {
-        toast.error(`Erreur profils: ${profilesError.message}`)
-      }
-
-      const profiles = (profilesData || []) as Profile[]
-      const profileMap = new Map<string, Profile>(
-        profiles.map((userProfile) => [userProfile.id, userProfile])
-      )
 
       const conversationByPair = new Map<string, ConversationRow>()
 
@@ -256,31 +261,28 @@ export default function MatchesPage() {
             type: 'conversation' as const,
             otherUser,
             lastMessage: formatLastMessage(lastMessage, currentUserId, otherUser),
-            lastMessageAt: lastMessage?.created_at || null,
+            lastMessageAt: lastMessage?.created_at || conversation.created_at || null,
           }
         })
       )
 
-      const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
-
       const matchItemsRaw = matchRows.map((match) => {
         const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
         const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
-
         const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
-        const conversationId = linkedConversation?.id || null
 
         return {
           id: match.id,
           type: 'match' as const,
           otherUser,
-          conversationId,
+          conversationId: linkedConversation?.id || null,
           createdAt: match.created_at || null,
           isViewed: Boolean(match.is_viewed),
         }
       })
 
-      const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
+      const conversationItems = conversationItemsRaw as ConversationItem[]
+      const cleanMatchItems = matchItemsRaw as MatchItem[]
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -298,10 +300,12 @@ export default function MatchesPage() {
       setMatches(cleanMatchItems)
     } catch {
       toast.error('Erreur chargement messages')
+      setConversations([])
+      setMatches([])
     } finally {
       setLoading(false)
     }
-  }, [session?.user?.id, db])
+  }, [currentUserId, db])
 
   useEffect(() => {
     loadConversations()
@@ -312,7 +316,6 @@ export default function MatchesPage() {
     existingConversationId?: string | null,
     matchId?: string | null
   ) => {
-    const currentUserId = session?.user?.id
     if (!currentUserId || !otherUserId) return
 
     setOpeningConversation(otherUserId)
@@ -401,7 +404,7 @@ export default function MatchesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-4">
-        {isFree && <BusinessBanner type={tab} />}
+        {isFree && tab !== 'matches' && <BusinessBanner type={tab} />}
 
         {loading ? (
           <div className="flex flex-col gap-3 pt-2">
@@ -430,7 +433,6 @@ export default function MatchesPage() {
             <div className="space-y-1 pt-2">
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
-                const lastMessageAt = item.createdAt
 
                 return (
                   <motion.div
@@ -475,9 +477,9 @@ export default function MatchesPage() {
                             {item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
 
-                          {lastMessageAt && (
+                          {item.createdAt && (
                             <span className="text-white/30 text-xs shrink-0 ml-2">
-                              {formatTime(lastMessageAt)}
+                              {formatTime(item.createdAt)}
                             </span>
                           )}
                         </div>
