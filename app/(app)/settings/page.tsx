@@ -110,6 +110,8 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>('plans')
 
   const isBusiness = profile?.plan === 'premium'
+  const isPro = (profile as any)?.plan === 'pro'
+  const isPaid = isBusiness || isPro
 
   const handleUpgrade = async () => {
     setUpgrading(true)
@@ -143,6 +145,17 @@ export default function SettingsPage() {
     }
   }
 
+  const handleUpgradePro = () => {
+    const proLink = process.env.NEXT_PUBLIC_STRIPE_PRO_PAYMENT_LINK
+
+    if (!proLink) {
+      toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_PRO_PAYMENT_LINK)')
+      return
+    }
+
+    window.location.href = proLink
+  }
+
   const tabs = useMemo(
     () =>
       [
@@ -157,10 +170,10 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen overflow-y-auto pb-32 px-4 bg-dark">
       <div className="px-1 pt-6 pb-4 shrink-0">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <h1 className="text-2xl font-bold text-white">PAKT</h1>
 
-          <div className="mt-4 flex gap-5 border-b border-dark-500">
+          <div className="mt-4 flex gap-5 border-b border-dark-500 overflow-x-auto">
             {tabs.map((t) => {
               const active = tab === t.key
 
@@ -187,7 +200,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="px-1 pb-10">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <AnimatePresence mode="wait" initial={false}>
             {tab === 'plans' && (
               <motion.div
@@ -202,24 +215,24 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-white/60">Plan actuel :</span>
                     <span className="text-sm font-semibold text-white">
-                      {isBusiness ? 'PAKT Business' : 'PAKT'}
+                      {isPro ? 'PAKT Business Pro' : isBusiness ? 'PAKT Business' : 'PAKT'}
                     </span>
                   </div>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isBusiness
+                      isPaid
                         ? 'bg-gold text-dark'
                         : 'bg-white/10 text-white/60 border border-dark-500'
                     }`}
                   >
-                    {isBusiness ? 'BUSINESS' : 'PAKT'}
+                    {isPro ? 'PRO' : isBusiness ? 'BUSINESS' : 'PAKT'}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
                   <div
-                    className={`bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
-                      !isBusiness ? 'border-gold/40' : 'border-dark-500 hover:border-gold/50'
+                    className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
+                      !isPaid ? 'border-gold/40' : 'border-dark-500 hover:border-gold/50'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -249,7 +262,7 @@ export default function SettingsPage() {
                         disabled
                         className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm border border-dark-500 bg-white/10 text-white/70 disabled:opacity-100"
                       >
-                        Plan actuel
+                        {!isPaid ? 'Plan actuel' : 'Inclus'}
                       </button>
                     </div>
                   </div>
@@ -257,7 +270,7 @@ export default function SettingsPage() {
                   <motion.div
                     whileHover={{ y: -2 }}
                     transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-                    className={`bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
+                    className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
                       isBusiness
                         ? 'border-gold/60 shadow-[0_0_0_1px_rgba(212,168,83,0.25),0_0_40px_rgba(212,168,83,0.10)]'
                         : 'border-dark-500 hover:border-gold/50'
@@ -277,7 +290,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="text-right">
                         <div className="flex items-baseline justify-end gap-2">
-                          <span className="text-2xl font-black text-gold">5.00€</span>
+                          <span className="text-2xl font-black text-gold">5€</span>
                           <span className="text-white/40 text-sm">/mois</span>
                         </div>
                       </div>
@@ -310,6 +323,66 @@ export default function SettingsPage() {
                         }`}
                       >
                         {isBusiness ? 'Plan actuel' : upgrading ? 'Redirection...' : 'Passer Business'}
+                      </button>
+                    </div>
+                  </motion.div>
+
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                    className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
+                      isPro
+                        ? 'border-gold/60 shadow-[0_0_0_1px_rgba(212,168,83,0.25),0_0_40px_rgba(212,168,83,0.10)]'
+                        : 'border-dark-500 hover:border-gold/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5">
+                          <Crown size={18} className="text-gold" />
+                        </div>
+                        <div>
+                          <p className="text-base font-semibold text-white">PAKT Business Pro</p>
+                          <span className="inline-flex mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold text-dark">
+                            PRO
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-baseline justify-end gap-2">
+                          <span className="text-2xl font-black text-gold">10€</span>
+                          <span className="text-white/40 text-sm">/mois</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      {[
+                        'Swipes illimités',
+                        'Messages illimités',
+                        'Accès aux likes',
+                        'Accès prioritaire',
+                        'Tout débloqué',
+                      ].map((feature) => (
+                        <div key={feature} className="flex items-center gap-2">
+                          <Check size={14} className="text-gold" />
+                          <span className="text-sm text-white/60">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-auto pt-5">
+                      <button
+                        type="button"
+                        onClick={isPro ? undefined : handleUpgradePro}
+                        disabled={isPro}
+                        className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-50 ${
+                          isPro
+                            ? 'border border-dark-500 bg-white/10 text-white/70'
+                            : 'bg-gold text-dark hover:bg-gold-light'
+                        }`}
+                      >
+                        {isPro ? 'Plan actuel' : 'Passer Pro'}
                       </button>
                     </div>
                   </motion.div>
