@@ -500,130 +500,141 @@ export default function ProfilePage() {
   }, [])
 
   useEffect(() => {
-    if (mode !== 'edit') return
+  if (mode !== 'edit') return
 
-    let cancelled = false
+  let cancelled = false
+  let retryCount = 0
+  const maxRetries = 100
 
-    const cleanupAutocomplete = () => {
-      if (autocompleteListenerRef.current) {
-        console.log('[Google Places] Nettoyage listener place_changed')
+  const cleanupAutocomplete = () => {
+    if (autocompleteListenerRef.current) {
+      console.log('[Google Places] Nettoyage listener place_changed')
 
-        if (typeof autocompleteListenerRef.current.remove === 'function') {
-          autocompleteListenerRef.current.remove()
-        } else if (window.google?.maps?.event?.removeListener) {
-          window.google.maps.event.removeListener(autocompleteListenerRef.current)
-        }
-
-        autocompleteListenerRef.current = null
+      if (typeof autocompleteListenerRef.current.remove === 'function') {
+        autocompleteListenerRef.current.remove()
+      } else if (window.google?.maps?.event?.removeListener) {
+        window.google.maps.event.removeListener(autocompleteListenerRef.current)
       }
 
-      if (autocompleteRef.current) {
-        console.log('[Google Places] Nettoyage instance Autocomplete')
-
-        if (typeof autocompleteRef.current.unbindAll === 'function') {
-          autocompleteRef.current.unbindAll()
-        }
-
-        autocompleteRef.current = null
-      }
+      autocompleteListenerRef.current = null
     }
 
-    const initAutocomplete = async () => {
-      try {
-        console.log('[Google Places] Initialisation demandée')
+    if (autocompleteRef.current) {
+      console.log('[Google Places] Nettoyage instance Autocomplete')
 
-        await loadGooglePlacesScript()
-
-        if (cancelled) {
-          console.log('[Google Places] Init annulée')
-          return
-        }
-
-        if (!cityInputRef.current) {
-          console.warn('[Google Places] Input ville introuvable')
-          return
-        }
-
-        if (!window.google?.maps?.places?.Autocomplete) {
-          console.error('[Google Places] Autocomplete indisponible malgré le script chargé')
-          return
-        }
-
-        if (autocompleteRef.current) {
-          console.log('[Google Places] Autocomplete déjà attaché')
-          return
-        }
-
-        console.log('[Google Places] Attachement Autocomplete sur input ville')
-
-        const autocomplete = new window.google.maps.places.Autocomplete(cityInputRef.current, {
-          types: ['(cities)'],
-          fields: ['place_id', 'name', 'geometry', 'address_components', 'formatted_address'],
-        })
-
-        autocompleteRef.current = autocomplete
-
-        autocompleteListenerRef.current = autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace()
-          const location = place.geometry?.location
-
-          console.log('[Google Places] place_changed', place)
-
-          if (!location) {
-            console.warn('[Google Places] Aucun lat/lng pour cette sélection')
-            return
-          }
-
-          const cityName =
-            place.address_components?.find((component: any) =>
-              component.types.includes('locality')
-            )?.long_name ||
-            place.address_components?.find((component: any) =>
-              component.types.includes('postal_town')
-            )?.long_name ||
-            place.address_components?.find((component: any) =>
-              component.types.includes('administrative_area_level_2')
-            )?.long_name ||
-            place.name ||
-            place.formatted_address ||
-            ''
-
-          const nextCity = cityName.trim()
-          const nextLat = location.lat()
-          const nextLng = location.lng()
-
-          console.log('[Google Places] Ville sélectionnée', {
-            city: nextCity,
-            lat: nextLat,
-            lng: nextLng,
-          })
-
-          setCityData({
-            city: nextCity,
-            lat: nextLat,
-            lng: nextLng,
-          })
-
-          setForm((prev) => ({
-            ...prev,
-            city: nextCity,
-          }))
-        })
-
-        console.log('[Google Places] Autocomplete prêt')
-      } catch (err) {
-        console.error('[Google Places] Erreur initialisation', err)
+      if (typeof autocompleteRef.current.unbindAll === 'function') {
+        autocompleteRef.current.unbindAll()
       }
+
+      autocompleteRef.current = null
+    }
+  }
+
+  const attachAutocomplete = () => {
+    if (cancelled) return true
+
+    const input = cityInputRef.current
+    const Autocomplete = window.google?.maps?.places?.Autocomplete
+
+    if (!input || !Autocomplete) {
+      retryCount += 1
+
+      if (retryCount >= maxRetries) {
+        console.warn('[Google Places] Init abandonnée', {
+          hasInput: Boolean(input),
+          hasAutocomplete: Boolean(Autocomplete),
+        })
+        return true
+      }
+
+      return false
     }
 
+    if (autocompleteRef.current) {
+      console.log('[Google Places] Autocomplete déjà attaché')
+      return true
+    }
+
+    console.log('[Google Places] Attachement Autocomplete sur input ville')
+
+    const autocomplete = new Autocomplete(input, {
+      types: ['(cities)'],
+      fields: ['place_id', 'name', 'geometry', 'address_components', 'formatted_address'],
+    })
+
+    autocompleteRef.current = autocomplete
+
+    autocompleteListenerRef.current = autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace()
+      const location = place.geometry?.location
+
+      console.log('[Google Places] place_changed', place)
+
+      if (!location) {
+        console.warn('[Google Places] Aucun lat/lng pour cette sélection')
+        return
+      }
+
+      const cityName =
+        place.address_components?.find((component: any) =>
+          component.types.includes('locality')
+        )?.long_name ||
+        place.address_components?.find((component: any) =>
+          component.types.includes('postal_town')
+        )?.long_name ||
+        place.address_components?.find((component: any) =>
+          component.types.includes('administrative_area_level_2')
+        )?.long_name ||
+        place.name ||
+        place.formatted_address ||
+        ''
+
+      const nextCity = cityName.trim()
+      const nextLat = location.lat()
+      const nextLng = location.lng()
+
+      console.log('[Google Places] Ville sélectionnée', {
+        city: nextCity,
+        lat: nextLat,
+        lng: nextLng,
+      })
+
+      setCityData({
+        city: nextCity,
+        lat: nextLat,
+        lng: nextLng,
+      })
+
+      setForm((prev) => ({
+        ...prev,
+        city: nextCity,
+      }))
+    })
+
+    console.log('[Google Places] Autocomplete prêt')
+    return true
+  }
+
+  cleanupAutocomplete()
+
+  loadGooglePlacesScript().catch((err) => {
+    console.error('[Google Places] Erreur chargement script', err)
+  })
+
+  const intervalId = window.setInterval(() => {
+    const done = attachAutocomplete()
+
+    if (done) {
+      window.clearInterval(intervalId)
+    }
+  }, 100)
+
+  return () => {
+    cancelled = true
+    window.clearInterval(intervalId)
     cleanupAutocomplete()
-    initAutocomplete()
-
-    return () => {
-      cancelled = true
-      cleanupAutocomplete()
-    }
-  }, [mode])
+  }
+}, [mode])
 
   const toggleInterest = (interest: string) => {
     setForm((prev) => {
@@ -958,25 +969,26 @@ export default function ProfilePage() {
               <div className={cardBase}>
                 <p className="text-xs uppercase tracking-widest text-white/40 mb-3">VILLE</p>
                 <input
-                  ref={cityInputRef}
-                  value={cityData.city}
-                  onChange={(event) => {
-                    setCityData((prev) => ({
-                      ...prev,
-                      city: event.target.value,
-                      lat: null,
-                      lng: null,
-                    }))
+  ref={cityInputRef}
+  value={cityData.city}
+  onChange={(event) => {
+    setCityData((prev) => ({
+      ...prev,
+      city: event.target.value,
+      lat: null,
+      lng: null,
+    }))
 
-                    setForm((prev) => ({
-                      ...prev,
-                      city: event.target.value,
-                    }))
-                  }}
-                  placeholder="Paris, Lyon..."
-                  autoComplete="off"
-                  className={inputBase}
-                />
+    setForm((prev) => ({
+      ...prev,
+      city: event.target.value,
+    }))
+  }}
+  placeholder="Paris, Lyon..."
+  autoComplete="off"
+  className={inputBase}
+/>
+
               </div>
 
               <div className={cardBase}>
