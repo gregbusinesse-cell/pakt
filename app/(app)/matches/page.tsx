@@ -144,10 +144,11 @@ export default function MatchesPage() {
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
 
-  const currentUserId = session?.user?.id
+  
 
   const loadConversations = useCallback(async () => {
-    if (!currentUserId) return
+  const currentUserId = session?.user?.id
+  if (!currentUserId) return
 
     setLoading(true)
 
@@ -283,18 +284,18 @@ export default function MatchesPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentUserId, db])
+  }, [session?.user?.id, db])
 
   useEffect(() => {
-    if (!currentUserId) return
-    loadConversations()
-  }, [currentUserId, loadConversations])
+  loadConversations()
+}, [loadConversations])
 
   const openConversation = async (
     otherUserId: string,
     existingConversationId?: string | null,
     matchId?: string | null
   ) => {
+  const currentUserId = session?.user?.id
     if (!currentUserId || !otherUserId) return
 
     setOpeningConversation(otherUserId)
