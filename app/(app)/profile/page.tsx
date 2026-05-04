@@ -205,7 +205,7 @@ function PhotoSection(props: {
               }`}
             >
               {editing && <input {...getInputProps()} />}
-              )}
+            
             </div>
           )
         })}
