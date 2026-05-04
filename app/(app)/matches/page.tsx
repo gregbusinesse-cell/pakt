@@ -88,6 +88,28 @@ function formatLastMessage(
   return null
 }
 
+function createFallbackProfile(userId: string): Profile {
+  return {
+    id: userId,
+    email: '',
+    first_name: null,
+    age: null,
+    bio: null,
+    city: null,
+    interests: [],
+    photos: [],
+    preferences: {},
+    plan: 'free',
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
+    subscription_status: null,
+    is_suspended: false,
+    suspension_reason: null,
+    created_at: '',
+    updated_at: '',
+  } as unknown as Profile
+}
+
 function BusinessBanner({ type }: { type: Tab }) {
   const content =
     type === 'matches'
@@ -144,11 +166,9 @@ export default function MatchesPage() {
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
 
-  
-
   const loadConversations = useCallback(async () => {
-  const currentUserId = session?.user?.id
-  if (!currentUserId) return
+    const currentUserId = session?.user?.id
+    if (!currentUserId) return
 
     setLoading(true)
 
@@ -165,11 +185,10 @@ export default function MatchesPage() {
       }
 
       const { data: matchesData, error: matchesError } = await db
-  .from('matches')
-  .select('*')
-  .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
-  .order('created_at', { ascending: false })
-
+        .from('matches')
+        .select('*')
+        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+        .order('created_at', { ascending: false })
 
       if (matchesError) {
         toast.error(`Erreur matchs: ${matchesError.message}`)
@@ -202,7 +221,6 @@ export default function MatchesPage() {
 
       if (profilesError) {
         toast.error(`Erreur profils: ${profilesError.message}`)
-        return
       }
 
       const profiles = (profilesData || []) as Profile[]
@@ -221,8 +239,7 @@ export default function MatchesPage() {
           const otherUserId =
             conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
 
-          const otherUser = profileMap.get(otherUserId)
-          if (!otherUser) return null
+          const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
 
           const { data: lastMessageData } = await db
             .from('messages')
@@ -247,30 +264,21 @@ export default function MatchesPage() {
       const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
 
       const matchItemsRaw = matchRows.map((match) => {
-  const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
+        const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
+        const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
 
-  const otherUser =
-    profileMap.get(otherUserId) ||
-    ({
-      id: otherUserId,
-      first_name: null,
-      email: null,
-      photos: [],
-    } as Profile)
+        const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
+        const conversationId = linkedConversation?.id || null
 
-  const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
-  const conversationId = linkedConversation?.id || null
-
-  return {
-    id: match.id,
-    type: 'match' as const,
-    otherUser,
-    conversationId,
-    createdAt: match.created_at || null,
-    isViewed: Boolean(match.is_viewed),
-  }
-})
-
+        return {
+          id: match.id,
+          type: 'match' as const,
+          otherUser,
+          conversationId,
+          createdAt: match.created_at || null,
+          isViewed: Boolean(match.is_viewed),
+        }
+      })
 
       const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
 
@@ -296,15 +304,15 @@ export default function MatchesPage() {
   }, [session?.user?.id, db])
 
   useEffect(() => {
-  loadConversations()
-}, [loadConversations])
+    loadConversations()
+  }, [loadConversations])
 
   const openConversation = async (
     otherUserId: string,
     existingConversationId?: string | null,
     matchId?: string | null
   ) => {
-  const currentUserId = session?.user?.id
+    const currentUserId = session?.user?.id
     if (!currentUserId || !otherUserId) return
 
     setOpeningConversation(otherUserId)
