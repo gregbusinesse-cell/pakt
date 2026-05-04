@@ -13,7 +13,7 @@ import type { Profile } from '@/lib/supabase/types'
 import { MessageCircle, Users, Crown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-type Tab = 'matches' | 'conversations'
+type Tab = 'matches' | 'likes' | 'conversations'
 
 interface ConversationRow {
   id: string
@@ -136,8 +136,7 @@ export default function MatchesPage() {
   const db = supabase as any
   const router = useRouter()
   const { profile } = useAppStore()
-  const isFree = profile?.plan !== 'premium'
-  
+  const isFree = profile?.plan === 'free'
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
@@ -342,8 +341,6 @@ export default function MatchesPage() {
     }
   }
 
-  const currentItems = tab === 'matches' ? (matches.length > 0 ? matches : conversations) : conversations
-
   return (
     <div className="h-full flex flex-col bg-dark">
       <div className="px-5 pt-5 pb-3 shrink-0">
@@ -363,6 +360,17 @@ export default function MatchesPage() {
 
           <button
             type="button"
+            onClick={() => setTab('likes')}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              tab === 'likes' ? 'bg-gold text-dark' : 'text-white/50'
+            }`}
+          >
+            <Crown size={15} />
+            Likes
+          </button>
+
+          <button
+            type="button"
             onClick={() => setTab('conversations')}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
               tab === 'conversations' ? 'bg-gold text-dark' : 'text-white/50'
@@ -375,7 +383,7 @@ export default function MatchesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-4">
-        {profile?.plan === 'free' && <BusinessBanner type={tab} />}
+        {isFree && <BusinessBanner type={tab} />}
 
         {loading ? (
           <div className="flex flex-col gap-3 pt-2">
@@ -389,32 +397,113 @@ export default function MatchesPage() {
               </div>
             ))}
           </div>
-        ) : currentItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
-            <span className="text-5xl">{tab === 'matches' ? '⚔️' : '✉️'}</span>
+        ) : tab === 'matches' ? (
+          matches.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
+              <span className="text-5xl">⚔️</span>
+              <div>
+                <h3 className="font-semibold text-lg mb-1">Pas encore de matchs</h3>
+                <p className="text-white/40 text-sm">
+                  Continue à swiper pour trouver tes matchs !
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1 pt-2">
+              {matches.map((item, index) => {
+                const isOpening = openingConversation === item.otherUser.id
+                const lastMessageAt = item.createdAt
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <button
+                      type="button"
+                      disabled={isOpening}
+                      onClick={() => openConversation(item.otherUser.id, item.conversationId, item.id)}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                          {item.otherUser.photos?.[0] ? (
+                            <img
+                              src={(item.otherUser.photos as string[])[0]}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-2xl">
+                              👤
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
+                          ✓
+                        </div>
+
+                        {!item.isViewed && (
+                          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="font-semibold truncate">
+                            {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                          </p>
+
+                          {lastMessageAt && (
+                            <span className="text-white/30 text-xs shrink-0 ml-2">
+                              {formatTime(lastMessageAt)}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-white/40 text-sm truncate">
+                          {isOpening ? 'Ouverture...' : '🎉 Nouveau match ! Dis bonjour'}
+                        </p>
+                      </div>
+                    </button>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )
+        ) : tab === 'likes' ? (
+          isFree ? (
+            <div className="text-center mt-10">
+              <p className="text-lg font-semibold">Quelqu’un t’a liké 🔒</p>
+              <p className="text-white/50 text-sm">Débloque avec PAKT Business</p>
+            </div>
+          ) : (
             <div>
-              <h3 className="font-semibold text-lg mb-1">
-                {tab === 'matches' ? 'Pas encore de matchs' : 'Aucune conversation pour le moment'}
-              </h3>
+              <p>Afficher les vrais likes ici</p>
+            </div>
+          )
+        ) : isFree ? (
+          <div className="text-center mt-10">
+            <p className="text-lg font-semibold">Messages bloqués 🔒</p>
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
+            <span className="text-5xl">✉️</span>
+            <div>
+              <h3 className="font-semibold text-lg mb-1">Aucune conversation pour le moment</h3>
               <p className="text-white/40 text-sm">
-                {tab === 'matches'
-                  ? 'Continue à swiper pour trouver tes matchs !'
-                  : "Tu peux envoyer un message depuis le profil de quelqu'un"}
+                Tu peux envoyer un message depuis le profil de quelqu'un
               </p>
             </div>
           </div>
         ) : (
           <div className="space-y-1 pt-2">
-            {currentItems.map((item, index) => {
-              const isConversation = item.type === 'conversation'
-              const lastMessage = isConversation
-                ? item.lastMessage || 'Nouveau message'
-                : '🎉 Nouveau match ! Dis bonjour'
-
-              const lastMessageAt = isConversation ? item.lastMessageAt : item.createdAt
-              const conversationId = isConversation ? item.id : item.conversationId
+            {conversations.map((item, index) => {
+              const lastMessage = item.lastMessage || 'Nouveau message'
               const isOpening = openingConversation === item.otherUser.id
-              const showUnreadMatch = item.type === 'match' && !item.isViewed
 
               return (
                 <motion.div
@@ -426,63 +515,40 @@ export default function MatchesPage() {
                   <button
                     type="button"
                     disabled={isOpening}
-                    onClick={() => {
-  if (isFree) {
-    toast.error('Passe à PAKT Business pour voir ce match')
-    return
-  }
-
-  openConversation(
-    item.otherUser.id,
-    conversationId,
-    item.type === 'match' ? item.id : null
-  )
-}}
+                    onClick={() => openConversation(item.otherUser.id, item.id, null)}
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">
-  <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
-    {item.otherUser.photos?.[0] ? (
-      <div className="relative w-full h-full">
-        <img
-          src={(item.otherUser.photos as string[])[0]}
-          alt=""
-          className={`w-full h-full object-cover ${isFree ? 'blur-md scale-110' : ''}`}
-        />
-
-        {isFree && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <Crown size={16} className="text-gold" />
-          </div>
-        )}
-      </div>
-    ) : (
-      <div className="w-full h-full flex items-center justify-center text-2xl">
-        👤
-      </div>
-    )}
-  </div>
-</div>
+                      <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                        {item.otherUser.photos?.[0] ? (
+                          <img
+                            src={(item.otherUser.photos as string[])[0]}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">
+                            👤
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className="font-semibold truncate">
-                          {isFree ? 'Quelqu’un t’a liké' : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                          {item.otherUser.first_name || item.otherUser.email || 'Profil'}
                         </p>
 
-                        {lastMessageAt && (
+                        {item.lastMessageAt && (
                           <span className="text-white/30 text-xs shrink-0 ml-2">
-                            {formatTime(lastMessageAt)}
+                            {formatTime(item.lastMessageAt)}
                           </span>
                         )}
                       </div>
 
                       <p className="text-white/40 text-sm truncate">
-                        {isFree
-  ? '🔒 Débloque avec PAKT Business'
-  : isOpening
-  ? 'Ouverture...'
-  : lastMessage}
+                        {isOpening ? 'Ouverture...' : lastMessage}
                       </p>
                     </div>
                   </button>
