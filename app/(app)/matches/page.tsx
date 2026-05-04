@@ -165,9 +165,11 @@ export default function MatchesPage() {
       }
 
       const { data: matchesData, error: matchesError } = await db
-        .from('matches')
-        .select('*')
-        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+  .from('matches')
+  .select('*')
+  .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+  .order('created_at', { ascending: false })
+
 
       if (matchesError) {
         toast.error(`Erreur matchs: ${matchesError.message}`)
@@ -245,23 +247,30 @@ export default function MatchesPage() {
       const conversationItems = conversationItemsRaw.filter(Boolean) as ConversationItem[]
 
       const matchItemsRaw = matchRows.map((match) => {
-        const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
-        const otherUser = profileMap.get(otherUserId)
+  const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
 
-        if (!otherUser) return null
+  const otherUser =
+    profileMap.get(otherUserId) ||
+    ({
+      id: otherUserId,
+      first_name: null,
+      email: null,
+      photos: [],
+    } as Profile)
 
-        const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
-        const conversationId = linkedConversation?.id || null
+  const linkedConversation = conversationByPair.get(getPairKey(currentUserId, otherUserId))
+  const conversationId = linkedConversation?.id || null
 
-        return {
-          id: match.id,
-          type: 'match' as const,
-          otherUser,
-          conversationId,
-          createdAt: match.created_at || null,
-          isViewed: Boolean(match.is_viewed),
-        }
-      })
+  return {
+    id: match.id,
+    type: 'match' as const,
+    otherUser,
+    conversationId,
+    createdAt: match.created_at || null,
+    isViewed: Boolean(match.is_viewed),
+  }
+})
+
 
       const cleanMatchItems = matchItemsRaw.filter(Boolean) as MatchItem[]
 
@@ -486,10 +495,6 @@ export default function MatchesPage() {
               <p>Afficher les vrais likes ici</p>
             </div>
           )
-        ) : isFree ? (
-          <div className="text-center mt-10">
-            <p className="text-lg font-semibold">Messages bloqués 🔒</p>
-          </div>
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
             <span className="text-5xl">✉️</span>
