@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { Flame, MessageCircle, User } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
@@ -17,15 +16,15 @@ const NAV_ITEMS = [
 ]
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const session = useSession()
   const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
   const pathname = usePathname()
   const { setProfile, notificationsVersion } = useAppStore()
-  const [totalNotifications, setTotalNotifications] = useState(0)
 
-  const userId = session?.user?.id
+  const [authLoading, setAuthLoading] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [totalNotifications, setTotalNotifications] = useState(0)
 
   const refreshNotificationCount = useCallback(async () => {
     if (!userId) {
@@ -63,49 +62,72 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, [db, userId])
 
   useEffect(() => {
-    if (!session?.user) return
+    let mounted = true
 
-    const syncEmail = async () => {
-      if (!session.user.email_confirmed_at) return
+    const initAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-      await supabase
-        .from('profiles')
-        .update({ email_confirmed: true } as never)
-        .eq('id', session.user.id)
-    }
+      if (!mounted) return
 
-    syncEmail()
-  }, [session, supabase])
+      if (!session?.user) {
+        setAuthLoading(false)
+        router.replace('/auth')
+        return
+      }
 
-  useEffect(() => {
-    if (!session) {
-      router.push('/auth')
-      return
-    }
+      setUserId(session.user.id)
 
-    const loadProfile = async () => {
+      if (session.user.email_confirmed_at) {
+        await supabase
+          .from('profiles')
+          .update({ email_confirmed: true } as never)
+          .eq('id', session.user.id)
+      }
+
       const { data } = (await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single()) as unknown as { data: Profile | null }
+        .maybeSingle()) as unknown as { data: Profile | null }
+
+      if (!mounted) return
 
       if (!data || data.is_onboarded !== true) {
-  setProfile(null)
-  router.replace('/onboarding')
-  return
-}
+        setProfile(null)
+        setAuthLoading(false)
+        router.replace('/onboarding')
+        return
+      }
 
-setProfile(data)
-
+      setProfile(data)
+      setAuthLoading(false)
     }
 
-    loadProfile()
-  }, [session, router, setProfile, supabase])
+    initAuth()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setUserId(null)
+        setProfile(null)
+        router.replace('/auth')
+      } else {
+        setUserId(session.user.id)
+      }
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [router, setProfile, supabase])
 
   useEffect(() => {
-    refreshNotificationCount()
-  }, [refreshNotificationCount, notificationsVersion])
+    if (!authLoading) refreshNotificationCount()
+  }, [authLoading, refreshNotificationCount, notificationsVersion])
 
   useEffect(() => {
     if (!userId) return
@@ -129,7 +151,15 @@ setProfile(data)
     }
   }, [refreshNotificationCount, supabase, userId])
 
-  if (!session) return null
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-dark text-white">
+        <div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+      </div>
+    )
+  }
+
+  if (!userId) return null
 
   return (
     <div className="flex flex-col min-h-screen bg-dark text-white">
