@@ -205,8 +205,6 @@ function PhotoSection(props: {
               }`}
             >
               {editing && <input {...getInputProps()} />}
-                  <X size={10} className="text-white" />
-                </button>
               )}
             </div>
           )
