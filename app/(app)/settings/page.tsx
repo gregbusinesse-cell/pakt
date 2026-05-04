@@ -236,7 +236,7 @@ export default function SettingsPage() {
         'Swipes illimités',
         'Messages illimités',
         'Filtres avancés (âge + distance personnalisée)',
-        'Accès prioritaire aux événements'
+        'Accès prioritaire aux événements',
         'Accès anticipé aux futures fonctionnalités',
       ],
       button: isPlanActive('business_pro') ? 'Plan actuel' : 'Passer Pro',
