@@ -11,9 +11,22 @@ import { useAppStore } from '@/lib/store'
 import { createClient } from '@/lib/supabase/client'
 
 type TabKey = 'plans' | 'events' | 'news' | 'legal'
+type PlanKey = 'free' | 'business' | 'business_pro'
 
 const FUNDING_GOAL = 3000
 const currentAmount = 0
+
+const PLAN_RANK: Record<PlanKey, number> = {
+  free: 0,
+  business: 1,
+  business_pro: 2,
+}
+
+function normalizePlan(plan: unknown): PlanKey {
+  if (plan === 'business_pro' || plan === 'pro') return 'business_pro'
+  if (plan === 'business' || plan === 'premium') return 'business'
+  return 'free'
+}
 
 function EventsTab() {
   const progress = Math.min(100, Math.max(0, (currentAmount / FUNDING_GOAL) * 100))
@@ -105,55 +118,79 @@ function EventsTab() {
 }
 
 export default function SettingsPage() {
-  const { profile } = useAppStore()
-  const [upgrading, setUpgrading] = useState(false)
+  const { profile, setProfile } = useAppStore()
+  const [upgrading, setUpgrading] = useState<PlanKey | null>(null)
   const [tab, setTab] = useState<TabKey>('plans')
 
-  const isBusiness = profile?.plan === 'premium'
-  const isPro = (profile as any)?.plan === 'pro'
-  const isPaid = isBusiness || isPro
+  const currentPlan = normalizePlan((profile as any)?.plan)
 
-  const handleUpgrade = async () => {
-    setUpgrading(true)
+  const isPlanActive = (plan: PlanKey) => currentPlan === plan
+
+  const getPlanLabel = (plan: PlanKey = currentPlan) => {
+    if (plan === 'business_pro') return 'PRO'
+    if (plan === 'business') return 'BUSINESS'
+    return 'FREE'
+  }
+
+  const isPlanBlocked = (plan: PlanKey) => PLAN_RANK[currentPlan] >= PLAN_RANK[plan]
+
+  const handleUpgrade = async (plan: PlanKey) => {
+    if (plan === 'free') return
+
+    if (isPlanBlocked(plan)) {
+      toast.error('Tu as déjà ce plan')
+      return
+    }
+
+    if (upgrading) return
+
+    const paymentLink =
+      plan === 'business'
+        ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
+        : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
+
+    if (!paymentLink) {
+      toast.error(
+        plan === 'business'
+          ? 'Lien Stripe manquant (NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS)'
+          : 'Lien Stripe manquant (NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO)'
+      )
+      return
+    }
+
+    setUpgrading(plan)
 
     try {
+      const paymentWindow = window.open(paymentLink, '_blank', 'noopener,noreferrer')
+
+      if (!paymentWindow) {
+        throw new Error('Impossible d’ouvrir le paiement')
+      }
+
       const supabase = createClient()
       const {
         data: { session },
       } = await supabase.auth.getSession()
 
-      if (!session?.access_token) {
+      if (!session?.user?.id) {
         throw new Error('Non authentifié')
       }
 
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
+      const { error } = await supabase
+        .from('profiles')
+        .update({ plan } as never)
+        .eq('id', session.user.id)
 
-      const data = await response.json()
+      if (error) throw error
 
-      if (!response.ok) throw new Error(data.error || 'Erreur lors de la création du paiement')
-      if (!data.url) throw new Error('URL de paiement introuvable')
-
-      window.location.href = data.url
+      if (profile) {
+        setProfile({ ...profile, plan } as any)
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à niveau')
-      setUpgrading(false)
+    } finally {
+      setUpgrading(null)
     }
-  }
-
-  const handleUpgradePro = () => {
-    const proLink = process.env.NEXT_PUBLIC_STRIPE_PRO_PAYMENT_LINK
-
-    if (!proLink) {
-      toast.error('Lien Stripe manquant (NEXT_PUBLIC_STRIPE_PRO_PAYMENT_LINK)')
-      return
-    }
-
-    window.location.href = proLink
   }
 
   const tabs = useMemo(
@@ -166,6 +203,44 @@ export default function SettingsPage() {
       ] satisfies Array<{ key: TabKey; label: string }>,
     []
   )
+
+  const plans = [
+    {
+      key: 'free' as const,
+      name: 'FREE',
+      price: 'Gratuit',
+      badge: 'FREE',
+      features: ['10 swipes / jour', 'Accès aux matchs', 'Messages uniquement avec les matchs'],
+      button: isPlanActive('free') ? 'Plan actuel' : 'Inclus',
+    },
+    {
+      key: 'business' as const,
+      name: 'BUSINESS',
+      price: '5€',
+      suffix: '/mois',
+      badge: 'BUSINESS',
+      features: [
+        '20 swipes / jour',
+        'Messages illimités',
+        'Accès anticipé aux futures fonctionnalités',
+      ],
+      button: isPlanActive('business') ? 'Plan actuel' : 'Passer Business',
+    },
+    {
+      key: 'business_pro' as const,
+      name: 'BUSINESS PRO',
+      price: '10€',
+      suffix: '/mois',
+      badge: 'PRO',
+      features: [
+        'Swipes illimités',
+        'Messages illimités',
+        'Filtres avancés (âge + distance personnalisée)',
+        'Accès prioritaire aux événements',
+      ],
+      button: isPlanActive('business_pro') ? 'Plan actuel' : 'Passer Pro',
+    },
+  ]
 
   return (
     <div className="min-h-screen overflow-y-auto pb-32 px-4 bg-dark">
@@ -215,177 +290,105 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-white/60">Plan actuel :</span>
                     <span className="text-sm font-semibold text-white">
-                      {isPro ? 'PAKT Business Pro' : isBusiness ? 'PAKT Business' : 'PAKT'}
+                      {getPlanLabel()}
                     </span>
                   </div>
+
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isPaid
-                        ? 'bg-gold text-dark'
-                        : 'bg-white/10 text-white/60 border border-dark-500'
+                      currentPlan === 'free'
+                        ? 'bg-white/10 text-white/60 border border-dark-500'
+                        : 'bg-gold text-dark'
                     }`}
                   >
-                    {isPro ? 'PRO' : isBusiness ? 'BUSINESS' : 'PAKT'}
+                    {getPlanLabel()}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-                  <div
-                    className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
-                      !isPaid ? 'border-gold/40' : 'border-dark-500 hover:border-gold/50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-base font-semibold text-white">PAKT</p>
-                        <span className="inline-flex mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white/60 border border-dark-500">
-                          PAKT
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-black text-white">Gratuit</div>
-                      </div>
-                    </div>
+                  {plans.map((plan) => {
+                    const active = isPlanActive(plan.key)
+                    const blocked = isPlanBlocked(plan.key)
+                    const isFreePlan = plan.key === 'free'
+                    const loading = upgrading === plan.key
 
-                    <div className="mt-4 space-y-2">
-                      {['10 swipes / jour', '1 message avant match'].map((feature) => (
-                        <div key={feature} className="flex items-center gap-2">
-                          <Check size={14} className="text-white/40" />
-                          <span className="text-sm text-white/60">{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-auto pt-5">
-                      <button
-                        type="button"
-                        disabled
-                        className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm border border-dark-500 bg-white/10 text-white/70 disabled:opacity-100"
-                      >
-                        {!isPaid ? 'Plan actuel' : 'Inclus'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <motion.div
-                    whileHover={{ y: -2 }}
-                    transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-                    className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
-                      isBusiness
-                        ? 'border-gold/60 shadow-[0_0_0_1px_rgba(212,168,83,0.25),0_0_40px_rgba(212,168,83,0.10)]'
-                        : 'border-dark-500 hover:border-gold/50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2">
-                        <div className="mt-0.5">
-                          <Crown size={18} className="text-gold" />
-                        </div>
-                        <div>
-                          <p className="text-base font-semibold text-white">PAKT Business</p>
-                          <span className="inline-flex mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold text-dark">
-                            BUSINESS
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-baseline justify-end gap-2">
-                          <span className="text-2xl font-black text-gold">5€</span>
-                          <span className="text-white/40 text-sm">/mois</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      {[
-                        'Swipes illimités',
-                        'Messages illimités',
-                        'Accès prioritaire aux Événements',
-                        'Réduction sur les Événements',
-                        'Accès anticipé aux futures fonctionnalités',
-                      ].map((feature) => (
-                        <div key={feature} className="flex items-center gap-2">
-                          <Check size={14} className="text-gold" />
-                          <span className="text-sm text-white/60">{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-auto pt-5">
-                      <button
-                        type="button"
-                        onClick={isBusiness ? undefined : handleUpgrade}
-                        disabled={isBusiness || upgrading}
-                        className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-50 ${
-                          isBusiness
-                            ? 'border border-dark-500 bg-white/10 text-white/70'
-                            : 'bg-gold text-dark hover:bg-gold-light'
+                    return (
+                      <motion.div
+                        key={plan.key}
+                        whileHover={{ y: isFreePlan ? 0 : -2 }}
+                        transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                        className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
+                          active
+                            ? 'border-gold/60 shadow-[0_0_0_1px_rgba(212,168,83,0.25),0_0_40px_rgba(212,168,83,0.10)]'
+                            : 'border-dark-500 hover:border-gold/50'
                         }`}
                       >
-                        {isBusiness ? 'Plan actuel' : upgrading ? 'Redirection...' : 'Passer Business'}
-                      </button>
-                    </div>
-                  </motion.div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2">
+                            {!isFreePlan && (
+                              <div className="mt-0.5">
+                                <Crown size={18} className="text-gold" />
+                              </div>
+                            )}
 
-                  <motion.div
-                    whileHover={{ y: -2 }}
-                    transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-                    className={`min-h-[390px] bg-dark-200 border rounded-[12px] p-5 transition-colors flex flex-col ${
-                      isPro
-                        ? 'border-gold/60 shadow-[0_0_0_1px_rgba(212,168,83,0.25),0_0_40px_rgba(212,168,83,0.10)]'
-                        : 'border-dark-500 hover:border-gold/50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2">
-                        <div className="mt-0.5">
-                          <Crown size={18} className="text-gold" />
-                        </div>
-                        <div>
-                          <p className="text-base font-semibold text-white">PAKT Business Pro</p>
-                          <span className="inline-flex mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold text-dark">
-                            PRO
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-baseline justify-end gap-2">
-                          <span className="text-2xl font-black text-gold">10€</span>
-                          <span className="text-white/40 text-sm">/mois</span>
-                        </div>
-                      </div>
-                    </div>
+                            <div>
+                              <p className="text-base font-semibold text-white">{plan.name}</p>
+                              <span
+                                className={`inline-flex mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isFreePlan
+                                    ? 'bg-white/10 text-white/60 border border-dark-500'
+                                    : 'bg-gold text-dark'
+                                }`}
+                              >
+                                {plan.badge}
+                              </span>
+                            </div>
+                          </div>
 
-                    <div className="mt-4 space-y-2">
-                      {[
-                        'Swipes illimités',
-                        'Messages illimités',
-                        'Accès aux likes',
-                        'Accès prioritaire',
-                        'Tout débloqué',
-                      ].map((feature) => (
-                        <div key={feature} className="flex items-center gap-2">
-                          <Check size={14} className="text-gold" />
-                          <span className="text-sm text-white/60">{feature}</span>
+                          <div className="text-right">
+                            {plan.suffix ? (
+                              <div className="flex items-baseline justify-end gap-2">
+                                <span className="text-2xl font-black text-gold">{plan.price}</span>
+                                <span className="text-white/40 text-sm">{plan.suffix}</span>
+                              </div>
+                            ) : (
+                              <div className="text-2xl font-black text-white">{plan.price}</div>
+                            )}
+                          </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="mt-auto pt-5">
-                      <button
-                        type="button"
-                        onClick={isPro ? undefined : handleUpgradePro}
-                        disabled={isPro}
-                        className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-50 ${
-                          isPro
-                            ? 'border border-dark-500 bg-white/10 text-white/70'
-                            : 'bg-gold text-dark hover:bg-gold-light'
-                        }`}
-                      >
-                        {isPro ? 'Plan actuel' : 'Passer Pro'}
-                      </button>
-                    </div>
-                  </motion.div>
+                        <div className="mt-4 space-y-2">
+                          {plan.features.map((feature) => (
+                            <div key={feature} className="flex items-center gap-2">
+                              <Check
+                                size={14}
+                                className={isFreePlan ? 'text-white/40' : 'text-gold'}
+                              />
+                              <span className="text-sm text-white/60">{feature}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-auto pt-5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isFreePlan) return
+                              handleUpgrade(plan.key)
+                            }}
+                            disabled={isFreePlan || blocked || Boolean(upgrading)}
+                            className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-60 ${
+                              isFreePlan || blocked
+                                ? 'border border-dark-500 bg-white/10 text-white/70'
+                                : 'bg-gold text-dark hover:bg-gold-light'
+                            }`}
+                          >
+                            {loading ? 'Ouverture...' : blocked && !isFreePlan ? 'Plan actuel' : plan.button}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )
+                  })}
                 </div>
               </motion.div>
             )}
