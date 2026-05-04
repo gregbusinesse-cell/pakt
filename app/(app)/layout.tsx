@@ -90,14 +90,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         .eq('id', session.user.id)
         .single()) as unknown as { data: Profile | null }
 
-      if (!data) return
+      if (!data || data.is_onboarded !== true) {
+  setProfile(null)
+  router.replace('/onboarding')
+  return
+}
 
-      if (!data.is_onboarded) {
-        router.push('/onboarding')
-        return
-      }
+setProfile(data)
 
-      setProfile(data)
     }
 
     loadProfile()
