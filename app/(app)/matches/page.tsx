@@ -30,6 +30,11 @@ interface MatchRow {
   is_viewed?: boolean | null
 }
 
+interface LikeRow {
+  liker_id: string
+  created_at?: string | null
+}
+
 interface LastMessageRow {
   content: string | null
   created_at: string | null
@@ -52,6 +57,14 @@ interface MatchItem {
   conversationId: string | null
   createdAt: string | null
   isViewed: boolean
+}
+
+interface LikeItem {
+  id: string
+  otherUser: Profile
+  createdAt: string | null
+  isMatched: boolean
+  conversationId: string | null
 }
 
 function getPairKey(a: string, b: string) {
@@ -151,6 +164,7 @@ export default function MatchesPage() {
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
+  const [likes, setLikes] = useState<LikeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
@@ -169,6 +183,7 @@ export default function MatchesPage() {
       const [
         { data: conversationsData, error: conversationsError },
         { data: matchesData, error: matchesError },
+        { data: likesData, error: likesError },
       ] = await Promise.all([
         db
           .from('conversations')
@@ -180,13 +195,20 @@ export default function MatchesPage() {
           .select('*')
           .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
           .order('created_at', { ascending: false }),
+        db
+          .from('likes')
+          .select('liker_id, created_at')
+          .eq('liked_id', currentUserId)
+          .order('created_at', { ascending: false }),
       ])
 
       if (conversationsError) toast.error(`Erreur conversations: ${conversationsError.message}`)
       if (matchesError) toast.error(`Erreur matchs: ${matchesError.message}`)
+      if (likesError) toast.error(`Erreur likes: ${likesError.message}`)
 
       const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
       const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
+      const likeRows = likesError ? [] : ((likesData || []) as LikeRow[])
 
       const conversationOtherIds = conversationRows.map((conversation) =>
         conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
@@ -196,7 +218,12 @@ export default function MatchesPage() {
         match.user1_id === currentUserId ? match.user2_id : match.user1_id
       )
 
-      const allUserIds = Array.from(new Set([...conversationOtherIds, ...matchOtherIds]))
+      const likeOtherIds = likeRows.map((like) => like.liker_id)
+
+      const allUserIds = Array.from(
+        new Set([...conversationOtherIds, ...matchOtherIds, ...likeOtherIds])
+      )
+
       let profileMap = new Map<string, Profile>()
 
       if (allUserIds.length > 0) {
@@ -287,6 +314,21 @@ export default function MatchesPage() {
 
       const cleanMatchItems = Array.from(matchItemsByPair.values())
 
+      const likeItems = likeRows.map((like) => {
+        const pairKey = getPairKey(currentUserId, like.liker_id)
+        const linkedMatch = matchItemsByPair.get(pairKey)
+        const linkedConversation = conversationByPair.get(pairKey)
+        const otherUser = profileMap.get(like.liker_id) || createFallbackProfile(like.liker_id)
+
+        return {
+          id: like.liker_id,
+          otherUser,
+          createdAt: like.created_at || null,
+          isMatched: Boolean(linkedMatch),
+          conversationId: linkedConversation?.id || linkedMatch?.conversationId || null,
+        }
+      })
+
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
         const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
@@ -299,12 +341,20 @@ export default function MatchesPage() {
         return bTime - aTime
       })
 
+      likeItems.sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bTime - aTime
+      })
+
       setConversations(conversationItems)
       setMatches(cleanMatchItems)
+      setLikes(likeItems)
     } catch {
       toast.error('Erreur chargement messages')
       setConversations([])
       setMatches([])
+      setLikes([])
     } finally {
       setLoading(false)
     }
@@ -494,14 +544,95 @@ export default function MatchesPage() {
             </div>
           )
         ) : tab === 'likes' ? (
-          isFree ? (
-            <div className="text-center mt-10">
-              <p className="text-lg font-semibold">Quelqu’un t’a liké 🔒</p>
-              <p className="text-white/50 text-sm">Débloque avec PAKT Business</p>
+          likes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
+              <span className="text-5xl">👑</span>
+              <div>
+                <h3 className="font-semibold text-lg mb-1">Aucun like pour le moment</h3>
+                <p className="text-white/40 text-sm">Les personnes qui te likent apparaîtront ici.</p>
+              </div>
             </div>
           ) : (
-            <div>
-              <p>Afficher les vrais likes ici</p>
+            <div className="space-y-1 pt-2">
+              {likes.map((item, index) => {
+                const isOpening = openingConversation === item.otherUser.id
+                const canOpen = !isFree && item.conversationId
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <button
+                      type="button"
+                      disabled={isOpening || isFree}
+                      onClick={() => {
+                        if (isFree) return
+                        if (item.conversationId) {
+                          openConversation(item.otherUser.id, item.conversationId, null)
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-100"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="relative w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                          {item.otherUser.photos?.[0] ? (
+                            <img
+                              src={(item.otherUser.photos as string[])[0]}
+                              alt=""
+                              className={`w-full h-full object-cover ${
+                                isFree ? 'blur-md scale-110 brightness-75' : ''
+                              }`}
+                            />
+                          ) : (
+                            <div
+                              className={`w-full h-full flex items-center justify-center text-2xl ${
+                                isFree ? 'blur-sm brightness-75' : ''
+                              }`}
+                            >
+                              👤
+                            </div>
+                          )}
+
+                          {isFree && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                              <Crown size={16} className="text-gold" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="font-semibold truncate">
+                            {isFree
+                              ? 'Quelqu’un t’a liké'
+                              : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                          </p>
+
+                          {item.createdAt && (
+                            <span className="text-white/30 text-xs shrink-0 ml-2">
+                              {formatTime(item.createdAt)}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-white/40 text-sm truncate">
+                          {isFree
+                            ? 'Débloque avec PAKT Business'
+                            : isOpening
+                            ? 'Ouverture...'
+                            : canOpen
+                            ? 'Cette personne t’a liké'
+                            : 'Like reçu'}
+                        </p>
+                      </div>
+                    </button>
+                  </motion.div>
+                )
+              })}
             </div>
           )
         ) : conversations.length === 0 ? (
