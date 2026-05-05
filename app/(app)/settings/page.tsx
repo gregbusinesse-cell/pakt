@@ -119,8 +119,10 @@ function EventsTab() {
 export default function SettingsPage() {
   const { profile } = useAppStore()
   const [tab, setTab] = useState<TabKey>('plans')
+  const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
 
   const currentPlan = normalizePlan((profile as any)?.plan)
+  const stripeCustomerId = (profile as any)?.stripe_customer_id as string | undefined
 
   const isPlanActive = (plan: PlanKey) => currentPlan === plan
 
@@ -130,27 +132,66 @@ export default function SettingsPage() {
     return 'FREE'
   }
 
-  const isPlanBlocked = (plan: PlanKey) => PLAN_RANK[currentPlan] >= PLAN_RANK[plan]
+  const isDowngrade = (plan: PlanKey) => PLAN_RANK[currentPlan] > PLAN_RANK[plan]
+  const isUpgrade = (plan: PlanKey) => PLAN_RANK[currentPlan] < PLAN_RANK[plan]
 
-  const handleUpgrade = (plan: PlanKey) => {
+  const handlePlanChange = async (plan: PlanKey) => {
     if (plan === 'free') return
 
-    if (isPlanBlocked(plan)) {
+    if (isPlanActive(plan)) {
       toast.error('Tu as déjà ce plan')
       return
     }
 
-    const paymentLink =
-      plan === 'business'
-        ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
-        : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
+    if (isDowngrade(plan)) {
+      if (!stripeCustomerId) {
+        toast.error('Client Stripe introuvable')
+        return
+      }
 
-    if (!paymentLink) {
-      toast.error('Lien Stripe manquant')
+      try {
+        setLoadingPlan(plan)
+
+        const res = await fetch('/api/stripe/change-plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            customerId: stripeCustomerId,
+            plan,
+          }),
+        })
+
+        const data = await res.json().catch(() => null)
+
+        if (!res.ok) {
+          throw new Error(data?.error || 'Impossible de changer de plan')
+        }
+
+        toast.success('Plan modifié. Mise à jour en cours...')
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Impossible de changer de plan')
+      } finally {
+        setLoadingPlan(null)
+      }
+
       return
     }
 
-    window.open(paymentLink, '_blank')
+    if (isUpgrade(plan)) {
+      const paymentLink =
+        plan === 'business'
+          ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
+          : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
+
+      if (!paymentLink) {
+        toast.error('Lien Stripe manquant')
+        return
+      }
+
+      window.open(paymentLink, '_blank')
+    }
   }
 
   const tabs = useMemo(
@@ -184,7 +225,12 @@ export default function SettingsPage() {
         'Messages illimités',
         'Accès anticipé aux futures fonctionnalités',
       ],
-      button: isPlanActive('business') ? 'Plan actuel' : 'Passer Business',
+      button:
+        currentPlan === 'business_pro'
+          ? 'Passer Business'
+          : isPlanActive('business')
+            ? 'Plan actuel'
+            : 'Passer Business',
     },
     {
       key: 'business_pro' as const,
@@ -266,8 +312,8 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
                   {plans.map((plan) => {
                     const active = isPlanActive(plan.key)
-                    const blocked = isPlanBlocked(plan.key)
                     const isFreePlan = plan.key === 'free'
+                    const isLoading = loadingPlan === plan.key
 
                     return (
                       <motion.div
@@ -329,18 +375,15 @@ export default function SettingsPage() {
                         <div className="mt-auto pt-5">
                           <button
                             type="button"
-                            onClick={() => {
-                              if (isFreePlan) return
-                              handleUpgrade(plan.key)
-                            }}
-                            disabled={isFreePlan || active}
+                            onClick={() => handlePlanChange(plan.key)}
+                            disabled={isFreePlan || active || isLoading || loadingPlan !== null}
                             className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-60 ${
-                              isFreePlan || active || blocked
+                              isFreePlan || active
                                 ? 'border border-dark-500 bg-white/10 text-white/70'
                                 : 'bg-gold text-dark hover:bg-gold-light'
                             }`}
                           >
-                            {active ? 'Plan actuel' : blocked && !isFreePlan ? 'Déjà inclus' : plan.button}
+                            {isLoading ? 'Modification...' : active ? 'Plan actuel' : plan.button}
                           </button>
                         </div>
                       </motion.div>
