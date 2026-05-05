@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Check, ChevronRight, Crown } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { createClient } from '@/lib/supabase/client'
 
 type TabKey = 'plans' | 'events' | 'news' | 'legal'
 type PlanKey = 'free' | 'business' | 'business_pro'
@@ -111,6 +112,7 @@ function EventsTab() {
 export default function SettingsPage() {
   const { profile } = useAppStore()
   const [tab, setTab] = useState<TabKey>('plans')
+  const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
   const [cancelLoading, setCancelLoading] = useState(false)
 
   const currentPlan = normalizePlan((profile as any)?.plan)
@@ -123,46 +125,65 @@ export default function SettingsPage() {
     return 'FREE'
   }
 
-  const handleCheckout = async () => {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+  const getAccessToken = async () => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
-    const { data: { session } } = await supabase.auth.getSession()
-
-    if (!session) {
-      toast.error('Utilisateur non connecté')
-      return
-    }
-
-    const res = await fetch('/api/checkout', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    })
-
-    const data = await res.json()
-
-    if (!data.url) {
-      throw new Error(data?.error || 'Erreur checkout')
-    }
-
-    window.location.href = data.url
-  } catch (err) {
-    toast.error('Erreur Stripe')
-    console.error(err)
+    return session?.access_token ?? null
   }
-}
+
+  const handleCheckout = async (plan: Exclude<PlanKey, 'free'>) => {
+    try {
+      setLoadingPlan(plan)
+
+      const token = await getAccessToken()
+
+      if (!token) {
+        toast.error('Utilisateur non connecté')
+        return
+      }
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ plan }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || 'Erreur checkout')
+      }
+
+      window.location.href = data.url
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur Stripe')
+    } finally {
+      setLoadingPlan(null)
+    }
+  }
 
   const handleCancelSubscription = async () => {
     try {
       setCancelLoading(true)
 
+      const token = await getAccessToken()
+
+      if (!token) {
+        toast.error('Utilisateur non connecté')
+        return
+      }
+
       const res = await fetch('/api/stripe/cancel-subscription', {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       })
 
       const data = await res.json().catch(() => null)
@@ -171,7 +192,7 @@ export default function SettingsPage() {
         throw new Error(data?.error || 'Impossible de résilier')
       }
 
-      toast.success('Résiliation programmée à la fin de la période')
+      toast.success('Abonnement résilié')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Impossible de résilier')
     } finally {
@@ -310,6 +331,7 @@ export default function SettingsPage() {
                     const isFreePlan = plan.key === 'free'
                     const planButton = getPlanButton(plan.key)
                     const showCancelButton = active && plan.key !== 'free'
+                    const isLoading = loadingPlan === plan.key
 
                     return (
                       <motion.div
@@ -382,10 +404,11 @@ export default function SettingsPage() {
                           {planButton && (
                             <button
                               type="button"
-                             onClick={handleCheckout}
-                              className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] bg-gold text-dark hover:bg-gold-light"
+                              onClick={() => handleCheckout(plan.key as Exclude<PlanKey, 'free'>)}
+                              disabled={loadingPlan !== null || cancelLoading}
+                              className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] bg-gold text-dark hover:bg-gold-light disabled:opacity-60"
                             >
-                              {planButton}
+                              {isLoading ? 'Redirection...' : planButton}
                             </button>
                           )}
 
@@ -393,7 +416,7 @@ export default function SettingsPage() {
                             <button
                               type="button"
                               onClick={handleCancelSubscription}
-                              disabled={cancelLoading}
+                              disabled={cancelLoading || loadingPlan !== null}
                               className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-colors border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/15 disabled:opacity-60"
                             >
                               {cancelLoading ? 'Résiliation...' : 'Résilier'}
