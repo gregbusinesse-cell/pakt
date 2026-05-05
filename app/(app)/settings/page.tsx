@@ -123,19 +123,39 @@ export default function SettingsPage() {
     return 'FREE'
   }
 
-  const goToStripePaymentLink = (plan: 'business' | 'business_pro') => {
-    const paymentLink =
-      plan === 'business'
-        ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
-        : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
+  const handleCheckout = async () => {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
 
-    if (!paymentLink) {
-      toast.error('Lien Stripe manquant')
+    const { data: { session } } = await supabase.auth.getSession()
+
+    if (!session) {
+      toast.error('Utilisateur non connecté')
       return
     }
 
-    window.location.href = paymentLink
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    })
+
+    const data = await res.json()
+
+    if (!data.url) {
+      throw new Error(data?.error || 'Erreur checkout')
+    }
+
+    window.location.href = data.url
+  } catch (err) {
+    toast.error('Erreur Stripe')
+    console.error(err)
   }
+}
 
   const handleCancelSubscription = async () => {
     try {
@@ -362,11 +382,7 @@ export default function SettingsPage() {
                           {planButton && (
                             <button
                               type="button"
-                              onClick={() => {
-  if (plan.key === 'business' || plan.key === 'business_pro') {
-    goToStripePaymentLink(plan.key)
-  }
-}}
+                             onClick={handleCheckout}
                               className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] bg-gold text-dark hover:bg-gold-light"
                             >
                               {planButton}
