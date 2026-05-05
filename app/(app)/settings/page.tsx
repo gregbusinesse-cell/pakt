@@ -114,8 +114,10 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>('plans')
   const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
   const [cancelLoading, setCancelLoading] = useState(false)
+const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
 
-  const currentPlan = normalizePlan((profile as any)?.plan)
+  const currentPlan = localPlan ?? normalizePlan((profile as any)?.plan)
+
 
   const isPlanActive = (plan: PlanKey) => currentPlan === plan
 
@@ -191,6 +193,7 @@ export default function SettingsPage() {
       if (!res.ok) {
         throw new Error(data?.error || 'Impossible de résilier')
       }
+setLocalPlan('free')
 
       toast.success('Abonnement résilié')
     } catch (error) {
