@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const subscription = event.data.object as Stripe.Subscription
 
     const customerId = subscription.customer as string
-    const priceId = subscription.items.data[0].price.id
+    const priceId = subscription.items.data[0]?.price.id
 
     let plan = 'free'
 
