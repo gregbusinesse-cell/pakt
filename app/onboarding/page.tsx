@@ -1,7 +1,5 @@
 'use client'
 
-// app/onboarding/page.tsx
-
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -16,6 +14,15 @@ const STEPS = 5
 const MAX_INTERESTS = 5
 
 type PhotoItem = { type: 'new'; url: string; file: File }
+
+type CityPrediction = {
+  place_id: string
+  description: string
+  structured_formatting?: {
+    main_text?: string
+    secondary_text?: string
+  }
+}
 
 declare global {
   interface Window {
@@ -35,24 +42,16 @@ function waitForGooglePlaces(timeoutMs = 10000) {
     const startedAt = Date.now()
 
     const check = () => {
-      const hasGoogle = Boolean(window.google)
-      const hasMaps = Boolean(window.google?.maps)
       const hasPlaces = Boolean(window.google?.maps?.places)
-      const hasAutocomplete = Boolean(window.google?.maps?.places?.Autocomplete)
+      const hasAutocompleteService = Boolean(window.google?.maps?.places?.AutocompleteService)
+      const hasPlacesService = Boolean(window.google?.maps?.places?.PlacesService)
 
-      if (hasAutocomplete) {
-        console.log('Google loaded')
+      if (hasPlaces && hasAutocompleteService && hasPlacesService) {
         resolve()
         return
       }
 
       if (Date.now() - startedAt >= timeoutMs) {
-        console.error('[Google Places] timeout', {
-          hasGoogle,
-          hasMaps,
-          hasPlaces,
-          hasAutocomplete,
-        })
         reject(new Error('Google Places timeout'))
         return
       }
@@ -67,8 +66,7 @@ function waitForGooglePlaces(timeoutMs = 10000) {
 async function loadGooglePlacesScript() {
   if (typeof window === 'undefined') return
 
-  if (window.google?.maps?.places?.Autocomplete) {
-    console.log('Google loaded')
+  if (window.google?.maps?.places?.AutocompleteService && window.google?.maps?.places?.PlacesService) {
     return
   }
 
@@ -85,41 +83,11 @@ async function loadGooglePlacesScript() {
       return
     }
 
-    const existingScripts = Array.from(
-      document.querySelectorAll<HTMLScriptElement>('script[data-google-places="true"]')
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[data-google-places="true"]'
     )
 
-    const existing = existingScripts[0]
-
-    existingScripts.slice(1).forEach((script) => script.remove())
-
-    if (existing) {
-      if (window.google?.maps?.places?.Autocomplete) {
-        console.log('Google loaded')
-        resolve()
-        return
-      }
-
-      existing.addEventListener(
-        'load',
-        () => {
-          waitForGooglePlaces().then(resolve).catch((error) => {
-            googlePlacesPromise = null
-            reject(error)
-          })
-        },
-        { once: true }
-      )
-
-      existing.addEventListener(
-        'error',
-        () => {
-          googlePlacesPromise = null
-          reject(new Error('Google Maps indisponible'))
-        },
-        { once: true }
-      )
-
+    if (existingScript) {
       waitForGooglePlaces()
         .then(resolve)
         .catch((error) => {
@@ -159,65 +127,6 @@ async function loadGooglePlacesScript() {
   return googlePlacesPromise
 }
 
-function ensureGooglePlacesStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById('google-places-autocomplete-style')) return
-
-  const style = document.createElement('style')
-  style.id = 'google-places-autocomplete-style'
-  style.innerHTML = `
-    .pac-container {
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  max-height: 300px !important;
-  overflow-y: auto !important;
-
-  position: fixed !important;
-  z-index: 999999 !important;
-
-  background: #1e1e1e !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  border-radius: 14px !important;
-}
-
-.pac-item {
-  display: block !important;
-  color: white !important;
-  background: #1e1e1e !important;
-}
-
-.pac-item span {
-  color: white !important;
-}
-
-.pac-container:empty {
-  display: none !important;
-}
-    .pac-item:hover,
-    .pac-item-selected {
-      background: rgba(212,175,55,0.12) !important;
-    }
-
-    .pac-item-query {
-      color: #ffffff !important;
-      font-size: 14px !important;
-      font-weight: 600 !important;
-    }
-
-    .pac-matched {
-      color: #d4af37 !important;
-      font-weight: 700 !important;
-    }
-
-    .pac-icon {
-      filter: invert(1) opacity(0.6) !important;
-    }
-  `
-
-  document.head.appendChild(style)
-}
-
 interface OnboardingData {
   firstName: string
   age: string
@@ -238,8 +147,15 @@ export default function OnboardingPage() {
   const [photoItems, setPhotoItems] = useState<PhotoItem[]>([])
   const [cityAutocompleteReady, setCityAutocompleteReady] = useState(false)
   const [cityAutocompleteError, setCityAutocompleteError] = useState(false)
+  const [citySuggestions, setCitySuggestions] = useState<CityPrediction[]>([])
+  const [citySuggestionsLoading, setCitySuggestionsLoading] = useState(false)
+  const [cityInputFocused, setCityInputFocused] = useState(false)
+
   const cityInputRef = useRef<HTMLInputElement | null>(null)
-  const autocompleteRef = useRef<any>(null)
+  const autocompleteServiceRef = useRef<any>(null)
+  const placesServiceRef = useRef<any>(null)
+  const placesSessionTokenRef = useRef<any>(null)
+  const cityDebounceRef = useRef<number | null>(null)
 
   const [data, setData] = useState<OnboardingData>({
     firstName: '',
@@ -269,217 +185,144 @@ export default function OnboardingPage() {
   ) => setData((prev) => ({ ...prev, [key]: value }))
 
   useEffect(() => {
-    ensureGooglePlacesStyles()
-  }, [])
-
-  useEffect(() => {
     if (step !== 3) return
 
     let cancelled = false
-    let inputWaitTimer: number | null = null
-    let fallbackTimer: number | null = null
-    let inputMonitorTimer: number | null = null
-    let initInProgress = false
-    let activeInput: HTMLInputElement | null = null
 
-    const clearAutocomplete = () => {
-      if (autocompleteRef.current && window.google?.maps?.event) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
-      }
-
-      autocompleteRef.current = null
-    }
-
-    const waitForInput = () =>
-      new Promise<HTMLInputElement>((resolve, reject) => {
-        const startedAt = Date.now()
-
-        const check = () => {
-          if (cancelled) {
-            reject(new Error('Initialisation annulée'))
-            return
-          }
-
-          const input = cityInputRef.current
-
-          if (input && document.body.contains(input)) {
-            console.log('Input found')
-            resolve(input)
-            return
-          }
-
-          if (Date.now() - startedAt >= 5000) {
-            reject(new Error('Champ ville introuvable'))
-            return
-          }
-
-          inputWaitTimer = window.setTimeout(check, 50)
-        }
-
-        check()
-      })
-
-    const initAutocomplete = async () => {
-      if (initInProgress) return
-
+    async function initGooglePlaces() {
       try {
-        initInProgress = true
-        console.log('Autocomplete init')
-
         setCityAutocompleteError(false)
         setCityAutocompleteReady(false)
-
-        if (fallbackTimer) {
-          window.clearTimeout(fallbackTimer)
-          fallbackTimer = null
-        }
-
-        fallbackTimer = window.setTimeout(() => {
-          if (!cancelled && !autocompleteRef.current) {
-            console.error('[Google Places] autocomplete init timeout')
-            setCityAutocompleteError(true)
-            setCityAutocompleteReady(false)
-          }
-        }, 12000)
-
-        const input = await waitForInput()
-
-        input.setAttribute('autocomplete', 'new-password')
-        input.setAttribute('autocorrect', 'off')
-        input.setAttribute('autocapitalize', 'off')
-        input.setAttribute('spellcheck', 'false')
-        input.setAttribute('role', 'combobox')
-        input.setAttribute('aria-autocomplete', 'list')
 
         await loadGooglePlacesScript()
 
         if (cancelled) return
 
-        if (!window.google?.maps?.places?.Autocomplete) {
-          throw new Error('Google Places non chargé')
-        }
-
-        clearAutocomplete()
-        activeInput = input
-
-        const autocomplete = new window.google.maps.places.Autocomplete(input, {
-          types: ['(cities)'],
-          fields: ['place_id', 'name', 'formatted_address', 'geometry', 'address_components'],
-        })
-        
-        input.addEventListener('focus', () => {
-  setTimeout(() => {
-    input.dispatchEvent(new Event('keydown'))
-  }, 100)
-})
-
-        autocompleteRef.current = autocomplete
-
-        console.log('Google loaded')
-        console.info('[Google Places] autocompleteRef.current', Boolean(autocompleteRef.current))
-
-        window.setTimeout(() => {
-          const pacContainer = document.querySelector('.pac-container')
-          console.info('[Google Places] pac-container exists', Boolean(pacContainer), pacContainer)
-        }, 300)
-
-        autocomplete.addListener('place_changed', () => {
-          console.log('Place changed')
-
-          const place = autocomplete.getPlace()
-          const location = place.geometry?.location
-
-          if (!place.place_id || !location) {
-            setData((prev) => ({
-              ...prev,
-              cityPlaceId: '',
-              lat: null,
-              lng: null,
-            }))
-            return
-          }
-
-          const cityName =
-            place.address_components?.find((component: any) => component.types?.includes('locality'))
-              ?.long_name ||
-            place.address_components?.find((component: any) =>
-              component.types?.includes('postal_town')
-            )?.long_name ||
-            place.name ||
-            place.formatted_address ||
-            ''
-
-          setData((prev) => ({
-            ...prev,
-            city: cityName,
-            cityPlaceId: place.place_id,
-            lat: location.lat(),
-            lng: location.lng(),
-          }))
-        })
-
-        if (fallbackTimer) {
-          window.clearTimeout(fallbackTimer)
-          fallbackTimer = null
-        }
+        autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService()
+        placesServiceRef.current = new window.google.maps.places.PlacesService(
+          document.createElement('div')
+        )
+        placesSessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken()
 
         setCityAutocompleteReady(true)
-        setCityAutocompleteError(false)
-
-        if (inputMonitorTimer) {
-          window.clearInterval(inputMonitorTimer)
-        }
-
-        inputMonitorTimer = window.setInterval(() => {
-          if (cancelled) return
-
-          const nextInput = cityInputRef.current
-
-          if (nextInput && nextInput !== activeInput && document.body.contains(nextInput)) {
-            clearAutocomplete()
-            activeInput = null
-            initAutocomplete()
-          }
-        }, 500)
       } catch (error) {
-        if (fallbackTimer) {
-          window.clearTimeout(fallbackTimer)
-          fallbackTimer = null
-        }
-
         console.error('[Google Places] init failed', error)
 
         if (!cancelled) {
-          setCityAutocompleteReady(false)
           setCityAutocompleteError(true)
+          setCityAutocompleteReady(false)
           toast.error('Autocomplete ville indisponible')
         }
-      } finally {
-        initInProgress = false
       }
     }
 
-    initAutocomplete()
+    initGooglePlaces()
 
     return () => {
       cancelled = true
+      setCitySuggestions([])
+      setCitySuggestionsLoading(false)
 
-      if (inputWaitTimer) {
-        window.clearTimeout(inputWaitTimer)
+      if (cityDebounceRef.current) {
+        window.clearTimeout(cityDebounceRef.current)
       }
-
-      if (fallbackTimer) {
-        window.clearTimeout(fallbackTimer)
-      }
-
-      if (inputMonitorTimer) {
-        window.clearInterval(inputMonitorTimer)
-      }
-
-      clearAutocomplete()
-      activeInput = null
     }
   }, [step])
+
+  useEffect(() => {
+    if (step !== 3 || !cityAutocompleteReady || citySelected) {
+      setCitySuggestions([])
+      return
+    }
+
+    const input = data.city.trim()
+
+    if (cityDebounceRef.current) {
+      window.clearTimeout(cityDebounceRef.current)
+    }
+
+    if (input.length < 2) {
+      setCitySuggestions([])
+      setCitySuggestionsLoading(false)
+      return
+    }
+
+    cityDebounceRef.current = window.setTimeout(() => {
+      if (!autocompleteServiceRef.current) return
+
+      setCitySuggestionsLoading(true)
+
+      autocompleteServiceRef.current.getPlacePredictions(
+        {
+          input,
+          types: ['(cities)'],
+          componentRestrictions: { country: 'fr' },
+          sessionToken: placesSessionTokenRef.current,
+        },
+        (predictions: CityPrediction[] | null, status: string) => {
+          setCitySuggestionsLoading(false)
+
+          if (
+            status !== window.google.maps.places.PlacesServiceStatus.OK ||
+            !predictions
+          ) {
+            setCitySuggestions([])
+            return
+          }
+
+          setCitySuggestions(predictions)
+        }
+      )
+    }, 250)
+  }, [data.city, cityAutocompleteReady, citySelected, step])
+
+  const selectCity = (prediction: CityPrediction) => {
+    if (!placesServiceRef.current) return
+
+    placesServiceRef.current.getDetails(
+      {
+        placeId: prediction.place_id,
+        fields: ['place_id', 'name', 'formatted_address', 'geometry', 'address_components'],
+        sessionToken: placesSessionTokenRef.current,
+      },
+      (place: any, status: string) => {
+        if (status !== window.google.maps.places.PlacesServiceStatus.OK || !place) {
+          toast.error('Ville introuvable')
+          return
+        }
+
+        const location = place.geometry?.location
+
+        if (!place.place_id || !location) {
+          toast.error('Ville invalide')
+          return
+        }
+
+        const cityName =
+          place.address_components?.find((component: any) =>
+            component.types?.includes('locality')
+          )?.long_name ||
+          place.address_components?.find((component: any) =>
+            component.types?.includes('postal_town')
+          )?.long_name ||
+          place.name ||
+          place.formatted_address ||
+          prediction.description
+
+        setData((prev) => ({
+          ...prev,
+          city: cityName,
+          cityPlaceId: place.place_id,
+          lat: location.lat(),
+          lng: location.lng(),
+        }))
+
+        setCitySuggestions([])
+        setCityInputFocused(false)
+        placesSessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken()
+      }
+    )
+  }
 
   const addInterestsFromText = (text: string) => {
     const parts = text
@@ -844,27 +687,31 @@ export default function OnboardingPage() {
                   <p className="text-white/50">Pour trouver des personnes près de toi</p>
                 </div>
 
-                <div style={{ position: 'relative', zIndex: 999999 }}>
+                <div className="relative z-[999999]">
                   <input
                     ref={cityInputRef}
                     type="text"
                     placeholder="Paris, Lyon, Bordeaux..."
                     value={data.city}
-                    onChange={(event) =>
-  setData((prev) => ({
-    ...prev,
-    city: event.target.value,
-    ...(prev.city !== event.target.value && {
-      cityPlaceId: '',
-      lat: null,
-      lng: null,
-    }),
-  }))
-}
+                    onFocus={() => setCityInputFocused(true)}
+                    onBlur={() => window.setTimeout(() => setCityInputFocused(false), 180)}
+                    onChange={(event) => {
+                      const value = event.target.value
 
+                      setData((prev) => ({
+                        ...prev,
+                        city: value,
+                        cityPlaceId: '',
+                        lat: null,
+                        lng: null,
+                      }))
+                    }}
                     className="pakt-input text-lg pr-12"
                     autoFocus
-                    autoComplete="new-password"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                   />
 
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -873,6 +720,31 @@ export default function OnboardingPage() {
                       className={citySelected ? 'text-gold' : 'text-white/30'}
                     />
                   </div>
+
+                  {cityInputFocused && cityAutocompleteReady && citySuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-2 max-h-72 overflow-y-auto rounded-xl border border-dark-500 bg-[#1e1e1e] shadow-2xl z-[999999]">
+                      {citySuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.place_id}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault()
+                            selectCity(suggestion)
+                          }}
+                          className="w-full text-left px-4 py-3 border-b border-white/5 last:border-b-0 hover:bg-gold/10 transition-colors"
+                        >
+                          <span className="block text-sm font-semibold text-white">
+                            {suggestion.structured_formatting?.main_text || suggestion.description}
+                          </span>
+                          {suggestion.structured_formatting?.secondary_text && (
+                            <span className="block text-xs text-white/45 mt-0.5">
+                              {suggestion.structured_formatting.secondary_text}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {cityAutocompleteError && (
@@ -883,6 +755,10 @@ export default function OnboardingPage() {
 
                 {!cityAutocompleteError && !cityAutocompleteReady && (
                   <p className="text-white/35 text-sm">Chargement des villes...</p>
+                )}
+
+                {citySuggestionsLoading && data.city.trim().length >= 2 && !citySelected && (
+                  <p className="text-white/35 text-sm">Recherche des villes...</p>
                 )}
 
                 {data.city.trim() && !citySelected && cityAutocompleteReady && (
