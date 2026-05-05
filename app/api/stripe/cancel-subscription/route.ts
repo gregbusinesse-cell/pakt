@@ -16,11 +16,7 @@ const supabaseAdmin = createClient(
 
 function getBearerToken(req: NextRequest) {
   const header = req.headers.get('authorization')
-
-  if (!header?.startsWith('Bearer ')) {
-    return null
-  }
-
+  if (!header?.startsWith('Bearer ')) return null
   return header.replace('Bearer ', '').trim()
 }
 
@@ -51,10 +47,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Profil introuvable' }, { status: 404 })
     }
 
-    const customerId = profile.stripe_customer_id as string | null
+    const customerId = (profile as any).stripe_customer_id as string | null
 
     if (!customerId) {
-      return NextResponse.json({ error: 'Client Stripe introuvable' }, { status: 400 })
+      await supabaseAdmin.from('profiles').update({ plan: 'free' } as any).eq('id', user.id)
+      return NextResponse.json({ ok: true, canceledCount: 0 })
     }
 
     const subscriptions = await stripe.subscriptions.list({
@@ -67,30 +64,21 @@ export async function POST(req: NextRequest) {
       ['active', 'trialing', 'past_due', 'unpaid'].includes(subscription.status)
     )
 
-    if (activeSubscriptions.length === 0) {
-      return NextResponse.json({ error: 'Aucun abonnement actif trouvé' }, { status: 404 })
-    }
-
     await Promise.all(
-      activeSubscriptions.map((subscription) =>
-        stripe.subscriptions.update(subscription.id, {
-          cancel_at_period_end: true,
-        })
-      )
+      activeSubscriptions.map((subscription) => stripe.subscriptions.cancel(subscription.id))
     )
+
+    await supabaseAdmin.from('profiles').update({ plan: 'free' } as any).eq('id', user.id)
 
     return NextResponse.json({
       ok: true,
-      canceledAtPeriodEnd: true,
-      count: activeSubscriptions.length,
+      canceledCount: activeSubscriptions.length,
     })
   } catch (error) {
     console.error('[stripe/cancel-subscription]', error)
 
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Erreur résiliation',
-      },
+      { error: error instanceof Error ? error.message : 'Erreur résiliation' },
       { status: 500 }
     )
   }

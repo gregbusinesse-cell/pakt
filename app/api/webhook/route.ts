@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
+type PlanKey = 'free' | 'business' | 'business_pro'
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-04-22.dahlia',
 })
@@ -20,6 +22,24 @@ const handledEvents = new Set([
   'invoice.payment_succeeded',
 ])
 
+function normalizePlan(plan: unknown): PlanKey {
+  if (plan === 'business_pro' || plan === 'pro') return 'business_pro'
+  if (plan === 'business' || plan === 'premium') return 'business'
+  return 'free'
+}
+
+function getPlanFromPriceId(priceId: string | null | undefined): PlanKey {
+  if (priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO) {
+    return 'business_pro'
+  }
+
+  if (priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS) {
+    return 'business'
+  }
+
+  return 'free'
+}
+
 async function claimStripeEvent(event: Stripe.Event) {
   const { error } = await supabase.from('stripe_webhook_events').insert({
     stripe_event_id: event.id,
@@ -27,9 +47,7 @@ async function claimStripeEvent(event: Stripe.Event) {
     status: 'processing',
   })
 
-  if (!error) {
-    return true
-  }
+  if (!error) return true
 
   if (error.code !== '23505') {
     throw error
@@ -89,10 +107,10 @@ async function markStripeEventFailed(eventId: string, errorMessage: string) {
     .eq('stripe_event_id', eventId)
 }
 
-async function updateUserPlan(userId: string) {
+async function updateUserPlan(userId: string, plan: PlanKey) {
   const { error } = await supabase
     .from('profiles')
-    .update({ plan: 'business' })
+    .update({ plan } as any)
     .eq('id', userId)
 
   if (error) {
@@ -107,6 +125,24 @@ async function incrementFunding() {
 
   if (error) {
     throw error
+  }
+}
+
+async function cancelPreviousSubscription(session: Stripe.Checkout.Session) {
+  const previousSubscriptionId = session.metadata?.previous_subscription_id || ''
+  const newSubscription =
+    typeof session.subscription === 'string'
+      ? session.subscription
+      : session.subscription?.id || ''
+
+  if (!previousSubscriptionId || previousSubscriptionId === newSubscription) {
+    return
+  }
+
+  try {
+    await stripe.subscriptions.cancel(previousSubscriptionId)
+  } catch (error) {
+    console.error('[webhook] Erreur annulation ancien abonnement:', error)
   }
 }
 
@@ -125,11 +161,20 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     return
   }
 
-  await updateUserPlan(userId)
+  const planFromMetadata = normalizePlan(session.metadata?.plan)
+  const planFromPrice = getPlanFromPriceId(session.metadata?.price_id)
+  const plan = planFromMetadata !== 'free' ? planFromMetadata : planFromPrice
+
+  if (plan === 'free') {
+    throw new Error('Missing valid plan in checkout.session.completed metadata')
+  }
+
+  await cancelPreviousSubscription(session)
+  await updateUserPlan(userId, plan)
   await incrementFunding()
 }
 
-async function getUserIdFromInvoice(invoice: Stripe.Invoice) {
+async function getUserAndPlanFromInvoice(invoice: Stripe.Invoice) {
   const invoiceWithLegacyFields = invoice as Stripe.Invoice & {
     subscription?: string | Stripe.Subscription | null
     subscription_details?: {
@@ -143,13 +188,20 @@ async function getUserIdFromInvoice(invoice: Stripe.Invoice) {
     } | null
   }
 
-  const directUserId =
-    invoice.metadata?.user_id ||
-    invoiceWithLegacyFields.subscription_details?.metadata?.user_id ||
-    invoiceWithLegacyFields.parent?.subscription_details?.metadata?.user_id
+  const metadata =
+    invoice.metadata ||
+    invoiceWithLegacyFields.subscription_details?.metadata ||
+    invoiceWithLegacyFields.parent?.subscription_details?.metadata ||
+    null
 
-  if (directUserId) {
-    return directUserId
+  const directUserId = metadata?.user_id
+  const directPlan = normalizePlan(metadata?.plan)
+
+  if (directUserId && directPlan !== 'free') {
+    return {
+      userId: directUserId,
+      plan: directPlan,
+    }
   }
 
   const subscription =
@@ -164,8 +216,20 @@ async function getUserIdFromInvoice(invoice: Stripe.Invoice) {
   }
 
   const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId)
+  const userId = stripeSubscription.metadata?.user_id
+  const planFromMetadata = normalizePlan(stripeSubscription.metadata?.plan)
+  const priceId = stripeSubscription.items.data[0]?.price.id
+  const planFromPrice = getPlanFromPriceId(priceId)
+  const plan = planFromMetadata !== 'free' ? planFromMetadata : planFromPrice
 
-  return stripeSubscription.metadata?.user_id || null
+  if (!userId || plan === 'free') {
+    return null
+  }
+
+  return {
+    userId,
+    plan,
+  }
 }
 
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
@@ -173,13 +237,13 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
     return
   }
 
-  const userId = await getUserIdFromInvoice(invoice)
+  const result = await getUserAndPlanFromInvoice(invoice)
 
-  if (!userId) {
-    throw new Error('Missing user_id for invoice.payment_succeeded')
+  if (!result) {
+    throw new Error('Missing user_id or plan for invoice.payment_succeeded')
   }
 
-  await updateUserPlan(userId)
+  await updateUserPlan(result.userId, result.plan)
   await incrementFunding()
 }
 

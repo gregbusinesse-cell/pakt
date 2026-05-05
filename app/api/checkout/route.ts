@@ -15,29 +15,18 @@ if (!supabaseAnonKey) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY manquant')
 if (!supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY manquant')
 
 const stripe = new Stripe(stripeSecretKey)
-
 const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey)
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey)
 
 function getBearerToken(req: NextRequest) {
-  const header = req.headers.get('authorization') || req.headers.get('Authorization')
-
-  if (!header?.startsWith('Bearer ')) {
-    return null
-  }
-
+  const header = req.headers.get('authorization')
+  if (!header?.startsWith('Bearer ')) return null
   return header.replace('Bearer ', '').trim()
 }
 
 function getPriceId(plan: PlanKey) {
-  if (plan === 'business') {
-    return process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS?.trim()
-  }
-
-  if (plan === 'business_pro') {
-    return process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO?.trim()
-  }
-
+  if (plan === 'business') return process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS?.trim()
+  if (plan === 'business_pro') return process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO?.trim()
   return null
 }
 
@@ -73,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, plan, stripe_customer_id')
+      .select('id, email, stripe_customer_id')
       .eq('id', user.id)
       .single()
 
@@ -81,11 +70,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Profil introuvable' }, { status: 404 })
     }
 
-    let customerId = profile.stripe_customer_id as string | null
+    let customerId = (profile as any).stripe_customer_id as string | null
 
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: profile.email || user.email,
+        email: (profile as any).email || user.email,
         metadata: {
           user_id: user.id,
         },
@@ -99,13 +88,13 @@ export async function POST(req: NextRequest) {
         .eq('id', user.id)
     }
 
-    const activeSubscriptions = await stripe.subscriptions.list({
+    const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
       status: 'all',
       limit: 10,
     })
 
-    const currentSubscription = activeSubscriptions.data.find((subscription) =>
+    const currentSubscription = subscriptions.data.find((subscription) =>
       ['active', 'trialing', 'past_due', 'unpaid'].includes(subscription.status)
     )
 
@@ -147,9 +136,7 @@ export async function POST(req: NextRequest) {
     console.error('[checkout]', error)
 
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Erreur checkout',
-      },
+      { error: error instanceof Error ? error.message : 'Erreur checkout' },
       { status: 500 }
     )
   }
