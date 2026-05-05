@@ -1,4 +1,4 @@
-'use client'1
+'use client'
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
