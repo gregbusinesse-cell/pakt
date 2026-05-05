@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim())
 
 type PlanKey = 'business' | 'business_pro'
 
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest) {
       customer: customerId,
       status: 'active',
       limit: 1,
-      expand: ['data.items.data.price'],
     })
 
     const subscription = subscriptions.data[0]

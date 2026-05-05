@@ -1,16 +1,21 @@
 'use client'
 
-// app/(app)/settings/page.tsx
-
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Check, ChevronRight, Crown } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { createClient } from '@/lib/supabase/client'
 
 type TabKey = 'plans' | 'events' | 'news' | 'legal'
 type PlanKey = 'free' | 'business' | 'business_pro'
+
+type BillingProfile = {
+  id?: string
+  plan?: string | null
+  stripe_customer_id?: string | null
+}
 
 const FUNDING_GOAL = 3000
 const currentAmount = 0
@@ -119,12 +124,51 @@ function EventsTab() {
 export default function SettingsPage() {
   const { profile } = useAppStore()
   const [tab, setTab] = useState<TabKey>('plans')
+  const [billingProfile, setBillingProfile] = useState<BillingProfile | null>(null)
   const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
+  const [cancelLoading, setCancelLoading] = useState(false)
 
-  const currentPlan = normalizePlan((profile as any)?.plan)
-  const stripeCustomerId = (profile as any)?.stripe_customer_id as string | undefined
+  const storeProfile = profile as BillingProfile | null
+  const currentPlan = normalizePlan(billingProfile?.plan ?? storeProfile?.plan)
+  const stripeCustomerId = billingProfile?.stripe_customer_id ?? storeProfile?.stripe_customer_id
 
   const isPlanActive = (plan: PlanKey) => currentPlan === plan
+  const hasPaidPlan = currentPlan === 'business' || currentPlan === 'business_pro'
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadBillingProfile() {
+      const supabase = createClient()
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) return
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, plan, stripe_customer_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!mounted) return
+
+      if (error) {
+        console.error(error)
+        return
+      }
+
+      setBillingProfile(data as BillingProfile)
+    }
+
+    loadBillingProfile()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const getPlanLabel = (plan: PlanKey = currentPlan) => {
     if (plan === 'business_pro') return 'PRO'
@@ -194,6 +238,39 @@ export default function SettingsPage() {
     }
   }
 
+  const handleCancelSubscription = async () => {
+    if (!stripeCustomerId) {
+      toast.error('Client Stripe introuvable')
+      return
+    }
+
+    try {
+      setCancelLoading(true)
+
+      const res = await fetch('/api/stripe/cancel-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customerId: stripeCustomerId,
+        }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Impossible de résilier')
+      }
+
+      toast.success('Abonnement résilié. Mise à jour en cours...')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossible de résilier')
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
   const tabs = useMemo(
     () =>
       [
@@ -244,7 +321,11 @@ export default function SettingsPage() {
         'Filtres avancés (âge + distance personnalisée)',
         'Accès prioritaire aux événements',
       ],
-      button: isPlanActive('business_pro') ? 'Plan actuel' : 'Passer Pro',
+      button: isPlanActive('business_pro')
+        ? 'Plan actuel'
+        : currentPlan === 'business'
+          ? 'Passer Business Pro'
+          : 'Passer Pro',
     },
   ]
 
@@ -376,7 +457,7 @@ export default function SettingsPage() {
                           <button
                             type="button"
                             onClick={() => handlePlanChange(plan.key)}
-                            disabled={isFreePlan || active || isLoading || loadingPlan !== null}
+                            disabled={isFreePlan || active || isLoading || loadingPlan !== null || cancelLoading}
                             className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-60 ${
                               isFreePlan || active
                                 ? 'border border-dark-500 bg-white/10 text-white/70'
@@ -390,6 +471,19 @@ export default function SettingsPage() {
                     )
                   })}
                 </div>
+
+                {hasPaidPlan && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={handleCancelSubscription}
+                      disabled={cancelLoading || loadingPlan !== null}
+                      className="h-[48px] px-6 rounded-[12px] border border-red-500/40 bg-red-500/10 text-red-300 font-bold text-sm transition-colors hover:bg-red-500/15 disabled:opacity-60"
+                    >
+                      {cancelLoading ? 'Résiliation...' : 'Résilier'}
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
 
