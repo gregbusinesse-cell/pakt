@@ -1,6 +1,4 @@
 'use client'
-// components/swipe/SwipeCard.tsx
-// Swipe card with scrollable profile layout + simple photo carousel
 
 import { useState } from 'react'
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion'
@@ -52,8 +50,6 @@ export default function SwipeCard({
   isTop = false,
   isOwnProfile = false,
 }: Props) {
-
-  const [messageCount, setMessageCount] = useState(0)
   const [photoIndex, setPhotoIndex] = useState(0)
 
   const x = useMotionValue(0)
@@ -63,9 +59,6 @@ export default function SwipeCard({
   const photosArray = cleanPhotoUrls((profile as any).photos)
   const interestsArray = cleanStringArray((profile as any).interests)
   const safePhotoIndex = photosArray.length > 0 ? photoIndex % photosArray.length : 0
-
-  const isPremium = (profile as any).plan === 'premium'
-  const canMessage = isPremium || messageCount < 1
 
   const handleDragEnd = async (_: any, info: any) => {
     const threshold = 120
@@ -96,31 +89,28 @@ export default function SwipeCard({
 
   const swipeManual = async (dir: 'left' | 'right') => {
     if (disabledActions) return
+
     await controls.start({
       x: dir === 'right' ? 600 : -600,
       opacity: 0,
       rotate: dir === 'right' ? 12 : -12,
       transition: { duration: 0.3 },
     })
+
     onSwipe(dir)
   }
 
   const handleMessage = () => {
     if (disabledActions) return
     onMessage?.()
-    if (canMessage) setMessageCount((prev) => prev + 1)
   }
 
   return (
-    // ✅ scroll restored + cards behind don't capture anything
     <div
       className={`h-full overflow-y-auto ${
-  isTop
-    ? 'pointer-events-auto opacity-100 relative'
-    : 'pointer-events-none opacity-0 absolute inset-0'
-}`}
+        isTop ? 'pointer-events-auto opacity-100 relative' : 'pointer-events-none opacity-0 absolute inset-0'
+      }`}
       style={{
-        // ✅ allows vertical scroll while still letting framer drag horizontally
         touchAction: isTop ? 'pan-y' : 'none',
       }}
     >
@@ -138,13 +128,14 @@ export default function SwipeCard({
         <div className="flex flex-col items-center pb-32">
           <div className="max-w-md mx-auto px-4 py-6 space-y-6 w-full">
             <div className="relative z-0">
-            {hasLikedYou && (
-  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-    <span className="inline-flex items-center rounded-full bg-gold text-dark px-4 py-1.5 text-xs font-bold shadow-lg">
-      Cette personne vous a liké
-    </span>
-  </div>
-)}
+              {hasLikedYou && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                  <span className="inline-flex items-center rounded-full bg-gold text-dark px-4 py-1.5 text-xs font-bold shadow-lg">
+                    Cette personne vous a liké
+                  </span>
+                </div>
+              )}
+
               {photosArray.length > 0 ? (
                 <img
                   src={photosArray[safePhotoIndex]}
@@ -192,7 +183,7 @@ export default function SwipeCard({
                     <button
                       type="button"
                       onClick={handleMessage}
-                      disabled={disabledActions || !canMessage}
+                      disabled={disabledActions}
                       className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shadow-lg
                         transition-transform duration-200 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
                       aria-label="Message"
@@ -237,7 +228,6 @@ export default function SwipeCard({
               </div>
             )}
 
-            
             <div className="h-6" />
           </div>
         </div>

@@ -17,12 +17,17 @@ export interface Database {
           age: number | null
           bio: string | null
           city: string | null
+          city_lat: number | null
+          city_lng: number | null
           interests: string[]
           photos: string[]
           preferences: Json | null
-          plan: 'free' | 'premium'
+          plan: 'free' | 'business' | 'business_pro' | 'premium'
+          stripe_customer_id: string | null
           swipes_today: number
-          last_swipe_date: string
+          messages_today: number
+          last_swipe_date: string | null
+          last_message_date: string | null
           is_onboarded: boolean
           is_suspended: boolean
           email_confirmed: boolean
@@ -36,12 +41,17 @@ export interface Database {
           age?: number | null
           bio?: string | null
           city?: string | null
+          city_lat?: number | null
+          city_lng?: number | null
           interests?: string[]
           photos?: string[]
           preferences?: Json | null
-          plan?: 'free' | 'premium'
+          plan?: 'free' | 'business' | 'business_pro' | 'premium'
+          stripe_customer_id?: string | null
           swipes_today?: number
-          last_swipe_date?: string
+          messages_today?: number
+          last_swipe_date?: string | null
+          last_message_date?: string | null
           is_onboarded?: boolean
           is_suspended?: boolean
           email_confirmed?: boolean
@@ -55,12 +65,17 @@ export interface Database {
           age?: number | null
           bio?: string | null
           city?: string | null
+          city_lat?: number | null
+          city_lng?: number | null
           interests?: string[]
           photos?: string[]
           preferences?: Json | null
-          plan?: 'free' | 'premium'
+          plan?: 'free' | 'business' | 'business_pro' | 'premium'
+          stripe_customer_id?: string | null
           swipes_today?: number
-          last_swipe_date?: string
+          messages_today?: number
+          last_swipe_date?: string | null
+          last_message_date?: string | null
           is_onboarded?: boolean
           is_suspended?: boolean
           email_confirmed?: boolean
@@ -108,23 +123,32 @@ export interface Database {
       conversations: {
         Row: {
           id: string
-          match_id: string
-          participant1_id: string
-          participant2_id: string
+          user1_id: string
+          user2_id: string
+          match_id: string | null
+          participant1_id: string | null
+          participant2_id: string | null
           last_message: string | null
           last_message_at: string | null
           created_at: string
         }
         Insert: {
           id?: string
-          match_id: string
-          participant1_id: string
-          participant2_id: string
+          user1_id: string
+          user2_id: string
+          match_id?: string | null
+          participant1_id?: string | null
+          participant2_id?: string | null
           last_message?: string | null
           last_message_at?: string | null
           created_at?: string
         }
         Update: {
+          user1_id?: string
+          user2_id?: string
+          match_id?: string | null
+          participant1_id?: string | null
+          participant2_id?: string | null
           last_message?: string | null
           last_message_at?: string | null
         }

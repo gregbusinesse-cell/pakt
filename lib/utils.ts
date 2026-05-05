@@ -3,6 +3,24 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
+export type PlanKey = 'free' | 'business' | 'business_pro'
+
+export const limits: Record<PlanKey, { swipes: number; messages: number }> = {
+  free: { swipes: 10, messages: 0 },
+  business: { swipes: 20, messages: 1 },
+  business_pro: { swipes: Infinity, messages: Infinity },
+}
+
+export function normalizePlan(plan: unknown): PlanKey {
+  if (plan === 'business_pro' || plan === 'pro') return 'business_pro'
+  if (plan === 'business' || plan === 'premium') return 'business'
+  return 'free'
+}
+
+export function getTodayKey() {
+  return new Date().toISOString().split('T')[0]
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -29,11 +47,24 @@ export function formatTime(dateString: string): string {
 }
 
 export const INTERESTS = [
-  'Business', 'Tech', 'Finance', 'Marketing', 'Design',
-  'Startups', 'Investissement', 'Coaching', 'Networking',
-  'Développement personnel', 'E-commerce', 'IA', 'Immobilier',
-  'Sport', 'Art', 'Musique', 'Voyage', 'Autre'
+  'Business',
+  'Tech',
+  'Finance',
+  'Marketing',
+  'Design',
+  'Startups',
+  'Investissement',
+  'Coaching',
+  'Networking',
+  'Développement personnel',
+  'E-commerce',
+  'IA',
+  'Immobilier',
+  'Sport',
+  'Art',
+  'Musique',
+  'Voyage',
+  'Autre',
 ]
 
-export const MAX_FREE_SWIPES = 10
 export const MAX_PHOTOS = 6

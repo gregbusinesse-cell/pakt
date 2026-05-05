@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Message, Profile } from '@/lib/supabase/types'
-import { formatTime, formatFileSize } from '@/lib/utils'
+import { formatTime, formatFileSize, limits, normalizePlan, getTodayKey } from '@/lib/utils'
 import {
   Send,
   Paperclip,
@@ -27,6 +27,11 @@ interface Props {
   conversationId: string
   conversationType: 'match' | 'direct'
   otherUser: Profile
+}
+
+type ProfileWithLimits = Profile & {
+  messages_today?: number | null
+  last_message_date?: string | null
 }
 
 const MIN_AUDIO_SIZE_BYTES = 3000
@@ -104,7 +109,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
-  const { refreshNotifications } = useAppStore()
+  const { profile, setProfile, refreshNotifications } = useAppStore()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -126,6 +131,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const ignoreMouseUntilRef = useRef(0)
 
   const currentUserId = session?.user?.id
+  const todayKey = getTodayKey()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -153,6 +159,85 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
     if (!error) refreshNotifications()
   }, [conversationId, currentUserId, db, refreshNotifications])
+
+  const getFreshMessageLimits = useCallback(async () => {
+    if (!currentUserId) {
+      throw new Error('Session manquante')
+    }
+
+    const { data, error } = await db
+      .from('profiles')
+      .select('plan, messages_today, last_message_date')
+      .eq('id', currentUserId)
+      .single()
+
+    if (error || !data) {
+      throw new Error('Profil introuvable')
+    }
+
+    const plan = normalizePlan(data.plan)
+    const planLimits = limits[plan]
+    const needsReset = data.last_message_date !== todayKey
+    const messagesToday = needsReset ? 0 : data.messages_today || 0
+
+    if (needsReset) {
+      const { error: resetError } = await db
+        .from('profiles')
+        .update({
+          messages_today: 0,
+          last_message_date: todayKey,
+        })
+        .eq('id', currentUserId)
+
+      if (resetError) {
+        throw resetError
+      }
+
+      if (profile) {
+        setProfile({
+          ...profile,
+          messages_today: 0,
+          last_message_date: todayKey,
+        } as any)
+      }
+    }
+
+    return {
+      plan,
+      messagesToday,
+      messageLimit: planLimits.messages,
+    }
+  }, [currentUserId, db, profile, setProfile, todayKey])
+
+  const incrementMessageCounter = useCallback(
+    async (currentMessagesToday: number) => {
+      if (!currentUserId) return
+
+      const nextMessagesToday = currentMessagesToday + 1
+
+      const { error } = await db
+        .from('profiles')
+        .update({
+          messages_today: nextMessagesToday,
+          last_message_date: todayKey,
+        })
+        .eq('id', currentUserId)
+
+      if (error) {
+        console.error('[CHAT] message counter update error', error)
+        return
+      }
+
+      if (profile) {
+        setProfile({
+          ...profile,
+          messages_today: nextMessagesToday,
+          last_message_date: todayKey,
+        } as any)
+      }
+    },
+    [currentUserId, db, profile, setProfile, todayKey]
+  )
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -198,7 +283,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         },
         async (payload) => {
           const newMessage = payload.new as Message
-          setMessages((prev) => [...prev, newMessage])
+          setMessages((prev) => {
+            if (prev.some((item) => item.id === newMessage.id)) return prev
+            return [...prev, newMessage]
+          })
 
           if (currentUserId && newMessage.sender_id !== currentUserId) {
             const { error } = await db.from('messages').update({ is_read: true }).eq('id', newMessage.id)
@@ -256,6 +344,21 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setSending(true)
 
     try {
+      const freshLimits = await getFreshMessageLimits()
+
+      if (freshLimits.messageLimit === 0) {
+        toast.error('Les messages sont réservés au plan Business.')
+        return
+      }
+
+      if (
+        freshLimits.messageLimit !== Infinity &&
+        freshLimits.messagesToday >= freshLimits.messageLimit
+      ) {
+        toast.error('Limite de message atteinte pour aujourd’hui.')
+        return
+      }
+
       let fileUrl: string | undefined
       let fileName: string | undefined
       let fileSize: number | undefined
@@ -278,6 +381,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
       const payload = {
         conversation_id: conversationId,
+        conversation_type: conversationType,
         sender_id: session.user.id,
         content: content?.trim() || `[${type}]`,
         message_type: type,
@@ -298,7 +402,16 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         return
       }
 
-      setMessages((prev) => [...prev, insertedMessage as Message])
+      if (freshLimits.messageLimit !== Infinity) {
+        await incrementMessageCounter(freshLimits.messagesToday)
+      }
+
+      setMessages((prev) => {
+        const nextMessage = insertedMessage as Message
+        if (prev.some((item) => item.id === nextMessage.id)) return prev
+        return [...prev, nextMessage]
+      })
+
       setText('')
       setTimeout(scrollToBottom, 100)
     } catch (err) {
@@ -310,6 +423,26 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
   const startRecording = async () => {
     if (recordingRef.current || stoppingRef.current || sending) return
+
+    try {
+      const freshLimits = await getFreshMessageLimits()
+
+      if (freshLimits.messageLimit === 0) {
+        toast.error('Les messages sont réservés au plan Business.')
+        return
+      }
+
+      if (
+        freshLimits.messageLimit !== Infinity &&
+        freshLimits.messagesToday >= freshLimits.messageLimit
+      ) {
+        toast.error('Limite de message atteinte pour aujourd’hui.')
+        return
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur profil')
+      return
+    }
 
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error("L'enregistrement audio n'est pas supporté sur ce navigateur")
