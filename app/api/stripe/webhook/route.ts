@@ -34,7 +34,6 @@ export async function POST(req: NextRequest) {
 
     if (!email) return NextResponse.json({ ok: true })
 
-    // 🔥 Récupère user via email
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -43,7 +42,6 @@ export async function POST(req: NextRequest) {
 
     if (!profile) return NextResponse.json({ ok: true })
 
-    // 🔥 Déterminer plan
     const priceId = session?.metadata?.price_id
 
     let plan = 'free'
@@ -63,6 +61,29 @@ export async function POST(req: NextRequest) {
         stripe_customer_id: customerId,
       })
       .eq('id', profile.id)
+  }
+
+  // 🔥 UPDATE (upgrade / downgrade)
+  if (event.type === 'customer.subscription.updated') {
+    const subscription = event.data.object as Stripe.Subscription
+
+    const customerId = subscription.customer as string
+    const priceId = subscription.items.data[0].price.id
+
+    let plan = 'free'
+
+    if (priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS) {
+      plan = 'business'
+    }
+
+    if (priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO) {
+      plan = 'business_pro'
+    }
+
+    await supabase
+      .from('profiles')
+      .update({ plan })
+      .eq('stripe_customer_id', customerId)
   }
 
   // 🔥 ANNULATION
