@@ -3,7 +3,9 @@ import { cookies } from 'next/headers'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim())
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim(), {
+  apiVersion: '2023-10-16',
+})
 
 export async function POST(_req: NextRequest) {
   try {
@@ -54,7 +56,7 @@ export async function POST(_req: NextRequest) {
       ok: true,
       subscriptionId: updatedSubscription.id,
       cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
-      currentPeriodEnd: updatedSubscription.current_period_end,
+      currentPeriodEnd: updatedSubscription.current_period_end, // ✅ FIX ICI
     })
   } catch (error) {
     console.error('[stripe/cancel-subscription]', error)
