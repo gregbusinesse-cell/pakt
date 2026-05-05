@@ -114,10 +114,9 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>('plans')
   const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
   const [cancelLoading, setCancelLoading] = useState(false)
-const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
+  const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
 
   const currentPlan = localPlan ?? normalizePlan((profile as any)?.plan)
-
 
   const isPlanActive = (plan: PlanKey) => currentPlan === plan
 
@@ -129,6 +128,7 @@ const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
 
   const getAccessToken = async () => {
     const supabase = createClient()
+
     const {
       data: { session },
     } = await supabase.auth.getSession()
@@ -136,7 +136,15 @@ const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
     return session?.access_token ?? null
   }
 
-  const handleCheckout = async (plan: Exclude<PlanKey, 'free'>) => {
+  const getPriceId = (plan: Exclude<PlanKey, 'free'>) => {
+    if (plan === 'business') {
+      return process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS
+    }
+
+    return process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO
+  }
+
+  const handleChangePlan = async (plan: Exclude<PlanKey, 'free'>) => {
     try {
       setLoadingPlan(plan)
 
@@ -147,22 +155,45 @@ const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
         return
       }
 
-      const res = await fetch('/api/checkout', {
+      const priceId = getPriceId(plan)
+
+      if (!priceId) {
+        toast.error('Price Stripe manquant')
+        return
+      }
+
+      const res = await fetch('/api/stripe/change-plan', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ priceId }),
       })
 
       const data = await res.json().catch(() => null)
 
-      if (!res.ok || !data?.url) {
-        throw new Error(data?.error || 'Erreur checkout')
+      if (!res.ok) {
+        throw new Error(data?.error || 'Impossible de changer de plan')
       }
 
-      window.location.href = data.url
+      if (data?.url) {
+        window.location.href = data.url
+        return
+      }
+
+      if (data?.action === 'upgraded') {
+        setLocalPlan(plan)
+        toast.success('Plan mis à jour')
+        return
+      }
+
+      if (data?.action === 'downgrade_scheduled') {
+        toast.success('Changement programmé à la fin de la période')
+        return
+      }
+
+      toast.success('Demande prise en compte')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur Stripe')
     } finally {
@@ -193,9 +224,8 @@ const [localPlan, setLocalPlan] = useState<PlanKey | null>(null)
       if (!res.ok) {
         throw new Error(data?.error || 'Impossible de résilier')
       }
-setLocalPlan('free')
 
-      toast.success('Abonnement résilié')
+      toast.success('Résiliation programmée à la fin de la période')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Impossible de résilier')
     } finally {
@@ -407,11 +437,11 @@ setLocalPlan('free')
                           {planButton && (
                             <button
                               type="button"
-                              onClick={() => handleCheckout(plan.key as Exclude<PlanKey, 'free'>)}
+                              onClick={() => handleChangePlan(plan.key as Exclude<PlanKey, 'free'>)}
                               disabled={loadingPlan !== null || cancelLoading}
                               className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] bg-gold text-dark hover:bg-gold-light disabled:opacity-60"
                             >
-                              {isLoading ? 'Redirection...' : planButton}
+                              {isLoading ? 'Traitement...' : planButton}
                             </button>
                           )}
 

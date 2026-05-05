@@ -2,23 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim()
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim())
 
-if (!stripeSecretKey) throw new Error('STRIPE_SECRET_KEY manquant')
-if (!supabaseUrl) throw new Error('NEXT_PUBLIC_SUPABASE_URL manquant')
-if (!supabaseAnonKey) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY manquant')
-if (!supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY manquant')
+const supabaseAuth = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-const stripe = new Stripe(stripeSecretKey)
-
-const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey)
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 function getBearerToken(req: NextRequest) {
-  const header = req.headers.get('authorization') || req.headers.get('Authorization')
+  const header = req.headers.get('authorization')
 
   if (!header?.startsWith('Bearer ')) {
     return null
@@ -57,12 +54,7 @@ export async function POST(req: NextRequest) {
     const customerId = profile.stripe_customer_id as string | null
 
     if (!customerId) {
-      await supabaseAdmin.from('profiles').update({ plan: 'free' } as any).eq('id', user.id)
-
-      return NextResponse.json({
-        ok: true,
-        message: 'Aucun client Stripe, profil repassé en free',
-      })
+      return NextResponse.json({ error: 'Client Stripe introuvable' }, { status: 400 })
     }
 
     const subscriptions = await stripe.subscriptions.list({
@@ -75,15 +67,22 @@ export async function POST(req: NextRequest) {
       ['active', 'trialing', 'past_due', 'unpaid'].includes(subscription.status)
     )
 
-    await Promise.all(
-      activeSubscriptions.map((subscription) => stripe.subscriptions.cancel(subscription.id))
-    )
+    if (activeSubscriptions.length === 0) {
+      return NextResponse.json({ error: 'Aucun abonnement actif trouvé' }, { status: 404 })
+    }
 
-    await supabaseAdmin.from('profiles').update({ plan: 'free' } as any).eq('id', user.id)
+    await Promise.all(
+      activeSubscriptions.map((subscription) =>
+        stripe.subscriptions.update(subscription.id, {
+          cancel_at_period_end: true,
+        })
+      )
+    )
 
     return NextResponse.json({
       ok: true,
-      canceledCount: activeSubscriptions.length,
+      canceledAtPeriodEnd: true,
+      count: activeSubscriptions.length,
     })
   } catch (error) {
     console.error('[stripe/cancel-subscription]', error)
