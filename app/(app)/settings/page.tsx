@@ -1,30 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Check, ChevronRight, Crown } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { createClient } from '@/lib/supabase/client'
 
 type TabKey = 'plans' | 'events' | 'news' | 'legal'
 type PlanKey = 'free' | 'business' | 'business_pro'
 
-type BillingProfile = {
-  id?: string
-  plan?: string | null
-  stripe_customer_id?: string | null
-}
-
 const FUNDING_GOAL = 3000
 const currentAmount = 0
-
-const PLAN_RANK: Record<PlanKey, number> = {
-  free: 0,
-  business: 1,
-  business_pro: 2,
-}
 
 function normalizePlan(plan: unknown): PlanKey {
   if (plan === 'business_pro' || plan === 'pro') return 'business_pro'
@@ -124,51 +111,11 @@ function EventsTab() {
 export default function SettingsPage() {
   const { profile } = useAppStore()
   const [tab, setTab] = useState<TabKey>('plans')
-  const [billingProfile, setBillingProfile] = useState<BillingProfile | null>(null)
-  const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
   const [cancelLoading, setCancelLoading] = useState(false)
 
-  const storeProfile = profile as BillingProfile | null
-  const currentPlan = normalizePlan(billingProfile?.plan ?? storeProfile?.plan)
-  const stripeCustomerId = billingProfile?.stripe_customer_id ?? storeProfile?.stripe_customer_id
+  const currentPlan = normalizePlan((profile as any)?.plan)
 
   const isPlanActive = (plan: PlanKey) => currentPlan === plan
-  const hasPaidPlan = currentPlan === 'business' || currentPlan === 'business_pro'
-
-  useEffect(() => {
-    let mounted = true
-
-    async function loadBillingProfile() {
-      const supabase = createClient()
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) return
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, plan, stripe_customer_id')
-        .eq('id', user.id)
-        .single()
-
-      if (!mounted) return
-
-      if (error) {
-        console.error(error)
-        return
-      }
-
-      setBillingProfile(data as BillingProfile)
-    }
-
-    loadBillingProfile()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
 
   const getPlanLabel = (plan: PlanKey = currentPlan) => {
     if (plan === 'business_pro') return 'PRO'
@@ -176,85 +123,26 @@ export default function SettingsPage() {
     return 'FREE'
   }
 
-  const isDowngrade = (plan: PlanKey) => PLAN_RANK[currentPlan] > PLAN_RANK[plan]
-  const isUpgrade = (plan: PlanKey) => PLAN_RANK[currentPlan] < PLAN_RANK[plan]
+  const goToStripePaymentLink = (plan: 'business' | 'business_pro') => {
+    const paymentLink =
+      plan === 'business'
+        ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
+        : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
 
-  const handlePlanChange = async (plan: PlanKey) => {
-    if (plan === 'free') return
-
-    if (isPlanActive(plan)) {
-      toast.error('Tu as déjà ce plan')
+    if (!paymentLink) {
+      toast.error('Lien Stripe manquant')
       return
     }
 
-    if (isDowngrade(plan)) {
-      if (!stripeCustomerId) {
-        toast.error('Client Stripe introuvable')
-        return
-      }
-
-      try {
-        setLoadingPlan(plan)
-
-        const res = await fetch('/api/stripe/change-plan', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            customerId: stripeCustomerId,
-            plan,
-          }),
-        })
-
-        const data = await res.json().catch(() => null)
-
-        if (!res.ok) {
-          throw new Error(data?.error || 'Impossible de changer de plan')
-        }
-
-        toast.success('Plan modifié. Mise à jour en cours...')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Impossible de changer de plan')
-      } finally {
-        setLoadingPlan(null)
-      }
-
-      return
-    }
-
-    if (isUpgrade(plan)) {
-      const paymentLink =
-        plan === 'business'
-          ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS
-          : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO
-
-      if (!paymentLink) {
-        toast.error('Lien Stripe manquant')
-        return
-      }
-
-      window.open(paymentLink, '_blank')
-    }
+    window.location.href = paymentLink
   }
 
   const handleCancelSubscription = async () => {
-    if (!stripeCustomerId) {
-      toast.error('Client Stripe introuvable')
-      return
-    }
-
     try {
       setCancelLoading(true)
 
       const res = await fetch('/api/stripe/cancel-subscription', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customerId: stripeCustomerId,
-        }),
       })
 
       const data = await res.json().catch(() => null)
@@ -263,7 +151,7 @@ export default function SettingsPage() {
         throw new Error(data?.error || 'Impossible de résilier')
       }
 
-      toast.success('Abonnement résilié. Mise à jour en cours...')
+      toast.success('Résiliation programmée à la fin de la période')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Impossible de résilier')
     } finally {
@@ -289,7 +177,6 @@ export default function SettingsPage() {
       price: 'Gratuit',
       badge: 'FREE',
       features: ['10 swipes / jour', 'Accès aux matchs', 'Messages uniquement avec les matchs'],
-      button: isPlanActive('free') ? 'Plan actuel' : 'Inclus',
     },
     {
       key: 'business' as const,
@@ -302,12 +189,6 @@ export default function SettingsPage() {
         'Messages illimités',
         'Accès anticipé aux futures fonctionnalités',
       ],
-      button:
-        currentPlan === 'business_pro'
-          ? 'Passer Business'
-          : isPlanActive('business')
-            ? 'Plan actuel'
-            : 'Passer Business',
     },
     {
       key: 'business_pro' as const,
@@ -321,13 +202,26 @@ export default function SettingsPage() {
         'Filtres avancés (âge + distance personnalisée)',
         'Accès prioritaire aux événements',
       ],
-      button: isPlanActive('business_pro')
-        ? 'Plan actuel'
-        : currentPlan === 'business'
-          ? 'Passer Business Pro'
-          : 'Passer Pro',
     },
   ]
+
+  const getPlanButton = (plan: PlanKey) => {
+    if (plan === 'free') return null
+
+    if (currentPlan === 'free') {
+      return plan === 'business' ? 'Passer Business' : 'Passer Business Pro'
+    }
+
+    if (currentPlan === 'business' && plan === 'business_pro') {
+      return 'Passer Business Pro'
+    }
+
+    if (currentPlan === 'business_pro' && plan === 'business') {
+      return 'Passer Business'
+    }
+
+    return null
+  }
 
   return (
     <div className="min-h-screen overflow-y-auto pb-32 px-4 bg-dark">
@@ -394,7 +288,8 @@ export default function SettingsPage() {
                   {plans.map((plan) => {
                     const active = isPlanActive(plan.key)
                     const isFreePlan = plan.key === 'free'
-                    const isLoading = loadingPlan === plan.key
+                    const planButton = getPlanButton(plan.key)
+                    const showCancelButton = active && plan.key !== 'free'
 
                     return (
                       <motion.div
@@ -453,37 +348,42 @@ export default function SettingsPage() {
                           ))}
                         </div>
 
-                        <div className="mt-auto pt-5">
-                          <button
-                            type="button"
-                            onClick={() => handlePlanChange(plan.key)}
-                            disabled={isFreePlan || active || isLoading || loadingPlan !== null || cancelLoading}
-                            className={`h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-60 ${
-                              isFreePlan || active
-                                ? 'border border-dark-500 bg-white/10 text-white/70'
-                                : 'bg-gold text-dark hover:bg-gold-light'
-                            }`}
-                          >
-                            {isLoading ? 'Modification...' : active ? 'Plan actuel' : plan.button}
-                          </button>
+                        <div className="mt-auto pt-5 space-y-3">
+                          {active && (
+                            <button
+                              type="button"
+                              disabled
+                              className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm border border-dark-500 bg-white/10 text-white/70 disabled:opacity-60"
+                            >
+                              Plan actuel
+                            </button>
+                          )}
+
+                          {planButton && (
+                            <button
+                              type="button"
+                              onClick={() => goToStripePaymentLink(plan.key)}
+                              className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] bg-gold text-dark hover:bg-gold-light"
+                            >
+                              {planButton}
+                            </button>
+                          )}
+
+                          {showCancelButton && (
+                            <button
+                              type="button"
+                              onClick={handleCancelSubscription}
+                              disabled={cancelLoading}
+                              className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-colors border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/15 disabled:opacity-60"
+                            >
+                              {cancelLoading ? 'Résiliation...' : 'Résilier'}
+                            </button>
+                          )}
                         </div>
                       </motion.div>
                     )
                   })}
                 </div>
-
-                {hasPaidPlan && (
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={handleCancelSubscription}
-                      disabled={cancelLoading || loadingPlan !== null}
-                      className="h-[48px] px-6 rounded-[12px] border border-red-500/40 bg-red-500/10 text-red-300 font-bold text-sm transition-colors hover:bg-red-500/15 disabled:opacity-60"
-                    >
-                      {cancelLoading ? 'Résiliation...' : 'Résilier'}
-                    </button>
-                  </div>
-                )}
               </motion.div>
             )}
 
