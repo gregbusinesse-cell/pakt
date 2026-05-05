@@ -362,7 +362,11 @@ export default function SettingsPage() {
                           {planButton && (
                             <button
                               type="button"
-                              onClick={() => goToStripePaymentLink(plan.key)}
+                              onClick={() => {
+  if (plan.key === 'business' || plan.key === 'business_pro') {
+    goToStripePaymentLink(plan.key)
+  }
+}}
                               className="h-[48px] w-full flex items-center justify-center rounded-[12px] font-bold text-sm transition-all active:scale-[0.99] bg-gold text-dark hover:bg-gold-light"
                             >
                               {planButton}
