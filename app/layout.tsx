@@ -1,4 +1,7 @@
+// app/layout.tsx
+
 import type { Metadata, Viewport } from 'next'
+import Script from 'next/script'
 import { Sora } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
@@ -16,10 +19,10 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
 
   icons: {
-  icon: '/favicon-v2.ico',
-  shortcut: '/favicon-v2.ico',
-  apple: '/favicon-v2.ico',
-},
+    icon: '/favicon-v2.ico',
+    shortcut: '/favicon-v2.ico',
+    apple: '/favicon-v2.ico',
+  },
 
   appleWebApp: {
     capable: true,
@@ -41,9 +44,21 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
   return (
     <html lang="fr" className={`${sora.variable} dark`}>
       <body className="bg-dark text-white antialiased">
+        {googleMapsKey && (
+          <Script
+            id="google-places-script"
+            src={`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+              googleMapsKey
+            )}&libraries=places&language=fr&region=FR&v=weekly`}
+            strategy="afterInteractive"
+          />
+        )}
+
         <SupabaseProvider>
           {children}
 
