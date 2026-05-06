@@ -248,14 +248,14 @@ export default function SettingsPage() {
     suffix: '/mois',
     badge: 'PRO',
     features: [
-      'Accès aux matchs',
-      'Likes illimités',
-      'Voir les personnes qui vous ont liké',
-      'Swipes illimités',
-      'Messages illimités',
-      'Filtres avancés (âge + distance)',
-      'Accès prioritaire aux événements',
-    ],
+  'Swipes illimités',
+  'Likes illimités',
+  'Messages illimités',
+  'Accès aux matchs',
+  'Voir les personnes qui vous ont liké',
+  'Filtres avancés (âge + distance)',
+  'Accès prioritaire aux événements',
+],
   },
 ]
   const getPlanButton = (plan: PlanKey) => {
