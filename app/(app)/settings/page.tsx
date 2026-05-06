@@ -217,41 +217,47 @@ export default function SettingsPage() {
   )
 
     const plans = [
-    {
-      key: 'free' as const,
-      name: 'FREE',
-      price: 'Gratuit',
-      badge: 'FREE',
-      features: ['10 swipes / jour'],
-    },
-    {
-      key: 'business' as const,
-      name: 'BUSINESS',
-      price: '5€',
-      suffix: '/mois',
-      badge: 'BUSINESS',
-      features: [
-        '20 swipes / jour',
-        '1 message / jour',
-        'Accès aux matchs',
-        'Messages illimités uniquement avec les matchs',
-      ],
-    },
-        {
-      key: 'business_pro' as const,
-      name: 'BUSINESS PRO',
-      price: '10€',
-      suffix: '/mois',
-      badge: 'PRO',
-      features: [
-        'Accès aux matchs',
-        'Swipes illimités',
-        'Messages illimités',
-        'Filtres avancés (âge + distance)',
-        'Accès prioritaire aux événements',
-      ],
-    },
-  ]
+  {
+    key: 'free' as const,
+    name: 'FREE',
+    price: 'Gratuit',
+    badge: 'FREE',
+    features: [
+      '10 swipes / jour',
+      '5 likes / jour',
+    ],
+  },
+  {
+    key: 'business' as const,
+    name: 'BUSINESS',
+    price: '5€',
+    suffix: '/mois',
+    badge: 'BUSINESS',
+    features: [
+      '20 swipes / jour',
+      '10 likes / jour',
+      '1 message / jour',
+      'Accès aux matchs',
+      'Messages illimités uniquement avec les matchs',
+    ],
+  },
+  {
+    key: 'business_pro' as const,
+    name: 'BUSINESS PRO',
+    price: '10€',
+    suffix: '/mois',
+    badge: 'PRO',
+    features: [
+      'Accès aux matchs',
+      'Likes illimités',
+      'Voir les personnes qui vous ont liké',
+      'Swipes illimités',
+      'Messages illimités',
+      'Filtres avancés (âge + distance)',
+      'Accès prioritaire aux événements',
+    ],
+  },
+]
   const getPlanButton = (plan: PlanKey) => {
     if (plan === 'free') return null
 
