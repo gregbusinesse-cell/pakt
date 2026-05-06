@@ -237,17 +237,14 @@ export default function SettingsPage() {
         'Messages illimités uniquement avec les matchs',
       ],
     },
-    {
+        {
       key: 'business_pro' as const,
       name: 'BUSINESS PRO',
       price: '10€',
       suffix: '/mois',
       badge: 'PRO',
       features: [
-        '20 swipes / jour',
-        '1 message / jour',
         'Accès aux matchs',
-        'Messages illimités uniquement avec les matchs',
         'Swipes illimités',
         'Messages illimités',
         'Filtres avancés (âge + distance)',
