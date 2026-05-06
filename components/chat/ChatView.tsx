@@ -1,5 +1,7 @@
 'use client'
 
+// components/chat/ChatView.tsx
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
@@ -18,6 +20,8 @@ import {
   Pause,
   Square,
   ChevronLeft,
+  Crown,
+  Lock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -27,11 +31,6 @@ interface Props {
   conversationId: string
   conversationType: 'match' | 'direct'
   otherUser: Profile
-}
-
-type ProfileWithLimits = Profile & {
-  messages_today?: number | null
-  last_message_date?: string | null
 }
 
 const MIN_AUDIO_SIZE_BYTES = 3000
@@ -117,6 +116,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [sending, setSending] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [hasMatchWithOtherUser, setHasMatchWithOtherUser] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -132,6 +132,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
   const currentUserId = session?.user?.id
   const todayKey = getTodayKey()
+  const currentPlan = normalizePlan(profile?.plan)
+  const isFree = currentPlan === 'free'
+  const isBusiness = currentPlan === 'business'
+  const isPro = currentPlan === 'business_pro'
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -159,6 +163,27 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
     if (!error) refreshNotifications()
   }, [conversationId, currentUserId, db, refreshNotifications])
+
+  const loadMatchStatus = useCallback(async () => {
+    if (!currentUserId || !otherUser?.id) return
+
+    const [user1_id, user2_id] = [currentUserId, otherUser.id].sort()
+
+    const { data, error } = await db
+      .from('matches')
+      .select('id')
+      .eq('user1_id', user1_id)
+      .eq('user2_id', user2_id)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[CHAT] match status error', error)
+      setHasMatchWithOtherUser(false)
+      return
+    }
+
+    setHasMatchWithOtherUser(Boolean(data))
+  }, [currentUserId, db, otherUser?.id])
 
   const getFreshMessageLimits = useCallback(async () => {
     if (!currentUserId) {
@@ -189,9 +214,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         })
         .eq('id', currentUserId)
 
-      if (resetError) {
-        throw resetError
-      }
+      if (resetError) throw resetError
 
       if (profile) {
         setProfile({
@@ -238,6 +261,31 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     },
     [currentUserId, db, profile, setProfile, todayKey]
   )
+
+  const assertCanSendMessage = useCallback(async () => {
+    const freshLimits = await getFreshMessageLimits()
+
+    if (freshLimits.plan === 'free' || freshLimits.messageLimit === 0) {
+      throw new Error('Le plan FREE ne permet pas d’envoyer de message.')
+    }
+
+    if (freshLimits.plan === 'business' && !hasMatchWithOtherUser) {
+      throw new Error('Le plan Business permet les messages uniquement avec les matchs.')
+    }
+
+    if (
+      freshLimits.messageLimit !== Infinity &&
+      freshLimits.messagesToday >= freshLimits.messageLimit
+    ) {
+      throw new Error('Limite de message atteinte pour aujourd’hui.')
+    }
+
+    return freshLimits
+  }, [getFreshMessageLimits, hasMatchWithOtherUser])
+
+  useEffect(() => {
+    loadMatchStatus()
+  }, [loadMatchStatus])
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -344,20 +392,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setSending(true)
 
     try {
-      const freshLimits = await getFreshMessageLimits()
-
-      if (freshLimits.messageLimit === 0) {
-        toast.error('Les messages sont réservés au plan Business.')
-        return
-      }
-
-      if (
-        freshLimits.messageLimit !== Infinity &&
-        freshLimits.messagesToday >= freshLimits.messageLimit
-      ) {
-        toast.error('Limite de message atteinte pour aujourd’hui.')
-        return
-      }
+      const freshLimits = await assertCanSendMessage()
 
       let fileUrl: string | undefined
       let fileName: string | undefined
@@ -415,7 +450,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       setText('')
       setTimeout(scrollToBottom, 100)
     } catch (err) {
-      toast.error('Erreur envoi: ' + (err instanceof Error ? err.message : 'Erreur inconnue'))
+      toast.error(err instanceof Error ? err.message : 'Erreur envoi')
     } finally {
       setSending(false)
     }
@@ -425,20 +460,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     if (recordingRef.current || stoppingRef.current || sending) return
 
     try {
-      const freshLimits = await getFreshMessageLimits()
-
-      if (freshLimits.messageLimit === 0) {
-        toast.error('Les messages sont réservés au plan Business.')
-        return
-      }
-
-      if (
-        freshLimits.messageLimit !== Infinity &&
-        freshLimits.messagesToday >= freshLimits.messageLimit
-      ) {
-        toast.error('Limite de message atteinte pour aujourd’hui.')
-        return
-      }
+      await assertCanSendMessage()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur profil')
       return
@@ -577,6 +599,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setShowAttachMenu(false)
   }
 
+  const inputLocked = isFree || (isBusiness && !hasMatchWithOtherUser)
+
   return (
     <div className="h-full flex flex-col bg-dark">
       <div className="flex items-center gap-3 px-4 py-3 bg-dark-100 border-b border-dark-400 shrink-0">
@@ -643,8 +667,19 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       </div>
 
       <div className="px-4 py-3 bg-dark-100 border-t border-dark-400 shrink-0">
+        {inputLocked && (
+          <div className="mb-3 rounded-[12px] border border-gold/20 bg-gold/10 px-4 py-3 text-sm text-white/70 flex items-center gap-2">
+            {isFree ? <Lock size={16} className="text-gold" /> : <Crown size={16} className="text-gold" />}
+            <span>
+              {isFree
+                ? 'Les messages sont réservés au plan Business.'
+                : 'Avec Business, les messages sont disponibles uniquement avec les matchs.'}
+            </span>
+          </div>
+        )}
+
         <AnimatePresence>
-          {showAttachMenu && (
+          {showAttachMenu && !inputLocked && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -672,8 +707,12 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
         <div className="flex items-end gap-2">
           <button
-            onClick={() => setShowAttachMenu(!showAttachMenu)}
-            className={`p-2.5 rounded-xl transition-colors shrink-0 ${
+            onClick={() => {
+              if (inputLocked) return
+              setShowAttachMenu(!showAttachMenu)
+            }}
+            disabled={inputLocked}
+            className={`p-2.5 rounded-xl transition-colors shrink-0 disabled:opacity-40 ${
               showAttachMenu ? 'bg-gold text-dark' : 'bg-dark-300 text-white/50 hover:text-white'
             }`}
           >
@@ -684,16 +723,17 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message..."
+            placeholder={inputLocked ? 'Messages verrouillés' : 'Message...'}
             rows={1}
-            className="flex-1 bg-dark-300 rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold/30 resize-none text-sm max-h-24 overflow-y-auto"
+            disabled={inputLocked}
+            className="flex-1 bg-dark-300 rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold/30 resize-none text-sm max-h-24 overflow-y-auto disabled:opacity-50"
             style={{ lineHeight: '1.4' }}
           />
 
           {text.trim() ? (
             <button
               onClick={handleSendText}
-              disabled={sending}
+              disabled={sending || inputLocked}
               className="p-2.5 rounded-xl bg-gold text-dark shrink-0 hover:bg-gold-light transition-colors disabled:opacity-50"
             >
               <Send size={18} />
@@ -702,33 +742,39 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             <button
               type="button"
               onMouseDown={() => {
+                if (inputLocked) return
                 if (Date.now() < ignoreMouseUntilRef.current) return
                 startRecording()
               }}
               onMouseUp={() => {
+                if (inputLocked) return
                 if (Date.now() < ignoreMouseUntilRef.current) return
                 stopRecording()
               }}
               onMouseLeave={() => {
+                if (inputLocked) return
                 if (Date.now() < ignoreMouseUntilRef.current) return
                 cancelRecording()
               }}
               onTouchStart={(event) => {
                 event.preventDefault()
+                if (inputLocked) return
                 ignoreMouseUntilRef.current = Date.now() + 700
                 startRecording()
               }}
               onTouchEnd={(event) => {
                 event.preventDefault()
+                if (inputLocked) return
                 ignoreMouseUntilRef.current = Date.now() + 700
                 stopRecording()
               }}
               onTouchCancel={(event) => {
                 event.preventDefault()
+                if (inputLocked) return
                 ignoreMouseUntilRef.current = Date.now() + 700
                 cancelRecording()
               }}
-              disabled={sending}
+              disabled={sending || inputLocked}
               className={`p-2.5 rounded-xl shrink-0 transition-all disabled:opacity-50 ${
                 isRecording
                   ? 'bg-red-500 text-white animate-pulse-gold scale-110'

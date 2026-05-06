@@ -7,6 +7,9 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/supabase/types'
 import toast from 'react-hot-toast'
+import { Crown, Lock } from 'lucide-react'
+import { useAppStore } from '@/lib/store'
+import { normalizePlan } from '@/lib/utils'
 
 type Conversation = {
   id: string
@@ -39,6 +42,7 @@ export default function MessagesPage() {
   const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
+  const { profile } = useAppStore()
 
   const [session, setSession] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
@@ -46,6 +50,8 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true)
 
   const sessionUserId = session?.user?.id
+  const currentPlan = normalizePlan(profile?.plan)
+  const isFree = currentPlan === 'free'
 
   const loadConversations = useCallback(async () => {
     setLoading(true)
@@ -65,6 +71,11 @@ export default function MessagesPage() {
       const userId = user?.id || sessionUserId
 
       if (!userId) {
+        setRows([])
+        return
+      }
+
+      if (isFree) {
         setRows([])
         return
       }
@@ -143,10 +154,16 @@ export default function MessagesPage() {
     } finally {
       setLoading(false)
     }
-  }, [db, sessionUserId, supabase])
+  }, [db, isFree, sessionUserId, supabase])
 
   const openConversation = async (row: ConversationRow) => {
     if (!sessionUserId) return
+
+    if (isFree) {
+      toast.error('Les matchs et messages sont réservés au plan Business.')
+      router.push('/settings')
+      return
+    }
 
     await db
       .from('messages')
@@ -161,7 +178,7 @@ export default function MessagesPage() {
       )
     )
 
-    router.push(`/chat/${row.conversation.id}?userId=${row.otherUser?.id || ''}&type=direct`)
+    router.push(`/chat/${row.conversation.id}?userId=${row.otherUser?.id || ''}&type=match`)
   }
 
   useEffect(() => {
@@ -203,7 +220,7 @@ export default function MessagesPage() {
   }, [loadConversations, sessionUserId])
 
   useEffect(() => {
-    if (!sessionUserId) return
+    if (!sessionUserId || isFree) return
 
     const channel = supabase
       .channel(`messages-page-${sessionUserId}`)
@@ -234,12 +251,47 @@ export default function MessagesPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [loadConversations, sessionUserId, supabase])
+  }, [isFree, loadConversations, sessionUserId, supabase])
 
   if (sessionLoading || loading) {
     return (
       <div className="h-full flex items-center justify-center bg-dark">
         <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+      </div>
+    )
+  }
+
+  if (isFree) {
+    return (
+      <div className="h-full bg-dark text-white flex flex-col">
+        <div className="px-5 pt-5 pb-4">
+          <h1 className="text-2xl font-black tracking-wider text-gold-gradient">Messages</h1>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center px-8 text-center">
+          <div className="max-w-sm flex flex-col items-center gap-5">
+            <div className="w-20 h-20 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
+              <Lock size={30} className="text-gold" />
+            </div>
+
+            <div>
+              <h2 className="text-xl font-bold">Messages verrouillés</h2>
+              <p className="text-white/50 text-sm mt-2 leading-relaxed">
+                Le plan FREE ne donne pas accès aux matchs ni aux messages. Passe au plan Business
+                pour débloquer les conversations avec tes matchs.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push('/settings')}
+              className="btn-primary flex items-center justify-center gap-2"
+            >
+              <Crown size={16} />
+              Voir les plans
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -261,17 +313,17 @@ export default function MessagesPage() {
             const avatar = row.otherUser?.photos?.[0] || null
             const isMe = row.lastMessage?.sender_id === sessionUserId
 
-const lastText = (() => {
-  if (!row.lastMessage) return 'Nouvelle conversation'
+            const lastText = (() => {
+              if (!row.lastMessage) return 'Nouvelle conversation'
 
-  const prefix = isMe ? 'Vous avez envoyé ' : `${name} vous a envoyé `
+              const prefix = isMe ? 'Vous avez envoyé ' : `${name} vous a envoyé `
 
-  if (row.lastMessage.message_type === 'audio') return `${prefix}un vocal`
-  if (row.lastMessage.message_type === 'image') return `${prefix}une photo`
-  if (row.lastMessage.message_type === 'file') return `${prefix}un document`
+              if (row.lastMessage.message_type === 'audio') return `${prefix}un vocal`
+              if (row.lastMessage.message_type === 'image') return `${prefix}une photo`
+              if (row.lastMessage.message_type === 'file') return `${prefix}un document`
 
-  return row.lastMessage.content || 'Nouveau message'
-})()
+              return row.lastMessage.content || 'Nouveau message'
+            })()
 
             return (
               <button

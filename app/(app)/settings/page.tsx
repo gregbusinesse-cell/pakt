@@ -1,5 +1,7 @@
 'use client'
 
+// app/(app)/settings/page.tsx
+
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -220,7 +222,7 @@ export default function SettingsPage() {
       name: 'FREE',
       price: 'Gratuit',
       badge: 'FREE',
-      features: ['10 swipes / jour', 'Accès aux matchs', 'Messages uniquement avec les matchs'],
+      features: ['10 swipes / jour'],
     },
     {
       key: 'business' as const,
@@ -230,8 +232,9 @@ export default function SettingsPage() {
       badge: 'BUSINESS',
       features: [
         '20 swipes / jour',
-        'Messages illimités',
-        'Accès anticipé aux futures fonctionnalités',
+        '1 message / jour',
+        'Accès aux matchs',
+        'Messages illimités uniquement avec les matchs',
       ],
     },
     {
@@ -241,9 +244,13 @@ export default function SettingsPage() {
       suffix: '/mois',
       badge: 'PRO',
       features: [
+        '20 swipes / jour',
+        '1 message / jour',
+        'Accès aux matchs',
+        'Messages illimités uniquement avec les matchs',
         'Swipes illimités',
         'Messages illimités',
-        'Filtres avancés (âge + distance personnalisée)',
+        'Filtres avancés (âge + distance)',
         'Accès prioritaire aux événements',
       ],
     },

@@ -1,4 +1,4 @@
-'use client'
+	'use client'
 
 // app/(app)/swipe/page.tsx
 
@@ -98,6 +98,8 @@ export default function SwipePage() {
   const todayKey = getTodayKey()
   const plan = normalizePlan(profile?.plan)
   const planLimits = limits[plan]
+  const isFree = plan === 'free'
+  const isBusiness = plan === 'business'
   const isPro = plan === 'business_pro'
 
   const userLat = profileWithLocation?.city_lat ?? null
@@ -458,6 +460,11 @@ export default function SwipePage() {
       }
 
       if (mutualLike) {
+        if (isFree) {
+          toast.success('Match créé. Passe au plan Business pour accéder aux messages.')
+          return
+        }
+
         const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
 
         const { error: matchInsertError } = await db.from('matches').upsert(
@@ -490,6 +497,12 @@ export default function SwipePage() {
   const handleMessageTap = async () => {
     if (!currentProfile || !profile) return
 
+    if (isFree) {
+      toast.error('Les matchs et messages sont réservés au plan Business.')
+      openPaywall()
+      return
+    }
+
     const latestPlan = normalizePlan(profile.plan)
     const latestLimits = limits[latestPlan]
     const latestMessagesToday =
@@ -509,7 +522,7 @@ export default function SwipePage() {
       return
     }
 
-    router.push(`/chat/new?userId=${currentProfile.id}`)
+    router.push(`/chat/new?userId=${currentProfile.id}&type=direct`)
   }
 
   return (
@@ -577,7 +590,7 @@ export default function SwipePage() {
       />
 
       <MatchModal
-        isOpen={showMatch}
+        isOpen={showMatch && !isFree}
         myProfile={profile}
         matchedProfile={matchedProfile}
         onClose={() => setShowMatch(false)}
