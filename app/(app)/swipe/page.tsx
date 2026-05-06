@@ -1,8 +1,8 @@
-	'use client'
+'use client'
 
 // app/(app)/swipe/page.tsx
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
@@ -20,7 +20,9 @@ type ProfileWithLocation = Profile & {
   city_lat?: number | null
   city_lng?: number | null
   messages_today?: number | null
+  likes_today?: number | null
   last_message_date?: string | null
+  last_like_date?: string | null
   preferences?: {
     distance_km?: number
     age_min?: number
@@ -45,11 +47,10 @@ function PaywallModal({
 
       <div className="absolute inset-0 flex items-center justify-center px-5">
         <div className="w-full max-w-md bg-dark-200 border border-dark-500 rounded-[12px] p-5">
-          <h3 className="text-white font-semibold text-lg">Continuer avec PAKT Business</h3>
+          <h3 className="text-white font-semibold text-lg">Débloquer plus de possibilités</h3>
 
           <p className="text-white/60 text-sm mt-2 leading-relaxed">
-            Votre plan actuel ne permet pas cette action. Passez à PAKT Business ou PRO pour
-            continuer.
+            Votre plan actuel ne permet pas cette action. Passez à un plan supérieur pour continuer.
           </p>
 
           <div className="mt-5 flex flex-col gap-2">
@@ -77,7 +78,6 @@ function PaywallModal({
 
 export default function SwipePage() {
   const [supabase] = useState(() => createClient())
-
   const db = supabase as any
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
@@ -100,7 +100,6 @@ export default function SwipePage() {
   const plan = normalizePlan(profile?.plan)
   const planLimits = limits[plan]
   const isFree = plan === 'free'
-  const isBusiness = plan === 'business'
   const isPro = plan === 'business_pro'
 
   const userLat = profileWithLocation?.city_lat ?? null
@@ -112,16 +111,8 @@ export default function SwipePage() {
   const profileSwipesToday =
     profile?.last_swipe_date === todayKey ? profile?.swipes_today || 0 : 0
 
-  const profileMessagesToday =
-    profileWithLocation?.last_message_date === todayKey
-      ? profileWithLocation?.messages_today || 0
-      : 0
-
   const reachedSwipeLimit =
     planLimits.swipes !== Infinity && profileSwipesToday >= planLimits.swipes
-
-  const reachedMessageLimit =
-    planLimits.messages !== Infinity && profileMessagesToday >= planLimits.messages
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
 
@@ -144,21 +135,32 @@ export default function SwipePage() {
       updates.last_message_date = todayKey
     }
 
-    if (Object.keys(updates).length === 0) return
-
-    const nextProfile = {
-      ...profile,
-      ...updates,
+    if (profileWithLocation?.last_like_date !== todayKey) {
+      updates.likes_today = 0
+      updates.last_like_date = todayKey
     }
 
-    setProfile(nextProfile)
+    if (Object.keys(updates).length === 0) return
+
+    setProfile({
+      ...profile,
+      ...updates,
+    })
 
     const { error } = await db.from('profiles').update(updates).eq('id', sessionUserId)
 
     if (error) {
       console.error('[SWIPE] daily counters reset error', error)
     }
-  }, [db, profile, profileWithLocation?.last_message_date, sessionUserId, setProfile, todayKey])
+  }, [
+    db,
+    profile,
+    profileWithLocation?.last_message_date,
+    profileWithLocation?.last_like_date,
+    sessionUserId,
+    setProfile,
+    todayKey,
+  ])
 
   const getOrCreateConversation = useCallback(
     async (otherUserId: string) => {
@@ -321,8 +323,7 @@ export default function SwipePage() {
       mounted = false
       subscription.unsubscribe()
     }
-    }, [router])
-
+  }, [router, supabase])
 
   useEffect(() => {
     if (!sessionUserId) return
@@ -382,8 +383,22 @@ export default function SwipePage() {
     const latestLimits = limits[latestPlan]
     const latestSwipesToday =
       profile.last_swipe_date === todayKey ? profile.swipes_today || 0 : 0
+    const latestLikesToday =
+      (profile as ProfileWithLocation).last_like_date === todayKey
+        ? (profile as ProfileWithLocation).likes_today || 0
+        : 0
 
     if (latestLimits.swipes !== Infinity && latestSwipesToday >= latestLimits.swipes) {
+      openPaywall()
+      return
+    }
+
+    if (dir === 'right' && latestLimits.likes !== Infinity && latestLikesToday >= latestLimits.likes) {
+      toast.error(
+        latestPlan === 'free'
+          ? 'Limite quotidienne atteinte. Passez Business pour envoyer plus de likes.'
+          : 'Passez Business Pro pour des likes illimités.'
+      )
       openPaywall()
       return
     }
@@ -446,6 +461,28 @@ export default function SwipePage() {
         console.error('[SWIPE] like upsert error', likeError)
         toast.error(`Erreur like: ${likeError.message}`)
         return
+      }
+
+      if (latestLimits.likes !== Infinity) {
+        const newLikesCount = latestLikesToday + 1
+
+        setProfile({
+          ...updatedProfile,
+          likes_today: newLikesCount,
+          last_like_date: todayKey,
+        } as any)
+
+        const { error: likeCountUpdateError } = await db
+          .from('profiles')
+          .update({
+            likes_today: newLikesCount,
+            last_like_date: todayKey,
+          })
+          .eq('id', sessionUserId)
+
+        if (likeCountUpdateError) {
+          console.error('[SWIPE] profile like count update error', likeCountUpdateError)
+        }
       }
 
       const { data: mutualLike, error: matchCheckError } = await db

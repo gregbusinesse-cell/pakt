@@ -1,3 +1,5 @@
+// lib/supabase/types.ts
+
 export type Json =
   | string
   | number
@@ -24,12 +26,17 @@ export interface Database {
           preferences: Json | null
           plan: 'free' | 'business' | 'business_pro' | 'premium'
           stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string | null
           swipes_today: number
           messages_today: number
+          likes_today: number
           last_swipe_date: string | null
           last_message_date: string | null
+          last_like_date: string | null
           is_onboarded: boolean
           is_suspended: boolean
+          suspension_reason: string | null
           email_confirmed: boolean
           created_at: string
           updated_at: string
@@ -48,12 +55,17 @@ export interface Database {
           preferences?: Json | null
           plan?: 'free' | 'business' | 'business_pro' | 'premium'
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
           swipes_today?: number
           messages_today?: number
+          likes_today?: number
           last_swipe_date?: string | null
           last_message_date?: string | null
+          last_like_date?: string | null
           is_onboarded?: boolean
           is_suspended?: boolean
+          suspension_reason?: string | null
           email_confirmed?: boolean
           created_at?: string
           updated_at?: string
@@ -72,12 +84,17 @@ export interface Database {
           preferences?: Json | null
           plan?: 'free' | 'business' | 'business_pro' | 'premium'
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
           swipes_today?: number
           messages_today?: number
+          likes_today?: number
           last_swipe_date?: string | null
           last_message_date?: string | null
+          last_like_date?: string | null
           is_onboarded?: boolean
           is_suspended?: boolean
+          suspension_reason?: string | null
           email_confirmed?: boolean
           updated_at?: string
         }

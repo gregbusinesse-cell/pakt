@@ -8,9 +8,9 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { formatTime } from '@/lib/utils'
+import { formatTime, normalizePlan } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
-import { MessageCircle, Users, Crown } from 'lucide-react'
+import { MessageCircle, Users, Crown, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type Tab = 'matches' | 'likes' | 'conversations'
@@ -85,7 +85,9 @@ function formatLastMessage(
   if (lastMessage.message_type === 'audio') return `${prefix} un vocal`
   if (lastMessage.message_type === 'image') return `${prefix} une photo`
   if (lastMessage.message_type === 'file') return `${prefix} un document`
-  if (lastMessage.message_type === 'text' || !lastMessage.message_type) return lastMessage.content || null
+  if (lastMessage.message_type === 'text' || !lastMessage.message_type) {
+    return lastMessage.content || null
+  }
 
   return null
 }
@@ -98,6 +100,8 @@ function createFallbackProfile(userId: string): Profile {
     age: null,
     bio: null,
     city: null,
+    city_lat: null,
+    city_lng: null,
     interests: [],
     photos: [],
     preferences: {},
@@ -105,49 +109,49 @@ function createFallbackProfile(userId: string): Profile {
     stripe_customer_id: null,
     stripe_subscription_id: null,
     subscription_status: null,
+    swipes_today: 0,
+    messages_today: 0,
+    likes_today: 0,
+    last_swipe_date: null,
+    last_message_date: null,
+    last_like_date: null,
+    is_onboarded: true,
     is_suspended: false,
     suspension_reason: null,
+    email_confirmed: true,
     created_at: '',
     updated_at: '',
-  } as unknown as Profile
+  } as Profile
 }
 
-function BusinessBanner({ type }: { type: Tab }) {
-  const content =
-    type === 'likes'
-      ? {
-          title: 'Pssst... Découvre qui t’a liké',
-          text: 'Débloque tes likes avec PAKT Business.',
-        }
-      : {
-          title: 'Pssst... Passe à la vitesse supérieure',
-          text: 'Envoie des messages sans limite et maximise tes opportunités avec PAKT Business.',
-        }
-
+function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-gold/10 border border-gold/30 rounded-[12px] p-4 mb-4"
+      className="relative overflow-hidden rounded-[16px] border border-gold/25 bg-[#111111]/85 p-6 text-center shadow-[0_18px_55px_rgba(0,0,0,0.45),0_0_34px_rgba(212,168,83,0.12)] backdrop-blur-xl"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <Crown size={16} className="text-gold" />
-            <p className="font-semibold text-white text-sm">{content.title}</p>
-          </div>
-          <p className="text-white/60 text-sm leading-relaxed">{content.text}</p>
+      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.06] to-transparent pointer-events-none" />
+
+      <div className="relative">
+        <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
+          <Lock size={24} className="text-gold" />
         </div>
+
+        <h2 className="text-lg font-bold text-white">
+          Likes reçus réservés aux membres Business Pro
+        </h2>
+
+        <p className="mt-2 text-sm leading-relaxed text-white/55">
+          Découvrez qui vous a liké et débloquez vos connexions potentielles.
+        </p>
 
         <button
           type="button"
-          onClick={() => {
-            window.location.href =
-              'https://checkout.stripe.com/c/pay/cs_test_a1EOyhQb3zvA2y8kvEY2t5qaAFMEtLVxEExzPNpRIyx3EkYYmoqCtWQrwi'
-          }}
-          className="shrink-0 bg-gold text-dark px-4 py-2 rounded-[10px] text-sm font-bold transition-transform hover:scale-[1.03] active:scale-[0.99]"
+          onClick={onUpgrade}
+          className="mt-5 h-12 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
         >
-          Découvrir PAKT Business
+          Passer Business Pro
         </button>
       </div>
     </motion.div>
@@ -160,7 +164,9 @@ export default function MatchesPage() {
   const db = supabase as any
   const router = useRouter()
   const { profile } = useAppStore()
-  const isFree = profile?.plan === 'free'
+
+  const currentPlan = normalizePlan(profile?.plan)
+  const isBusinessPro = currentPlan === 'business_pro'
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
@@ -170,6 +176,40 @@ export default function MatchesPage() {
   const [tab, setTab] = useState<Tab>('matches')
 
   const currentUserId = session?.user?.id
+
+  const handleBusinessProCheckout = async () => {
+    try {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession()
+
+      const token = currentSession?.access_token
+
+      if (!token) {
+        toast.error('Utilisateur non connecté')
+        return
+      }
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ plan: 'business_pro' }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || 'Erreur checkout')
+      }
+
+      window.location.href = data.url
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur Stripe')
+    }
+  }
 
   const loadConversations = useCallback(async () => {
     if (!currentUserId) {
@@ -195,11 +235,13 @@ export default function MatchesPage() {
           .select('*')
           .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
           .order('created_at', { ascending: false }),
-        db
-          .from('likes')
-          .select('liker_id, created_at')
-          .eq('liked_id', currentUserId)
-          .order('created_at', { ascending: false }),
+        isBusinessPro
+          ? db
+              .from('likes')
+              .select('liker_id, created_at')
+              .eq('liked_id', currentUserId)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
       ])
 
       if (conversationsError) toast.error(`Erreur conversations: ${conversationsError.message}`)
@@ -218,7 +260,7 @@ export default function MatchesPage() {
         match.user1_id === currentUserId ? match.user2_id : match.user1_id
       )
 
-      const likeOtherIds = likeRows.map((like) => like.liker_id)
+      const likeOtherIds = isBusinessPro ? likeRows.map((like) => like.liker_id) : []
 
       const allUserIds = Array.from(
         new Set([...conversationOtherIds, ...matchOtherIds, ...likeOtherIds])
@@ -314,20 +356,22 @@ export default function MatchesPage() {
 
       const cleanMatchItems = Array.from(matchItemsByPair.values())
 
-      const likeItems = likeRows.map((like) => {
-        const pairKey = getPairKey(currentUserId, like.liker_id)
-        const linkedMatch = matchItemsByPair.get(pairKey)
-        const linkedConversation = conversationByPair.get(pairKey)
-        const otherUser = profileMap.get(like.liker_id) || createFallbackProfile(like.liker_id)
+      const likeItems = isBusinessPro
+        ? likeRows.map((like) => {
+            const pairKey = getPairKey(currentUserId, like.liker_id)
+            const linkedMatch = matchItemsByPair.get(pairKey)
+            const linkedConversation = conversationByPair.get(pairKey)
+            const otherUser = profileMap.get(like.liker_id) || createFallbackProfile(like.liker_id)
 
-        return {
-          id: like.liker_id,
-          otherUser,
-          createdAt: like.created_at || null,
-          isMatched: Boolean(linkedMatch),
-          conversationId: linkedConversation?.id || linkedMatch?.conversationId || null,
-        }
-      })
+            return {
+              id: like.liker_id,
+              otherUser,
+              createdAt: like.created_at || null,
+              isMatched: Boolean(linkedMatch),
+              conversationId: linkedConversation?.id || linkedMatch?.conversationId || null,
+            }
+          })
+        : []
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -358,7 +402,7 @@ export default function MatchesPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentUserId, db])
+  }, [currentUserId, db, isBusinessPro])
 
   useEffect(() => {
     loadConversations()
@@ -457,8 +501,6 @@ export default function MatchesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-4">
-        {isFree && tab !== 'matches' && <BusinessBanner type={tab} />}
-
         {loading ? (
           <div className="flex flex-col gap-3 pt-2">
             {[1, 2, 3].map((item) => (
@@ -544,7 +586,11 @@ export default function MatchesPage() {
             </div>
           )
         ) : tab === 'likes' ? (
-          likes.length === 0 ? (
+          !isBusinessPro ? (
+            <div className="pt-8">
+              <BusinessProLikesOverlay onUpgrade={handleBusinessProCheckout} />
+            </div>
+          ) : likes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
               <span className="text-5xl">👑</span>
               <div>
@@ -556,7 +602,7 @@ export default function MatchesPage() {
             <div className="space-y-1 pt-2">
               {likes.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
-                const canOpen = !isFree && item.conversationId
+                const canOpen = item.conversationId
 
                 return (
                   <motion.div
@@ -567,14 +613,13 @@ export default function MatchesPage() {
                   >
                     <button
                       type="button"
-                      disabled={isOpening || isFree}
+                      disabled={isOpening}
                       onClick={() => {
-                        if (isFree) return
                         if (item.conversationId) {
                           openConversation(item.otherUser.id, item.conversationId, null)
                         }
                       }}
-                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-100"
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                     >
                       <div className="relative shrink-0">
                         <div className="relative w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
@@ -582,23 +627,11 @@ export default function MatchesPage() {
                             <img
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
-                              className={`w-full h-full object-cover ${
-                                isFree ? 'blur-md scale-110 brightness-75' : ''
-                              }`}
+                              className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div
-                              className={`w-full h-full flex items-center justify-center text-2xl ${
-                                isFree ? 'blur-sm brightness-75' : ''
-                              }`}
-                            >
+                            <div className="w-full h-full flex items-center justify-center text-2xl">
                               👤
-                            </div>
-                          )}
-
-                          {isFree && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                              <Crown size={16} className="text-gold" />
                             </div>
                           )}
                         </div>
@@ -607,9 +640,7 @@ export default function MatchesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {isFree
-                              ? 'Quelqu’un t’a liké'
-                              : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                            {item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
 
                           {item.createdAt && (
@@ -620,9 +651,7 @@ export default function MatchesPage() {
                         </div>
 
                         <p className="text-white/40 text-sm truncate">
-                          {isFree
-                            ? 'Débloque avec PAKT Business'
-                            : isOpening
+                          {isOpening
                             ? 'Ouverture...'
                             : canOpen
                             ? 'Cette personne t’a liké'

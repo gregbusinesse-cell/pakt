@@ -5,10 +5,10 @@ import { twMerge } from 'tailwind-merge'
 
 export type PlanKey = 'free' | 'business' | 'business_pro'
 
-export const limits: Record<PlanKey, { swipes: number; messages: number }> = {
-  free: { swipes: 10, messages: 0 },
-  business: { swipes: 20, messages: 1 },
-  business_pro: { swipes: Infinity, messages: Infinity },
+export const limits: Record<PlanKey, { swipes: number; messages: number; likes: number }> = {
+  free: { swipes: 10, messages: 0, likes: 5 },
+  business: { swipes: 20, messages: 1, likes: 10 },
+  business_pro: { swipes: Infinity, messages: Infinity, likes: Infinity },
 }
 
 export function normalizePlan(plan: unknown): PlanKey {
