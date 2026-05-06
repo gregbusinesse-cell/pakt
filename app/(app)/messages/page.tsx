@@ -39,7 +39,8 @@ type ConversationRow = {
 }
 
 export default function MessagesPage() {
-  const supabase = useMemo(() => createClient(), [])
+  const [supabase] = useState(() => createClient())
+
   const db = supabase as any
   const router = useRouter()
   const { profile } = useAppStore()
@@ -212,7 +213,8 @@ export default function MessagesPage() {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [router, supabase])
+  }, [router])
+
 
   useEffect(() => {
     if (!sessionUserId) return

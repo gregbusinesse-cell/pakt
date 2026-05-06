@@ -76,7 +76,8 @@ function PaywallModal({
 }
 
 export default function SwipePage() {
-  const supabase = useMemo(() => createClient(), [])
+  const [supabase] = useState(() => createClient())
+
   const db = supabase as any
   const router = useRouter()
   const { profile, setProfile } = useAppStore()
@@ -320,7 +321,8 @@ export default function SwipePage() {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [supabase, router])
+    }, [router])
+
 
   useEffect(() => {
     if (!sessionUserId) return

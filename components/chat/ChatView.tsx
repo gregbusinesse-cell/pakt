@@ -2,7 +2,8 @@
 
 // components/chat/ChatView.tsx
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -105,7 +106,8 @@ function createMessageStoragePath(userId: string, file: File, type: Message['mes
 
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
   const session = useSession()
-  const supabase = useMemo(() => createClient(), [])
+  const [supabase] = useState(() => createClient())
+
   const db = supabase as any
   const router = useRouter()
   const { profile, setProfile, refreshNotifications } = useAppStore()
@@ -817,7 +819,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 }
 
 function useMessageFileUrl(fileUrl: string | null) {
-  const supabase = useMemo(() => createClient(), [])
+  const [supabase] = useState(() => createClient())
+
   const [resolvedUrl, setResolvedUrl] = useState(fileUrl || '')
 
   useEffect(() => {
