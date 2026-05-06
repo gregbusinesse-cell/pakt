@@ -238,18 +238,20 @@ export default function SettingsPage() {
       ],
     },
     {
-      key: 'business_pro' as const,
-      name: 'BUSINESS PRO',
-      price: '10€',
-      suffix: '/mois',
-      badge: 'PRO',
-      features: [
-  'Accès aux matchs',
-  'Swipes illimités',
-  'Messages illimités',
-  'Filtres avancés (âge + distance)',
-  'Accès prioritaire aux événements',
-],
+      {
+  key: 'business_pro' as const,
+  name: 'BUSINESS PRO',
+  price: '10€',
+  suffix: '/mois',
+  badge: 'PRO',
+  features: [
+    'Accès aux matchs',
+    'Swipes illimités',
+    'Messages illimités',
+    'Filtres avancés (âge + distance)',
+    'Accès prioritaire aux événements',
+  ],
+},
   const getPlanButton = (plan: PlanKey) => {
     if (plan === 'free') return null
 
