@@ -380,6 +380,7 @@ export default function SwipePage() {
     }
 
     const latestPlan = normalizePlan(profile.plan)
+    const otherPlan = normalizePlan(swipedProfile.plan)
     const latestLimits = limits[latestPlan]
     const latestSwipesToday =
       profile.last_swipe_date === todayKey ? profile.swipes_today || 0 : 0
@@ -499,11 +500,6 @@ export default function SwipePage() {
       }
 
       if (mutualLike) {
-        if (isFree) {
-          toast.success('Match créé. Passe au plan Business pour accéder aux messages.')
-          return
-        }
-
         const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
 
         const { error: matchInsertError } = await db.from('matches').upsert(
@@ -522,6 +518,13 @@ export default function SwipePage() {
           return
         }
 
+        const freeFreeMatch = latestPlan === 'free' && otherPlan === 'free'
+
+        if (freeFreeMatch) {
+          toast.success('Match créé. Passe Business pour le débloquer.')
+          return
+        }
+
         await createConversationForMatch(swipedProfile.id)
 
         setMatchedProfile(swipedProfile)
@@ -537,7 +540,7 @@ export default function SwipePage() {
     if (!currentProfile || !profile) return
 
     if (isFree) {
-      toast.error('Les matchs et messages sont réservés au plan Business.')
+      toast.error('Les messages depuis le swipe sont réservés au plan Business.')
       openPaywall()
       return
     }
@@ -550,13 +553,13 @@ export default function SwipePage() {
         : 0
 
     if (latestLimits.messages === 0) {
-      toast.error('Les messages sont réservés au plan Business.')
+      toast.error('Les messages depuis le swipe sont réservés au plan Business.')
       openPaywall()
       return
     }
 
     if (latestLimits.messages !== Infinity && latestMessagesToday >= latestLimits.messages) {
-      toast.error('Limite de message atteinte pour aujourd’hui.')
+      toast.error('Limite de message swipe atteinte pour aujourd’hui.')
       openPaywall()
       return
     }
@@ -629,7 +632,7 @@ export default function SwipePage() {
       />
 
       <MatchModal
-        isOpen={showMatch && !isFree}
+        isOpen={showMatch}
         myProfile={profile}
         matchedProfile={matchedProfile}
         onClose={() => setShowMatch(false)}

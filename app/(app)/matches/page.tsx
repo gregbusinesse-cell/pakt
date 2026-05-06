@@ -57,6 +57,7 @@ interface MatchItem {
   conversationId: string | null
   createdAt: string | null
   isViewed: boolean
+  isLocked: boolean
 }
 
 interface LikeItem {
@@ -69,6 +70,11 @@ interface LikeItem {
 
 function getPairKey(a: string, b: string) {
   return [a, b].sort().join(':')
+}
+
+function isPaidPlan(plan: unknown) {
+  const normalized = normalizePlan(plan)
+  return normalized === 'business' || normalized === 'business_pro'
 }
 
 function formatLastMessage(
@@ -85,9 +91,7 @@ function formatLastMessage(
   if (lastMessage.message_type === 'audio') return `${prefix} un vocal`
   if (lastMessage.message_type === 'image') return `${prefix} une photo`
   if (lastMessage.message_type === 'file') return `${prefix} un document`
-  if (lastMessage.message_type === 'text' || !lastMessage.message_type) {
-    return lastMessage.content || null
-  }
+  if (lastMessage.message_type === 'text' || !lastMessage.message_type) return lastMessage.content || null
 
   return null
 }
@@ -122,6 +126,29 @@ function createFallbackProfile(userId: string): Profile {
     created_at: '',
     updated_at: '',
   } as Profile
+}
+
+function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
+  return (
+    <div className="mt-3 rounded-[14px] border border-gold/20 bg-black/35 p-4 text-center backdrop-blur-md">
+      <div className="mx-auto mb-3 w-11 h-11 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
+        <Lock size={18} className="text-gold" />
+      </div>
+
+      <p className="text-sm font-semibold text-white">Match verrouillé</p>
+      <p className="mt-1 text-xs leading-relaxed text-white/50">
+        Deux comptes Free ont matché. Passe Business pour débloquer ce match et discuter.
+      </p>
+
+      <button
+        type="button"
+        onClick={onUpgrade}
+        className="mt-3 h-10 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
+      >
+        Passer Business
+      </button>
+    </div>
+  )
 }
 
 function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
@@ -167,6 +194,7 @@ export default function MatchesPage() {
 
   const currentPlan = normalizePlan(profile?.plan)
   const isBusinessPro = currentPlan === 'business_pro'
+  const currentUserIsPaid = isPaidPlan(profile?.plan)
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
@@ -177,7 +205,7 @@ export default function MatchesPage() {
 
   const currentUserId = session?.user?.id
 
-  const handleBusinessProCheckout = async () => {
+  const handleCheckout = async (plan: 'business' | 'business_pro') => {
     try {
       const {
         data: { session: currentSession },
@@ -196,7 +224,7 @@ export default function MatchesPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan: 'business_pro' }),
+        body: JSON.stringify({ plan }),
       })
 
       const data = await res.json().catch(() => null)
@@ -324,6 +352,7 @@ export default function MatchesPage() {
         const pairKey = getPairKey(currentUserId, otherUserId)
         const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
         const linkedConversation = conversationByPair.get(pairKey)
+        const locked = !currentUserIsPaid && !isPaidPlan(otherUser.plan)
 
         matchItemsByPair.set(pairKey, {
           id: match.id,
@@ -332,6 +361,7 @@ export default function MatchesPage() {
           conversationId: linkedConversation?.id || null,
           createdAt: match.created_at || null,
           isViewed: Boolean(match.is_viewed),
+          isLocked: locked,
         })
       })
 
@@ -351,6 +381,7 @@ export default function MatchesPage() {
           conversationId: conversation.id,
           createdAt: conversation.created_at || null,
           isViewed: true,
+          isLocked: false,
         })
       })
 
@@ -402,7 +433,7 @@ export default function MatchesPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentUserId, db, isBusinessPro])
+  }, [currentUserId, currentUserIsPaid, db, isBusinessPro])
 
   useEffect(() => {
     loadConversations()
@@ -411,9 +442,15 @@ export default function MatchesPage() {
   const openConversation = async (
     otherUserId: string,
     existingConversationId?: string | null,
-    matchId?: string | null
+    matchId?: string | null,
+    locked?: boolean
   ) => {
     if (!currentUserId || !otherUserId) return
+
+    if (locked) {
+      toast.error('Match verrouillé. Passe Business pour discuter.')
+      return
+    }
 
     setOpeningConversation(otherUserId)
 
@@ -433,7 +470,7 @@ export default function MatchesPage() {
           .neq('sender_id', currentUserId)
           .eq('is_read', false)
 
-        router.push(`/chat/${existingConversationId}?type=direct&userId=${otherUserId}`)
+        router.push(`/chat/${existingConversationId}?type=match&userId=${otherUserId}`)
         return
       }
 
@@ -523,7 +560,7 @@ export default function MatchesPage() {
               </div>
             </div>
           ) : (
-            <div className="space-y-1 pt-2">
+            <div className="space-y-2 pt-2">
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
 
@@ -533,11 +570,14 @@ export default function MatchesPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
+                    className={`rounded-2xl ${item.isLocked ? 'bg-dark-200/50 border border-gold/10 p-1' : ''}`}
                   >
                     <button
                       type="button"
                       disabled={isOpening}
-                      onClick={() => openConversation(item.otherUser.id, item.conversationId, item.id)}
+                      onClick={() =>
+                        openConversation(item.otherUser.id, item.conversationId, item.id, item.isLocked)
+                      }
                       className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                     >
                       <div className="relative shrink-0">
@@ -546,18 +586,26 @@ export default function MatchesPage() {
                             <img
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
-                              className="w-full h-full object-cover"
+                              className={`w-full h-full object-cover ${
+                                item.isLocked ? 'blur-md scale-110 brightness-75' : ''
+                              }`}
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+                            <div
+                              className={`w-full h-full flex items-center justify-center text-2xl ${
+                                item.isLocked ? 'blur-sm brightness-75' : ''
+                              }`}
+                            >
+                              👤
+                            </div>
                           )}
                         </div>
 
                         <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          ✓
+                          {item.isLocked ? <Lock size={10} /> : '✓'}
                         </div>
 
-                        {!item.isViewed && (
+                        {!item.isViewed && !item.isLocked && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                         )}
                       </div>
@@ -565,7 +613,9 @@ export default function MatchesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                            {item.isLocked
+                              ? 'Match verrouillé'
+                              : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
 
                           {item.createdAt && (
@@ -576,10 +626,16 @@ export default function MatchesPage() {
                         </div>
 
                         <p className="text-white/40 text-sm truncate">
-                          {isOpening ? 'Ouverture...' : '🎉 Nouveau match ! Dis bonjour'}
+                          {item.isLocked
+                            ? 'Passe Business pour débloquer ce match'
+                            : isOpening
+                            ? 'Ouverture...'
+                            : '🎉 Nouveau match ! Dis bonjour'}
                         </p>
                       </div>
                     </button>
+
+                    {item.isLocked && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
                   </motion.div>
                 )
               })}
@@ -588,7 +644,7 @@ export default function MatchesPage() {
         ) : tab === 'likes' ? (
           !isBusinessPro ? (
             <div className="pt-8">
-              <BusinessProLikesOverlay onUpgrade={handleBusinessProCheckout} />
+              <BusinessProLikesOverlay onUpgrade={() => handleCheckout('business_pro')} />
             </div>
           ) : likes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
@@ -616,7 +672,7 @@ export default function MatchesPage() {
                       disabled={isOpening}
                       onClick={() => {
                         if (item.conversationId) {
-                          openConversation(item.otherUser.id, item.conversationId, null)
+                          openConversation(item.otherUser.id, item.conversationId, null, false)
                         }
                       }}
                       className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
@@ -688,7 +744,7 @@ export default function MatchesPage() {
                   <button
                     type="button"
                     disabled={isOpening}
-                    onClick={() => openConversation(item.otherUser.id, item.id, null)}
+                    onClick={() => openConversation(item.otherUser.id, item.id, null, false)}
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">

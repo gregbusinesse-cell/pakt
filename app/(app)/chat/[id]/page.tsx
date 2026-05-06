@@ -1,6 +1,8 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+// app/(app)/chat/[id]/page.tsx
+
+import { Suspense, useEffect, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ChatView from '@/components/chat/ChatView'
@@ -11,16 +13,20 @@ function ChatPageContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const [supabase] = useState(() => createClient())
+  const db = supabase as any
   const { refreshNotifications } = useAppStore()
 
   const userId = searchParams.get('userId')
-  const conversationType = (searchParams.get('type') || 'match') as 'match' | 'direct'
+  const requestedConversationType = (searchParams.get('type') || 'match') as 'match' | 'direct'
 
   const [session, setSession] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [otherUser, setOtherUser] = useState<Profile | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationType, setConversationType] = useState<'match' | 'direct'>(
+    requestedConversationType
+  )
 
   const sessionUserId = session?.user?.id
 
@@ -55,46 +61,56 @@ function ChatPageContent() {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [router, supabase])
+  }, [router])
 
   useEffect(() => {
     if (!sessionUserId || !userId) return
 
     const initConversation = async () => {
       if (params.id === 'new') {
-        const { data, error } = await supabase.rpc('get_or_create_conversation', {
+        const { data, error } = await db.rpc('get_or_create_conversation', {
           other_user_id: userId,
         })
 
         if (error || !data) return
         setConversationId(data as string)
-        return
+      } else {
+        setConversationId(params.id as string)
       }
 
-      setConversationId(params.id as string)
+      const [user1_id, user2_id] = [sessionUserId, userId].sort()
+
+      const { data: matchData } = await db
+        .from('matches')
+        .select('id')
+        .eq('user1_id', user1_id)
+        .eq('user2_id', user2_id)
+        .maybeSingle()
+
+      setConversationType(matchData ? 'match' : requestedConversationType)
     }
 
     initConversation()
-  }, [params.id, sessionUserId, userId, supabase])
+  }, [db, params.id, requestedConversationType, sessionUserId, userId])
 
   useEffect(() => {
     if (!userId) return
 
-    supabase
+    db
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single()
-      .then(({ data }) => setOtherUser(data))
-  }, [supabase, userId])
+      .then(({ data }: { data: Profile | null }) => setOtherUser(data))
+  }, [db, userId])
 
   useEffect(() => {
     if (!conversationId || !sessionUserId) return
 
     const markAsRead = async () => {
-      const { error } = await supabase
+      const { error } = await db
         .from('messages')
-        .update({ is_read: true } as never)
+        .update({ is_read: true })
         .eq('conversation_id', conversationId)
         .neq('sender_id', sessionUserId)
         .eq('is_read', false)
@@ -103,7 +119,7 @@ function ChatPageContent() {
     }
 
     markAsRead()
-  }, [conversationId, sessionUserId, supabase, refreshNotifications])
+  }, [conversationId, db, sessionUserId, refreshNotifications])
 
   if (sessionLoading || !otherUser || !conversationId) {
     return (

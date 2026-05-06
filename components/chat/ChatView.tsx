@@ -3,7 +3,6 @@
 // components/chat/ChatView.tsx
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -21,8 +20,6 @@ import {
   Pause,
   Square,
   ChevronLeft,
-  Crown,
-  Lock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -32,6 +29,11 @@ interface Props {
   conversationId: string
   conversationType: 'match' | 'direct'
   otherUser: Profile
+}
+
+type ProfileWithLimits = Profile & {
+  messages_today?: number | null
+  last_message_date?: string | null
 }
 
 const MIN_AUDIO_SIZE_BYTES = 3000
@@ -107,7 +109,6 @@ function createMessageStoragePath(userId: string, file: File, type: Message['mes
 export default function ChatView({ conversationId, conversationType, otherUser }: Props) {
   const session = useSession()
   const [supabase] = useState(() => createClient())
-
   const db = supabase as any
   const router = useRouter()
   const { profile, setProfile, refreshNotifications } = useAppStore()
@@ -134,10 +135,9 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
   const currentUserId = session?.user?.id
   const todayKey = getTodayKey()
-  const currentPlan = normalizePlan(profile?.plan)
-  const isFree = currentPlan === 'free'
-  const isBusiness = currentPlan === 'business'
-  const isPro = currentPlan === 'business_pro'
+  const myPlan = normalizePlan(profile?.plan)
+  const otherPlan = normalizePlan(otherUser.plan)
+  const isDirectSwipeMessage = conversationType === 'direct' && !hasMatchWithOtherUser
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -166,25 +166,23 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     if (!error) refreshNotifications()
   }, [conversationId, currentUserId, db, refreshNotifications])
 
-  const loadMatchStatus = useCallback(async () => {
+  useEffect(() => {
     if (!currentUserId || !otherUser?.id) return
 
-    const [user1_id, user2_id] = [currentUserId, otherUser.id].sort()
+    const loadMatchStatus = async () => {
+      const [user1_id, user2_id] = [currentUserId, otherUser.id].sort()
 
-    const { data, error } = await db
-      .from('matches')
-      .select('id')
-      .eq('user1_id', user1_id)
-      .eq('user2_id', user2_id)
-      .maybeSingle()
+      const { data } = await db
+        .from('matches')
+        .select('id')
+        .eq('user1_id', user1_id)
+        .eq('user2_id', user2_id)
+        .maybeSingle()
 
-    if (error) {
-      console.error('[CHAT] match status error', error)
-      setHasMatchWithOtherUser(false)
-      return
+      setHasMatchWithOtherUser(Boolean(data))
     }
 
-    setHasMatchWithOtherUser(Boolean(data))
+    loadMatchStatus()
   }, [currentUserId, db, otherUser?.id])
 
   const getFreshMessageLimits = useCallback(async () => {
@@ -264,30 +262,36 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     [currentUserId, db, profile, setProfile, todayKey]
   )
 
-  const assertCanSendMessage = useCallback(async () => {
-    const freshLimits = await getFreshMessageLimits()
+  const assertCanSendMessage = async () => {
+    if (hasMatchWithOtherUser) {
+      if (myPlan === 'free' && otherPlan === 'free') {
+        throw new Error('Ce match est verrouillé. Passez Business pour discuter avec ce profil.')
+      }
 
-    if (freshLimits.plan === 'free' || freshLimits.messageLimit === 0) {
-      throw new Error('Le plan FREE ne permet pas d’envoyer de message.')
+      return {
+        shouldIncrementDirectCounter: false,
+        messagesToday: 0,
+      }
     }
 
-    if (freshLimits.plan === 'business' && !hasMatchWithOtherUser) {
-      throw new Error('Le plan Business permet les messages uniquement avec les matchs.')
+    const freshLimits = await getFreshMessageLimits()
+
+    if (freshLimits.messageLimit === 0) {
+      throw new Error('Les messages depuis le swipe sont réservés au plan Business.')
     }
 
     if (
       freshLimits.messageLimit !== Infinity &&
       freshLimits.messagesToday >= freshLimits.messageLimit
     ) {
-      throw new Error('Limite de message atteinte pour aujourd’hui.')
+      throw new Error('Limite de message swipe atteinte pour aujourd’hui.')
     }
 
-    return freshLimits
-  }, [getFreshMessageLimits, hasMatchWithOtherUser])
-
-  useEffect(() => {
-    loadMatchStatus()
-  }, [loadMatchStatus])
+    return {
+      shouldIncrementDirectCounter: freshLimits.messageLimit !== Infinity,
+      messagesToday: freshLimits.messagesToday,
+    }
+  }
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -333,6 +337,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         },
         async (payload) => {
           const newMessage = payload.new as Message
+
           setMessages((prev) => {
             if (prev.some((item) => item.id === newMessage.id)) return prev
             return [...prev, newMessage]
@@ -394,7 +399,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setSending(true)
 
     try {
-      const freshLimits = await assertCanSendMessage()
+      const permission = await assertCanSendMessage()
 
       let fileUrl: string | undefined
       let fileName: string | undefined
@@ -418,7 +423,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
       const payload = {
         conversation_id: conversationId,
-        conversation_type: conversationType,
         sender_id: session.user.id,
         content: content?.trim() || `[${type}]`,
         message_type: type,
@@ -439,8 +443,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         return
       }
 
-      if (freshLimits.messageLimit !== Infinity) {
-        await incrementMessageCounter(freshLimits.messagesToday)
+      if (permission.shouldIncrementDirectCounter) {
+        await incrementMessageCounter(permission.messagesToday)
       }
 
       setMessages((prev) => {
@@ -601,10 +605,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setShowAttachMenu(false)
   }
 
-  const inputLocked = isFree || (isBusiness && !hasMatchWithOtherUser)
+  const inputLocked = myPlan === 'free' && otherPlan === 'free' && hasMatchWithOtherUser
 
   return (
-    <div className="h-full flex flex-col bg-dark">
+    <div className="h-full min-h-0 flex flex-col bg-dark">
       <div className="flex items-center gap-3 px-4 py-3 bg-dark-100 border-b border-dark-400 shrink-0">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-dark-300 transition-colors">
           <ChevronLeft size={20} className="text-white/70" />
@@ -624,7 +628,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 pb-3">
         {loading ? (
           <div className="flex justify-center pt-8">
             <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
@@ -668,16 +672,11 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="px-4 py-3 bg-dark-100 border-t border-dark-400 shrink-0">
+      <div className="shrink-0 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+14px)] bg-dark-100 border-t border-dark-400">
         {inputLocked && (
-          <div className="mb-3 rounded-[12px] border border-gold/20 bg-gold/10 px-4 py-3 text-sm text-white/70 flex items-center gap-2">
-            {isFree ? <Lock size={16} className="text-gold" /> : <Crown size={16} className="text-gold" />}
-            <span>
-              {isFree
-                ? 'Les messages sont réservés au plan Business.'
-                : 'Avec Business, les messages sont disponibles uniquement avec les matchs.'}
-            </span>
-          </div>
+          <p className="mb-2 text-center text-xs text-white/45">
+            Ce match est verrouillé avec le plan Free.
+          </p>
         )}
 
         <AnimatePresence>
@@ -725,10 +724,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={inputLocked ? 'Messages verrouillés' : 'Message...'}
+            placeholder={inputLocked ? 'Passe Business pour débloquer ce match' : 'Message...'}
             rows={1}
             disabled={inputLocked}
-            className="flex-1 bg-dark-300 rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold/30 resize-none text-sm max-h-24 overflow-y-auto disabled:opacity-50"
+            className="flex-1 min-h-[44px] bg-dark-300 rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold/30 resize-none text-sm max-h-24 overflow-y-auto disabled:opacity-50"
             style={{ lineHeight: '1.4' }}
           />
 
@@ -744,35 +743,29 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             <button
               type="button"
               onMouseDown={() => {
-                if (inputLocked) return
                 if (Date.now() < ignoreMouseUntilRef.current) return
                 startRecording()
               }}
               onMouseUp={() => {
-                if (inputLocked) return
                 if (Date.now() < ignoreMouseUntilRef.current) return
                 stopRecording()
               }}
               onMouseLeave={() => {
-                if (inputLocked) return
                 if (Date.now() < ignoreMouseUntilRef.current) return
                 cancelRecording()
               }}
               onTouchStart={(event) => {
                 event.preventDefault()
-                if (inputLocked) return
                 ignoreMouseUntilRef.current = Date.now() + 700
                 startRecording()
               }}
               onTouchEnd={(event) => {
                 event.preventDefault()
-                if (inputLocked) return
                 ignoreMouseUntilRef.current = Date.now() + 700
                 stopRecording()
               }}
               onTouchCancel={(event) => {
                 event.preventDefault()
-                if (inputLocked) return
                 ignoreMouseUntilRef.current = Date.now() + 700
                 cancelRecording()
               }}
@@ -820,7 +813,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
 function useMessageFileUrl(fileUrl: string | null) {
   const [supabase] = useState(() => createClient())
-
   const [resolvedUrl, setResolvedUrl] = useState(fileUrl || '')
 
   useEffect(() => {
