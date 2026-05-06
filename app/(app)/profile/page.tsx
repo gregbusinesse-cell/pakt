@@ -10,7 +10,8 @@ import { useAppStore } from '@/lib/store'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { INTERESTS, MAX_PHOTOS } from '@/lib/utils'
-import { Check, X, Plus, LogOut } from 'lucide-react'
+import { Check, X, Plus, LogOut, Crown } from 'lucide-react'
+
 import { useRouter } from 'next/navigation'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -113,6 +114,19 @@ type Preferences = {
   age_min: number
   age_max: number
 }
+
+const LOCKED_PREFERENCES: Preferences = {
+  distance_km: 1000,
+  age_min: 18,
+  age_max: 99,
+}
+
+function normalizePlan(plan: unknown) {
+  if (plan === 'business_pro' || plan === 'pro') return 'business_pro'
+  if (plan === 'business' || plan === 'premium') return 'business'
+  return 'free'
+}
+
 
 type ProfileForm = {
   first_name: string
@@ -325,12 +339,17 @@ export default function ProfilePage() {
   const supabase = useMemo(() => createClient(), [])
   const { profile, setProfile } = useAppStore()
   const isSuspended = Boolean(profile?.is_suspended)
-  const router = useRouter()
+    const router = useRouter()
+  const plan = normalizePlan((profile as any)?.plan)
+  const isBusinessPro = plan === 'business_pro'
 
   const [mode, setMode] = useState<'view' | 'edit'>('view')
+
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
+  const [filtersShake, setFiltersShake] = useState(0)
+
 
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [resetPwdOpen, setResetPwdOpen] = useState(false)
@@ -342,11 +361,54 @@ export default function ProfilePage() {
   const autocompleteRef = useRef<any>(null)
   const autocompleteListenerRef = useRef<any>(null)
 
-  const [preferences, setPreferences] = useState<Preferences>(() =>
-    getInitialPreferences(profile?.preferences)
+    const [preferences, setPreferences] = useState<Preferences>(() =>
+    isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES
   )
 
+  const displayedPreferences = isBusinessPro ? preferences : LOCKED_PREFERENCES
+
+  const handleLockedFiltersClick = () => {
+    if (isBusinessPro) return
+    setFiltersShake((value) => value + 1)
+    toast.error('Disponible avec Business Pro')
+  }
+
+  const handleBusinessProCheckout = async () => {
+    try {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession()
+
+      const token = currentSession?.access_token
+
+      if (!token) {
+        toast.error('Utilisateur non connecté')
+        return
+      }
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ plan: 'business_pro' }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || 'Erreur checkout')
+      }
+
+      window.location.href = data.url
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur Stripe')
+    }
+  }
+
   const [form, setForm] = useState<ProfileForm>({
+
     first_name: profile?.first_name || '',
     age: String(profile?.age || ''),
     bio: profile?.bio || '',
@@ -440,7 +502,8 @@ export default function ProfilePage() {
       lng: (profile as any)?.city_lng || null,
     })
 
-    setPreferences(getInitialPreferences(profile?.preferences))
+    setPreferences(isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES)
+
     setNewPhotos([])
     setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
     setEditing(true)
@@ -701,7 +764,8 @@ export default function ProfilePage() {
         city_lng: cityData.lng,
         interests: nextInterests,
         photos: allPhotos,
-        preferences,
+        preferences: isBusinessPro ? preferences : LOCKED_PREFERENCES,
+
       } as any
 
       const { error } = await supabase
@@ -1036,34 +1100,48 @@ export default function ProfilePage() {
                 removePhoto={removePhoto}
               />
 
-              <div className={cardBase}>
+                            <motion.div
+                className={`${cardBase} relative overflow-hidden`}
+                animate={filtersShake ? { x: [0, -4, 4, -3, 3, 0] } : { x: 0 }}
+                transition={{ duration: 0.32 }}
+              >
                 <p className="text-sm font-semibold text-white mb-4">Mes critères</p>
 
-                <div className="space-y-5">
+                <div
+                  className={`space-y-5 ${
+                    !isBusinessPro ? 'pointer-events-none opacity-45 blur-[1px]' : ''
+                  }`}
+                >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-white/70">Distance max : {preferences.distance_km} km</p>
+                      <p className="text-sm text-white/70">
+                        Distance max : {displayedPreferences.distance_km} km
+                      </p>
                       <span className="text-xs text-white/40">0 - 1000</span>
                     </div>
+
                     <input
                       type="range"
                       min={0}
                       max={1000}
-                      value={preferences.distance_km}
-                      onChange={(event) =>
+                      value={displayedPreferences.distance_km}
+                      disabled={!isBusinessPro}
+                      onChange={(event) => {
+                        if (!isBusinessPro) return
+
                         setPreferences((prev) => ({
                           ...prev,
                           distance_km: Number(event.target.value),
                         }))
-                      }
-                      className="w-full accent-gold"
+                      }}
+                      className="w-full accent-gold disabled:cursor-not-allowed"
                     />
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-sm text-white/70">
-                        Âge : {preferences.age_min} - {preferences.age_max} ans
+                        Âge : {displayedPreferences.age_min} - {displayedPreferences.age_max} ans
                       </p>
                       <span className="text-xs text-white/40">18 - 99</span>
                     </div>
@@ -1073,35 +1151,76 @@ export default function ProfilePage() {
                         type="range"
                         min={18}
                         max={99}
-                        value={preferences.age_min}
+                        value={displayedPreferences.age_min}
+                        disabled={!isBusinessPro}
                         onChange={(event) => {
+                          if (!isBusinessPro) return
+
                           const value = Number(event.target.value)
+
                           setPreferences((prev) => ({
                             ...prev,
                             age_min: Math.min(value, prev.age_max),
                           }))
                         }}
-                        className="w-full accent-gold"
+                        className="w-full accent-gold disabled:cursor-not-allowed"
                       />
 
                       <input
                         type="range"
                         min={18}
                         max={99}
-                        value={preferences.age_max}
+                        value={displayedPreferences.age_max}
+                        disabled={!isBusinessPro}
                         onChange={(event) => {
+                          if (!isBusinessPro) return
+
                           const value = Number(event.target.value)
+
                           setPreferences((prev) => ({
                             ...prev,
                             age_max: Math.max(value, prev.age_min),
                           }))
                         }}
-                        className="w-full accent-gold"
+                        className="w-full accent-gold disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
                 </div>
-              </div>
+
+                {!isBusinessPro && (
+                  <button
+                    type="button"
+                    onClick={handleLockedFiltersClick}
+                    className="absolute inset-0 z-10 flex items-center justify-center p-4 bg-black/35 backdrop-blur-[3px]"
+                  >
+                    <div className="w-full rounded-[14px] border border-gold/25 bg-[#111111]/85 shadow-[0_18px_55px_rgba(0,0,0,0.45),0_0_30px_rgba(212,168,83,0.12)] p-5 text-center">
+                      <div className="mx-auto mb-3 w-11 h-11 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
+                        <Crown size={20} className="text-gold" />
+                      </div>
+
+                      <h3 className="text-white font-semibold text-sm">
+                        Filtres avancés réservés aux membres Business Pro
+                      </h3>
+
+                      <p className="mt-2 text-xs leading-relaxed text-white/55">
+                        Affinez vos recherches avec des critères personnalisés : distance, tranche
+                        d’âge et plus encore.
+                      </p>
+
+                      <span
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleBusinessProCheckout()
+                        }}
+                        className="mt-4 h-11 w-full inline-flex items-center justify-center rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
+                      >
+                        Passer Business Pro
+                      </span>
+                    </div>
+                  </button>
+                )}
+                            </motion.div>
 
               <button
                 type="button"
@@ -1111,6 +1230,7 @@ export default function ProfilePage() {
                 <LogOut size={16} />
                 Se déconnecter
               </button>
+
 
               <button
                 type="button"
