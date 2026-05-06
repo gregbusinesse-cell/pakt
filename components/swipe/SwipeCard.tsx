@@ -1,7 +1,10 @@
 'use client'
 
+// components/swipe/SwipeCard.tsx
+
 import { useState } from 'react'
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion'
+import { Heart, MessageCircle, X } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
 
 interface Props {
@@ -105,6 +108,9 @@ export default function SwipeCard({
     onMessage?.()
   }
 
+  const actionButtonBase =
+    'group relative w-[68px] h-[68px] rounded-full flex items-center justify-center overflow-hidden backdrop-blur-xl transition-colors disabled:opacity-35 disabled:pointer-events-none'
+
   return (
     <div
       className={`h-full overflow-y-auto ${
@@ -168,39 +174,60 @@ export default function SwipeCard({
 
               {isTop && !isOwnProfile && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-                  <div className="flex items-center justify-center gap-6">
-                    <button
+                  <div className="flex items-center justify-center gap-5">
+                    <motion.button
                       type="button"
                       onClick={() => swipeManual('left')}
                       disabled={disabledActions}
-                      className="w-16 h-16 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center
-                        transition-transform duration-200 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                      whileHover={{ scale: 1.06, y: -2 }}
+                      whileTap={{ scale: 0.94 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                      className={`${actionButtonBase} bg-black/55 border border-red-500/20 shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)] hover:border-red-400/35 hover:shadow-[0_20px_50px_rgba(0,0,0,0.50),0_0_28px_rgba(190,18,60,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]`}
                       aria-label="Dislike"
                     >
-                      <span className="text-[#ff4d4f] text-3xl font-bold leading-none">✕</span>
-                    </button>
+                      <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/10 to-transparent opacity-70" />
+                      <X
+                        size={28}
+                        strokeWidth={2.1}
+                        className="relative text-red-300 transition-colors group-hover:text-red-200"
+                      />
+                    </motion.button>
 
-                    <button
+                    <motion.button
                       type="button"
                       onClick={handleMessage}
                       disabled={disabledActions}
-                      className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shadow-lg
-                        transition-transform duration-200 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                      whileHover={{ scale: 1.06, y: -2 }}
+                      whileTap={{ scale: 0.94 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                      className={`${actionButtonBase} bg-[#121212]/72 border border-gold/25 shadow-[0_18px_45px_rgba(0,0,0,0.48),0_0_24px_rgba(212,168,83,0.12),inset_0_1px_0_rgba(255,255,255,0.10)] hover:border-gold/45 hover:shadow-[0_20px_55px_rgba(0,0,0,0.52),0_0_34px_rgba(212,168,83,0.24),inset_0_1px_0_rgba(255,255,255,0.14)]`}
                       aria-label="Message"
                     >
-                      <span className="text-white text-2xl leading-none">💬</span>
-                    </button>
+                      <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/12 to-transparent opacity-70" />
+                      <MessageCircle
+                        size={27}
+                        strokeWidth={2}
+                        className="relative text-gold transition-colors group-hover:text-gold-light"
+                      />
+                    </motion.button>
 
-                    <button
+                    <motion.button
                       type="button"
                       onClick={() => swipeManual('right')}
                       disabled={disabledActions}
-                      className="w-16 h-16 rounded-full bg-gold/80 backdrop-blur-md flex items-center justify-center
-                        transition-transform duration-200 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                      whileHover={{ scale: 1.07, y: -2 }}
+                      whileTap={{ scale: 0.94 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                      className={`${actionButtonBase} bg-gold border border-gold-light/50 shadow-[0_18px_45px_rgba(0,0,0,0.42),0_0_34px_rgba(212,168,83,0.28),inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-gold-light hover:shadow-[0_22px_58px_rgba(0,0,0,0.48),0_0_44px_rgba(212,168,83,0.38),inset_0_1px_0_rgba(255,255,255,0.42)]`}
                       aria-label="Like"
                     >
-                      <span className="text-red-500 text-2xl leading-none">❤</span>
-                    </button>
+                      <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/30 to-transparent opacity-80" />
+                      <Heart
+                        size={28}
+                        strokeWidth={2.1}
+                        className="relative text-dark fill-dark/10 transition-transform group-hover:scale-105"
+                      />
+                    </motion.button>
                   </div>
                 </div>
               )}
