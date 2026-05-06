@@ -216,7 +216,7 @@ export default function SettingsPage() {
     []
   )
 
-  const plans = [
+    const plans = [
     {
       key: 'free' as const,
       name: 'FREE',
@@ -238,20 +238,23 @@ export default function SettingsPage() {
       ],
     },
     {
-      {
-  key: 'business_pro' as const,
-  name: 'BUSINESS PRO',
-  price: '10€',
-  suffix: '/mois',
-  badge: 'PRO',
-  features: [
-    'Accès aux matchs',
-    'Swipes illimités',
-    'Messages illimités',
-    'Filtres avancés (âge + distance)',
-    'Accès prioritaire aux événements',
-  ],
-},
+      key: 'business_pro' as const,
+      name: 'BUSINESS PRO',
+      price: '10€',
+      suffix: '/mois',
+      badge: 'PRO',
+      features: [
+        '20 swipes / jour',
+        '1 message / jour',
+        'Accès aux matchs',
+        'Messages illimités uniquement avec les matchs',
+        'Swipes illimités',
+        'Messages illimités',
+        'Filtres avancés (âge + distance)',
+        'Accès prioritaire aux événements',
+      ],
+    },
+  ]
   const getPlanButton = (plan: PlanKey) => {
     if (plan === 'free') return null
 
