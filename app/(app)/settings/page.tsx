@@ -244,18 +244,12 @@ export default function SettingsPage() {
       suffix: '/mois',
       badge: 'PRO',
       features: [
-        '20 swipes / jour',
-        '1 message / jour',
-        'Accès aux matchs',
-        'Messages illimités uniquement avec les matchs',
-        'Swipes illimités',
-        'Messages illimités',
-        'Filtres avancés (âge + distance)',
-        'Accès prioritaire aux événements',
-      ],
-    },
-  ]
-
+  'Accès aux matchs',
+  'Swipes illimités',
+  'Messages illimités',
+  'Filtres avancés (âge + distance)',
+  'Accès prioritaire aux événements',
+],
   const getPlanButton = (plan: PlanKey) => {
     if (plan === 'free') return null
 
