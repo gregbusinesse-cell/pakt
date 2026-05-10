@@ -15,6 +15,20 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 const STACK_RENDER_COUNT = 3
+const VIEW_COOLDOWN_DAYS = 14
+
+function deterministicShuffle(items: Profile[], seed: string): Profile[] {
+  const hashed = items.map((p) => {
+    let h = 0
+    const key = seed + p.id
+    for (let i = 0; i < key.length; i++) {
+      h = ((h << 5) - h + key.charCodeAt(i)) | 0
+    }
+    return { profile: p, hash: h }
+  })
+  hashed.sort((a, b) => a.hash - b.hash)
+  return hashed.map((h) => h.profile)
+}
 
 type ProfileWithLocation = Profile & {
   city_lat?: number | null
@@ -199,6 +213,22 @@ export default function SwipePage() {
     [getOrCreateConversation]
   )
 
+  const recordProfileView = useCallback(
+    async (viewedId: string) => {
+      if (!sessionUserId) return
+      await db.from('profile_views').upsert(
+        {
+          viewer_id: sessionUserId,
+          viewed_id: viewedId,
+          last_viewed_at: new Date().toISOString(),
+          view_count: 1,
+        },
+        { onConflict: 'viewer_id,viewed_id' }
+      )
+    },
+    [db, sessionUserId]
+  )
+
   const loadProfiles = useCallback(async () => {
     if (!sessionUserId) {
       setLoading(false)
@@ -208,19 +238,34 @@ export default function SwipePage() {
     setLoading((prev) => (profiles.length === 0 ? true : prev))
 
     try {
-      const { data: swipedData, error: swipedError } = await db
-        .from('swipes')
-        .select('target_id')
-        .eq('swiper_id', sessionUserId)
+      const cooldownDate = new Date()
+      cooldownDate.setDate(cooldownDate.getDate() - VIEW_COOLDOWN_DAYS)
+      const cooldownISO = cooldownDate.toISOString()
 
-      if (swipedError) {
-        console.error('[SWIPE] swipes select error', swipedError)
+      const [swipedResult, viewsResult] = await Promise.all([
+        db.from('swipes').select('target_id').eq('swiper_id', sessionUserId),
+        db
+          .from('profile_views')
+          .select('viewed_id')
+          .eq('viewer_id', sessionUserId)
+          .gte('last_viewed_at', cooldownISO),
+      ])
+
+      if (swipedResult.error) {
+        console.error('[SWIPE] swipes select error', swipedResult.error)
+      }
+      if (viewsResult.error) {
+        console.error('[SWIPE] views select error', viewsResult.error)
       }
 
       const swipedSet = new Set<string>([
         sessionUserId,
-        ...((swipedData || []).map((swipe: { target_id: string }) => swipe.target_id) || []),
+        ...((swipedResult.data || []).map((s: { target_id: string }) => s.target_id)),
       ])
+
+      const recentlyViewedSet = new Set<string>(
+        (viewsResult.data || []).map((v: { viewed_id: string }) => v.viewed_id)
+      )
 
       const { data: profilesData, error: profilesError } = await db
         .from('profiles')
@@ -229,7 +274,7 @@ export default function SwipePage() {
         .eq('is_suspended', false)
         .eq('email_confirmed', true)
         .neq('id', sessionUserId)
-        .limit(40)
+        .limit(80)
 
       if (profilesError) {
         console.error('[SWIPE] profiles select error', profilesError)
@@ -237,32 +282,37 @@ export default function SwipePage() {
         return
       }
 
-      const filteredProfiles = ((profilesData || []) as ProfileWithLocation[]).filter((candidate) => {
+      const applyGeoAgeFilter = (candidate: ProfileWithLocation) => {
         if (swipedSet.has(candidate.id)) return false
-
         if (typeof candidate.age === 'number') {
           if (candidate.age < ageMin || candidate.age > ageMax) return false
         }
-
         if (!candidate.city_lat || !candidate.city_lng) return false
         if (!userLat || !userLng) return true
 
         const radius = 6371
         const dLat = ((candidate.city_lat - userLat) * Math.PI) / 180
         const dLng = ((candidate.city_lng - userLng) * Math.PI) / 180
-
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
           Math.cos((userLat * Math.PI) / 180) *
             Math.cos((candidate.city_lat * Math.PI) / 180) *
             Math.sin(dLng / 2) *
             Math.sin(dLng / 2)
-
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        const distance = radius * c
+        return radius * c <= maxDistance
+      }
 
-        return distance <= maxDistance
-      })
+      const eligible = ((profilesData || []) as ProfileWithLocation[]).filter(applyGeoAgeFilter)
+
+      const fresh = eligible.filter((p) => !recentlyViewedSet.has(p.id))
+      const recycled = eligible.filter((p) => recentlyViewedSet.has(p.id))
+
+      const shuffleSeed = sessionUserId + todayKey
+      const shuffledFresh = deterministicShuffle(fresh as Profile[], shuffleSeed)
+      const shuffledRecycled = deterministicShuffle(recycled as Profile[], shuffleSeed)
+
+      const finalProfiles = [...shuffledFresh, ...shuffledRecycled].slice(0, 20)
 
       const { data: likesData, error: likesError } = await db
         .from('likes')
@@ -274,7 +324,8 @@ export default function SwipePage() {
       }
 
       setLikedMeIds(new Set((likesData || []).map((like: { liker_id: string }) => like.liker_id)))
-      setProfiles(filteredProfiles.slice(0, 20) as Profile[])
+      setProfiles(finalProfiles)
+      if (finalProfiles[0]) void recordProfileView(finalProfiles[0].id)
     } catch (error) {
       console.error('[SWIPE] loadProfiles catch', error)
       toast.error('Erreur chargement profils')
@@ -287,7 +338,9 @@ export default function SwipePage() {
     db,
     maxDistance,
     profiles.length,
+    recordProfileView,
     sessionUserId,
+    todayKey,
     userLat,
     userLng,
   ])
@@ -443,7 +496,11 @@ export default function SwipePage() {
         console.error('[SWIPE] profile swipe count update error', profileUpdateError)
       }
 
-      setProfiles((prev) => prev.filter((item) => item.id !== swipedProfile.id))
+      setProfiles((prev) => {
+        const next = prev.filter((item) => item.id !== swipedProfile.id)
+        if (next[0]) void recordProfileView(next[0].id)
+        return next
+      })
 
       if (dir !== 'right') return
 
@@ -591,8 +648,6 @@ export default function SwipePage() {
           </div>
         ) : !isEmailVerified ? (
           <EmailLocked />
-        ) : reachedSwipeLimit ? (
-          <LimitReached onUpgrade={() => router.push('/settings')} />
         ) : profiles.length === 0 ? (
           <EmptyState onRefresh={loadProfiles} />
         ) : (
@@ -621,6 +676,10 @@ export default function SwipePage() {
                 </div>
               )
             })}
+
+            {reachedSwipeLimit && (
+              <SwipeLimitOverlay onUpgrade={() => router.push('/settings')} />
+            )}
           </div>
         )}
       </div>
@@ -641,35 +700,56 @@ export default function SwipePage() {
   )
 }
 
-function LimitReached({ onUpgrade }: { onUpgrade: () => void }) {
+function SwipeLimitOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   return (
-    <div className="min-h-[calc(100dvh-185px)] flex flex-col items-center justify-center px-8 text-center">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="absolute inset-0 z-30 flex items-center justify-center"
+    >
+      <div className="absolute inset-0 backdrop-blur-[12px] bg-black/50 rounded-2xl" />
+
       <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="flex flex-col items-center gap-6"
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ delay: 0.15, duration: 0.35, ease: 'easeOut' }}
+        className="relative z-10 w-full max-w-sm mx-6 bg-dark-200/95 border border-gold/20 rounded-[16px] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]"
       >
-        <div className="w-20 h-20 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center">
-          <Crown size={32} className="text-gold" />
-        </div>
-
-        <div>
-          <h2 className="text-2xl font-bold mb-2">Limite atteinte</h2>
-          <p className="text-white/50 text-sm leading-relaxed">
-            Vous avez atteint la limite de votre plan.
-            <br />
-            Passez à un plan supérieur pour continuer.
-          </p>
-        </div>
-
-        <button onClick={onUpgrade} className="btn-primary max-w-xs">
-          <div className="flex items-center justify-center gap-2">
-            <Crown size={16} />
-            Voir les plans
+        <div className="flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center mb-5">
+            <Crown size={28} className="text-gold" />
           </div>
-        </button>
+
+          <h2 className="text-xl font-bold text-white mb-2">
+            Limite quotidienne atteinte
+          </h2>
+
+          <p className="text-white/50 text-sm leading-relaxed mb-6">
+            Votre abonnement actuel ne permet pas d&apos;accéder à plus de profils aujourd&apos;hui.
+            <br />
+            Revenez demain ou passez à PAKT Business pour continuer immédiatement.
+          </p>
+
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="w-full h-[50px] flex items-center justify-center gap-2 rounded-[12px] bg-gold text-dark font-bold text-[15px] hover:bg-gold-light transition-colors shadow-[0_8px_24px_rgba(212,168,83,0.25)]"
+          >
+            <Crown size={16} />
+            Passer à PAKT Business
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {}}
+            className="mt-2 w-full h-[44px] flex items-center justify-center rounded-[12px] text-white/50 text-sm hover:text-white/70 transition-colors"
+          >
+            Revenir demain
+          </button>
+        </div>
       </motion.div>
-    </div>
+    </motion.div>
   )
 }
 
