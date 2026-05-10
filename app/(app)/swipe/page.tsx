@@ -476,6 +476,11 @@ export default function SwipePage() {
       }
 
       const newSwipesCount = latestSwipesToday + 1
+      if (latestLimits.swipes !== Infinity && newSwipesCount >= latestLimits.swipes) {
+  setTimeout(() => {
+    loadProfiles()
+  }, 50)
+}
       const updatedProfile = {
         ...profile,
         swipes_today: newSwipesCount,
@@ -497,7 +502,11 @@ export default function SwipePage() {
       }
 
       setProfiles((prev) => {
-        const next = prev.filter((item) => item.id !== swipedProfile.id)
+  if (newSwipesCount >= latestLimits.swipes) {
+    return []
+  }
+
+  const next = prev.filter((item) => item.id !== swipedProfile.id)
         if (next[0]) void recordProfileView(next[0].id)
         return next
       })
