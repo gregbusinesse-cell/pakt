@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 
 type PlanKey = 'business' | 'business_pro'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim())
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY?.trim() || '')
 
 const supabaseAuth = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,10 +16,16 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const PLAN_BY_PRICE_ID: Record<string, PlanKey> = {
-  [process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS!.trim()]: 'business',
-  [process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO!.trim()]: 'business_pro',
+function getPlanByPriceId(): Record<string, PlanKey> {
+  const map: Record<string, PlanKey> = {}
+  const bizPrice = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_BUSINESS?.trim()
+  const proPrice = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO?.trim()
+  if (bizPrice) map[bizPrice] = 'business'
+  if (proPrice) map[proPrice] = 'business_pro'
+  return map
 }
+
+const PLAN_BY_PRICE_ID = getPlanByPriceId()
 
 const PLAN_RANK: Record<PlanKey, number> = {
   business: 1,

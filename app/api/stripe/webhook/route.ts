@@ -61,6 +61,30 @@ export async function POST(req: NextRequest) {
         stripe_customer_id: customerId,
       })
       .eq('id', profile.id)
+
+    // Track affiliate conversion
+    if (plan === 'business' || plan === 'business_pro') {
+      const refCode = profile.referred_by_code
+      if (refCode) {
+        // Update referral status
+        await supabase
+          .from('referrals')
+          .update({
+            status: 'converted',
+            converted_plan: plan,
+            converted_at: new Date().toISOString(),
+          })
+          .eq('referred_id', profile.id)
+          .neq('status', 'converted')
+
+        // Increment affiliate counters
+        const counterField = plan === 'business_pro' ? 'business_pro_count' : 'business_count'
+        await supabase.rpc('increment_affiliate_counter', {
+          p_code: refCode,
+          p_field: counterField,
+        })
+      }
+    }
   }
 
   // 🔥 UPDATE (upgrade / downgrade)

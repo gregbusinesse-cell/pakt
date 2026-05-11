@@ -3,9 +3,11 @@
 import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
 import { Sora } from 'next/font/google'
+import { Suspense } from 'react'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import SupabaseProvider from '@/components/providers/SupabaseProvider'
+import RefCaptureProvider from '@/components/providers/RefCaptureProvider'
 
 const sora = Sora({
   subsets: ['latin'],
@@ -60,7 +62,9 @@ export default function RootLayout({
         )}
 
         <SupabaseProvider>
-          {children}
+          <Suspense fallback={null}>
+            <RefCaptureProvider>{children}</RefCaptureProvider>
+          </Suspense>
 
           <Toaster
             position="top-center"

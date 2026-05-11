@@ -9,8 +9,9 @@ import toast from 'react-hot-toast'
 import { Check, ChevronRight, Crown } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { createClient } from '@/lib/supabase/client'
+import ReferralTab from '@/components/settings/ReferralTab'
 
-type TabKey = 'plans' | 'events' | 'news' | 'legal'
+type TabKey = 'plans' | 'events' | 'news' | 'referral' | 'legal'
 type PlanKey = 'free' | 'business' | 'business_pro'
 
 const FUNDING_GOAL = 3000
@@ -211,6 +212,7 @@ export default function SettingsPage() {
         { key: 'plans' as const, label: 'Plans' },
         { key: 'events' as const, label: 'Événements' },
         { key: 'news' as const, label: 'Actus' },
+        { key: 'referral' as const, label: 'Parrainage' },
         { key: 'legal' as const, label: 'Mentions légales' },
       ] satisfies Array<{ key: TabKey; label: string }>,
     []
@@ -456,6 +458,8 @@ export default function SettingsPage() {
                 <p className="text-white/50 text-sm">Très prochainement</p>
               </motion.div>
             )}
+
+            {tab === 'referral' && <ReferralTab />}
 
             {tab === 'legal' && (
               <motion.div

@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { useSession } from '@supabase/auth-helpers-react'
 import { INTERESTS, MAX_PHOTOS } from '@/lib/utils'
 import { X, Plus, ChevronRight, ChevronLeft, MapPin } from 'lucide-react'
+import { getStoredRef, clearStoredRef } from '@/components/providers/RefCaptureProvider'
 
 const STEPS = 5
 const MAX_INTERESTS = 5
@@ -523,6 +524,9 @@ export default function OnboardingPage() {
       const isGoogle = session.user.app_metadata?.provider === 'google'
       const today = new Date().toISOString().split('T')[0]
 
+      const referralCode = getStoredRef()
+      const myReferralCode = 'user_' + session.user.id.replace(/-/g, '').slice(0, 12)
+
       const { error } = await supabase.from('profiles').upsert({
         id: session.user.id,
         email: session.user.email!,
@@ -541,7 +545,18 @@ export default function OnboardingPage() {
         messages_today: 0,
         last_swipe_date: today,
         last_message_date: today,
+        referred_by_code: referralCode,
+        referral_code: myReferralCode,
       } as never)
+
+      // Track referral signup after profile creation
+      if (!error && referralCode) {
+        await supabase.from('referrals').insert({
+          referred_id: session.user.id,
+          referral_code: referralCode,
+          status: isGoogle ? 'validated' : 'pending',
+        } as never).then(() => clearStoredRef())
+      }
 
       if (error) throw error
 
