@@ -104,6 +104,7 @@ export default function SwipePage() {
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
   const [showMatch, setShowMatch] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
+  const [lastSeenProfile, setLastSeenProfile] = useState<Profile | null>(null)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -422,9 +423,17 @@ export default function SwipePage() {
     )
   }
 
-  const currentProfile = profiles[0]
+  const currentProfile = profiles[0] ?? null
   const stackForRender = profiles.slice(0, STACK_RENDER_COUNT).slice().reverse()
   const showInitialLoading = loading && profiles.length === 0
+
+  // Track last visible profile for limit overlay fallback
+  if (currentProfile && currentProfile.id !== lastSeenProfile?.id) {
+    setLastSeenProfile(currentProfile)
+  }
+
+  // Profile to show behind blur when limit reached but stack is empty
+  const limitFallbackProfile = reachedSwipeLimit && profiles.length === 0 ? lastSeenProfile : null
 
   const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
     if (!sessionUserId || !profile || !swipedProfile?.id) {
@@ -657,10 +666,23 @@ export default function SwipePage() {
           </div>
         ) : !isEmailVerified ? (
           <EmailLocked />
-        ) : profiles.length === 0 ? (
+        ) : profiles.length === 0 && !limitFallbackProfile ? (
           <EmptyState onRefresh={loadProfiles} />
         ) : (
           <div className="relative h-full min-h-[calc(100dvh-185px)]">
+            {/* Fallback: show last seen profile behind blur when stack is empty but limit reached */}
+            {limitFallbackProfile && (
+              <div className="absolute inset-0" style={{ zIndex: 10 }}>
+                <SwipeCard
+                  profile={limitFallbackProfile}
+                  onSwipe={() => {}}
+                  zIndex={10}
+                  isTop={true}
+                  disabledActions={true}
+                />
+              </div>
+            )}
+
             {stackForRender.map((item, index) => {
               const isTop = item.id === currentProfile?.id
               const zIndex = isTop ? 20 : 10 + index
@@ -687,7 +709,7 @@ export default function SwipePage() {
             })}
 
             {reachedSwipeLimit && (
-              <SwipeLimitOverlay onUpgrade={() => router.push('/settings')} />
+              <SwipeLimitOverlay plan={plan} onUpgrade={() => router.push('/settings')} />
             )}
           </div>
         )}
@@ -709,18 +731,27 @@ export default function SwipePage() {
   )
 }
 
-function SwipeLimitOverlay({ onUpgrade }: { onUpgrade: () => void }) {
+function SwipeLimitOverlay({
+  plan,
+  onUpgrade,
+}: {
+  plan: 'free' | 'business' | 'business_pro'
+  onUpgrade: () => void
+}) {
+  const ctaLabel = plan === 'free' ? 'Passer à PAKT Business' : 'Passer à PAKT Business Pro'
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="absolute inset-0 z-30 flex items-center justify-center"
+      className="absolute inset-0 z-30 flex items-center justify-center pointer-events-auto"
     >
-      <div className="absolute inset-0 backdrop-blur-[12px] bg-black/50 rounded-2xl" />
+      {/* Blur + dark overlay that blocks all interaction underneath */}
+      <div className="absolute inset-0 backdrop-blur-[14px] bg-black/55" />
 
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        initial={{ scale: 0.92, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ delay: 0.15, duration: 0.35, ease: 'easeOut' }}
         className="relative z-10 w-full max-w-sm mx-6 bg-dark-200/95 border border-gold/20 rounded-[16px] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]"
@@ -730,14 +761,10 @@ function SwipeLimitOverlay({ onUpgrade }: { onUpgrade: () => void }) {
             <Crown size={28} className="text-gold" />
           </div>
 
-          <h2 className="text-xl font-bold text-white mb-2">
-            Limite quotidienne atteinte
-          </h2>
+          <h2 className="text-xl font-bold text-white mb-2">Limite atteinte</h2>
 
           <p className="text-white/50 text-sm leading-relaxed mb-6">
-            Votre abonnement actuel ne permet pas d&apos;accéder à plus de profils aujourd&apos;hui.
-            <br />
-            Revenez demain ou passez à PAKT Business pour continuer immédiatement.
+            Passe à l&apos;offre supérieure pour continuer à découvrir plus de profils.
           </p>
 
           <button
@@ -746,7 +773,7 @@ function SwipeLimitOverlay({ onUpgrade }: { onUpgrade: () => void }) {
             className="w-full h-[50px] flex items-center justify-center gap-2 rounded-[12px] bg-gold text-dark font-bold text-[15px] hover:bg-gold-light transition-colors shadow-[0_8px_24px_rgba(212,168,83,0.25)]"
           >
             <Crown size={16} />
-            Passer à PAKT Business
+            {ctaLabel}
           </button>
 
           <button
