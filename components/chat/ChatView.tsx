@@ -20,6 +20,7 @@ import {
   Pause,
   Square,
   ChevronLeft,
+  Sparkles,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -120,6 +121,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [isRecording, setIsRecording] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [hasMatchWithOtherUser, setHasMatchWithOtherUser] = useState(false)
+  const [encourageSending, setEncourageSending] = useState(false)
+  const [encourageCooldown, setEncourageCooldown] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -138,6 +141,53 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const myPlan = normalizePlan(profile?.plan)
   const otherPlan = normalizePlan(otherUser.plan)
   const isDirectSwipeMessage = conversationType === 'direct' && !hasMatchWithOtherUser
+  const canEncourage = (myPlan === 'business' || myPlan === 'business_pro') && otherPlan === 'free'
+
+  const sendEncouragement = async () => {
+    if (!currentUserId || !conversationId || encourageSending || encourageCooldown) return
+
+    setEncourageSending(true)
+
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      const token = currentSession?.access_token
+      if (!token) {
+        toast.error('Session manquante')
+        return
+      }
+
+      const res = await fetch('/api/encourage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          conversationId,
+          otherUserId: otherUser.id,
+        }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setEncourageCooldown(true)
+          toast.error(data?.error || 'Encouragement déjà envoyé récemment')
+        } else {
+          toast.error(data?.error || 'Erreur envoi encouragement')
+        }
+        return
+      }
+
+      setEncourageCooldown(true)
+      toast.success('Encouragement envoyé !')
+    } catch {
+      toast.error('Erreur réseau')
+    } finally {
+      setEncourageSending(false)
+    }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -673,6 +723,22 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       </div>
 
       <div className="shrink-0 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+14px)] bg-dark-100 border-t border-dark-400">
+        {canEncourage && (
+          <button
+            type="button"
+            onClick={sendEncouragement}
+            disabled={encourageSending || encourageCooldown}
+            className="mb-3 w-full flex items-center justify-center gap-2 h-11 rounded-[12px] bg-gold/10 border border-gold/25 text-gold text-sm font-semibold hover:bg-gold/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles size={16} />
+            {encourageCooldown
+              ? 'Encouragement envoyé'
+              : encourageSending
+              ? 'Envoi...'
+              : 'Encourager à débloquer'}
+          </button>
+        )}
+
         {inputLocked && (
           <p className="mb-2 text-center text-xs text-white/45">
             Ce match est verrouillé avec le plan Free.

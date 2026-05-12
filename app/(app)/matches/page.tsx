@@ -10,7 +10,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { formatTime, normalizePlan } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
-import { MessageCircle, Users, Crown, Lock } from 'lucide-react'
+import { MessageCircle, Users, Crown, Lock, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type Tab = 'matches' | 'likes' | 'conversations'
@@ -185,6 +185,54 @@ function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   )
 }
 
+function FreePaywallOverlay({
+  title,
+  description,
+  ctaLabel,
+  onUpgrade,
+}: {
+  title: string
+  description: string
+  ctaLabel: string
+  onUpgrade: () => void
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="relative overflow-hidden rounded-[16px] border border-gold/25 bg-[#111111]/90 p-6 text-center shadow-[0_18px_55px_rgba(0,0,0,0.45),0_0_34px_rgba(212,168,83,0.12)] backdrop-blur-xl"
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.06] to-transparent pointer-events-none" />
+
+      <div className="relative">
+        <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
+          <Sparkles size={24} className="text-gold" />
+        </div>
+
+        <h2 className="text-lg font-bold text-white">{title}</h2>
+
+        <p className="mt-2 text-sm leading-relaxed text-white/55">
+          {description}
+        </p>
+
+        <button
+          type="button"
+          onClick={onUpgrade}
+          className="mt-5 h-12 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
+        >
+          {ctaLabel}
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+function maskName(name: string | null | undefined): string {
+  if (!name) return '••••••'
+  if (name.length <= 2) return name[0] + '•••'
+  return name.slice(0, 2) + '•'.repeat(Math.min(name.length - 2, 4))
+}
+
 export default function MatchesPage() {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
@@ -195,6 +243,7 @@ export default function MatchesPage() {
   const currentPlan = normalizePlan(profile?.plan)
   const isBusinessPro = currentPlan === 'business_pro'
   const currentUserIsPaid = isPaidPlan(profile?.plan)
+  const isFree = currentPlan === 'free'
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
@@ -560,9 +609,23 @@ export default function MatchesPage() {
               </div>
             </div>
           ) : (
-            <div className="space-y-2 pt-2">
+            <div className="relative">
+              {isFree && matches.length > 0 && (
+                <div className="absolute inset-0 z-20 flex items-start justify-center pt-8 pointer-events-auto">
+                  <div className="w-full px-2">
+                    <FreePaywallOverlay
+                      title="Débloque tes opportunités"
+                      description="Tes matchs t'attendent ! Passe Business pour voir leurs profils, discuter et développer ton réseau."
+                      ctaLabel="Passer à PAKT Business"
+                      onUpgrade={() => handleCheckout('business')}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className={`space-y-2 pt-2 ${isFree ? 'pointer-events-none' : ''}`}>
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
+                const blurForFree = isFree
 
                 return (
                   <motion.div
@@ -570,11 +633,11 @@ export default function MatchesPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`rounded-2xl ${item.isLocked ? 'bg-dark-200/50 border border-gold/10 p-1' : ''}`}
+                    className={`rounded-2xl ${item.isLocked && !blurForFree ? 'bg-dark-200/50 border border-gold/10 p-1' : ''}`}
                   >
                     <button
                       type="button"
-                      disabled={isOpening}
+                      disabled={isOpening || blurForFree}
                       onClick={() =>
                         openConversation(item.otherUser.id, item.conversationId, item.id, item.isLocked)
                       }
@@ -587,13 +650,13 @@ export default function MatchesPage() {
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
                               className={`w-full h-full object-cover ${
-                                item.isLocked ? 'blur-md scale-110 brightness-75' : ''
+                                blurForFree || item.isLocked ? 'blur-md scale-110 brightness-75' : ''
                               }`}
                             />
                           ) : (
                             <div
                               className={`w-full h-full flex items-center justify-center text-2xl ${
-                                item.isLocked ? 'blur-sm brightness-75' : ''
+                                blurForFree || item.isLocked ? 'blur-sm brightness-75' : ''
                               }`}
                             >
                               👤
@@ -602,10 +665,10 @@ export default function MatchesPage() {
                         </div>
 
                         <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          {item.isLocked ? <Lock size={10} /> : '✓'}
+                          {blurForFree || item.isLocked ? <Lock size={10} /> : '✓'}
                         </div>
 
-                        {!item.isViewed && !item.isLocked && (
+                        {!item.isViewed && !item.isLocked && !blurForFree && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                         )}
                       </div>
@@ -613,7 +676,9 @@ export default function MatchesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {item.isLocked
+                            {blurForFree
+                              ? maskName(item.otherUser.first_name)
+                              : item.isLocked
                               ? 'Match verrouillé'
                               : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
@@ -625,8 +690,10 @@ export default function MatchesPage() {
                           )}
                         </div>
 
-                        <p className="text-white/40 text-sm truncate">
-                          {item.isLocked
+                        <p className={`text-white/40 text-sm truncate ${blurForFree ? 'blur-[5px]' : ''}`}>
+                          {blurForFree
+                            ? 'Nouveau message de ce profil'
+                            : item.isLocked
                             ? 'Passe Business pour débloquer ce match'
                             : isOpening
                             ? 'Ouverture...'
@@ -635,10 +702,11 @@ export default function MatchesPage() {
                       </div>
                     </button>
 
-                    {item.isLocked && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
+                    {item.isLocked && !blurForFree && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
                   </motion.div>
                 )
               })}
+              </div>
             </div>
           )
         ) : tab === 'likes' ? (
@@ -729,10 +797,24 @@ export default function MatchesPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-1 pt-2">
+          <div className="relative">
+            {isFree && conversations.length > 0 && (
+              <div className="absolute inset-0 z-20 flex items-start justify-center pt-8 pointer-events-auto">
+                <div className="w-full px-2">
+                  <FreePaywallOverlay
+                    title="Débloquer mes messages"
+                    description="Tu as reçu des messages ! Passe Business pour lire et répondre à tes conversations."
+                    ctaLabel="Passer à PAKT Business"
+                    onUpgrade={() => handleCheckout('business')}
+                  />
+                </div>
+              </div>
+            )}
+            <div className={`space-y-1 pt-2 ${isFree ? 'pointer-events-none' : ''}`}>
             {conversations.map((item, index) => {
               const lastMessage = item.lastMessage || 'Nouveau message'
               const isOpening = openingConversation === item.otherUser.id
+              const blurForFree = isFree
 
               return (
                 <motion.div
@@ -743,7 +825,7 @@ export default function MatchesPage() {
                 >
                   <button
                     type="button"
-                    disabled={isOpening}
+                    disabled={isOpening || blurForFree}
                     onClick={() => openConversation(item.otherUser.id, item.id, null, false)}
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
@@ -753,18 +835,26 @@ export default function MatchesPage() {
                           <img
                             src={(item.otherUser.photos as string[])[0]}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className={`w-full h-full object-cover ${blurForFree ? 'blur-md scale-110 brightness-75' : ''}`}
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+                          <div className={`w-full h-full flex items-center justify-center text-2xl ${blurForFree ? 'blur-sm brightness-75' : ''}`}>👤</div>
                         )}
                       </div>
+
+                      {blurForFree && (
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
+                          <Lock size={10} />
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className="font-semibold truncate">
-                          {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                          {blurForFree
+                            ? maskName(item.otherUser.first_name)
+                            : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                         </p>
 
                         {item.lastMessageAt && (
@@ -774,14 +864,15 @@ export default function MatchesPage() {
                         )}
                       </div>
 
-                      <p className="text-white/40 text-sm truncate">
-                        {isOpening ? 'Ouverture...' : lastMessage}
+                      <p className={`text-white/40 text-sm truncate ${blurForFree ? 'blur-[5px]' : ''}`}>
+                        {isOpening ? 'Ouverture...' : blurForFree ? 'Nouveau message reçu' : lastMessage}
                       </p>
                     </div>
                   </button>
                 </motion.div>
               )
             })}
+            </div>
           </div>
         )}
       </div>
