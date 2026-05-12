@@ -185,75 +185,280 @@ function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   )
 }
 
-function FreePremiumOverlay({
-  onUpgrade,
-  onDismiss,
-}: {
-  onUpgrade: () => void
-  onDismiss: () => void
-}) {
+function GhostMatchRow({ index }: { index: number }) {
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-2xl">
+      <div className="relative shrink-0">
+        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300/80 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
+          <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <div className="h-[14px] w-20 rounded-full bg-white/[0.07]" />
+          <div className="h-[10px] w-10 rounded-full bg-white/[0.04]" />
+        </div>
+        <div className="h-[11px] w-36 rounded-full bg-white/[0.04]" />
+      </div>
+    </div>
+  )
+}
+
+function GhostConversationRow({ index }: { index: number }) {
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-2xl">
+      <div className="relative shrink-0">
+        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300/80 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
+          <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+        </div>
+        {/* Fake notification dot */}
+        {index < 3 && (
+          <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-gold/60 border-2 border-dark" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <div className="h-[14px] w-24 rounded-full bg-white/[0.07]" />
+          <div className="h-[10px] w-12 rounded-full bg-white/[0.04]" />
+        </div>
+        <div className="h-[11px] w-44 rounded-full bg-white/[0.04]" />
+      </div>
+    </div>
+  )
+}
+
+function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="absolute inset-0 z-30 flex items-center justify-center"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="relative my-3"
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 backdrop-blur-[6px] bg-gradient-to-b from-dark/60 via-dark/80 to-dark/90" />
-
-      {/* Gold ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] rounded-full bg-gold/[0.06] blur-[80px] pointer-events-none" />
-
       {/* Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ delay: 0.1, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-[320px] mx-6"
-      >
-        <div className="relative overflow-hidden rounded-[20px] border border-gold/20 bg-[#0d0d0d]/95 shadow-[0_24px_80px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]">
-          {/* Top shimmer */}
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.04] to-transparent pointer-events-none" />
+      <div className="relative overflow-hidden rounded-[18px] border border-gold/20 bg-[#0d0d0d]">
+        {/* Top shimmer line */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+        {/* Subtle gold gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.05] via-transparent to-transparent pointer-events-none" />
+        {/* Ambient glow behind card */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[120px] rounded-full bg-gold/[0.04] blur-[60px] pointer-events-none" />
 
-          <div className="relative px-7 pt-8 pb-7 text-center">
-            {/* Icon */}
-            <div className="mx-auto mb-5 w-[60px] h-[60px] rounded-full bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/30 flex items-center justify-center shadow-[0_0_24px_rgba(212,168,83,0.15)]">
-              <Crown size={26} className="text-gold" />
-            </div>
-
-            <h2 className="text-[18px] font-bold text-white leading-tight tracking-[-0.01em]">
-              Tes opportunités t&apos;attendent
-            </h2>
-
-            <p className="mt-3 text-[13px] leading-[1.6] text-white/50">
-              Des membres ambitieux souhaitent discuter avec toi.
-              Passe Business pour voir leurs profils, débloquer tes
-              conversations et commencer à développer ton réseau.
-            </p>
-
-            {/* CTA */}
-            <button
-              type="button"
-              onClick={onUpgrade}
-              className="mt-6 h-[48px] w-full rounded-[14px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[14px] font-bold tracking-[-0.01em] shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_4px_28px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
-            >
-              Passer à PAKT Business
-            </button>
-
-            {/* Dismiss */}
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="mt-3 text-[12px] text-white/30 hover:text-white/50 transition-colors"
-            >
-              Plus tard
-            </button>
+        <div className="relative px-6 pt-7 pb-6 text-center">
+          {/* Icon */}
+          <div className="mx-auto mb-4 w-[52px] h-[52px] rounded-full bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/25 flex items-center justify-center shadow-[0_0_20px_rgba(212,168,83,0.12)]">
+            <Crown size={22} className="text-gold" />
           </div>
+
+          <h2 className="text-[17px] font-bold text-white leading-snug">
+            Tes opportunités t&apos;attendent
+          </h2>
+
+          <p className="mt-2.5 text-[12.5px] leading-[1.65] text-white/45 max-w-[280px] mx-auto">
+            Des membres ambitieux souhaitent discuter avec toi.
+            Passe Business pour voir leurs profils, débloquer
+            tes conversations et développer ton réseau.
+          </p>
+
+          {/* CTA */}
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="mt-5 h-[46px] w-full rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[13.5px] font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_6px_30px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
+          >
+            Passer à PAKT Business
+          </button>
+
+          <p className="mt-3 text-[11px] text-white/20">
+            Annulable à tout moment
+          </p>
         </div>
-      </motion.div>
+      </div>
     </motion.div>
+  )
+}
+
+/**
+ * Renders the blurred match rows for FREE users.
+ * Real matches are rendered blurred, then padded with ghost rows
+ * so the page always looks full. The CTA is inserted inline after
+ * the 3rd row.
+ */
+function FreeMatchesView({
+  matches,
+  onUpgrade,
+}: {
+  matches: MatchItem[]
+  onUpgrade: () => void
+}) {
+  // Pad to at least 8 visible rows
+  const minRows = 8
+  const ghostCount = Math.max(0, minRows - matches.length)
+
+  return (
+    <div className="space-y-0 pt-2 select-none">
+      {/* Real matches — blurred */}
+      {matches.map((item, index) => (
+        <div key={item.id}>
+          {index === 3 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
+          <motion.div
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.04 }}
+          >
+            <div className="flex items-center gap-3 p-3 rounded-2xl cursor-default">
+              <div className="relative shrink-0">
+                <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
+                  {item.otherUser.photos?.[0] ? (
+                    <img
+                      src={(item.otherUser.photos as string[])[0]}
+                      alt=""
+                      className="w-full h-full object-cover blur-[14px] scale-[1.3] brightness-[0.5] saturate-0"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="h-[14px] w-20 rounded-full bg-white/[0.08]" />
+                  <div className="h-[10px] w-10 rounded-full bg-white/[0.04]" />
+                </div>
+                <div className="h-[11px] w-32 rounded-full bg-white/[0.04]" />
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      ))}
+
+      {/* CTA if fewer than 4 real matches */}
+      {matches.length < 4 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
+
+      {/* Ghost rows to fill */}
+      {Array.from({ length: ghostCount }).map((_, i) => (
+        <motion.div
+          key={`ghost-m-${i}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: (matches.length + i) * 0.04 }}
+        >
+          <GhostMatchRow index={i + matches.length} />
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Renders the blurred conversation rows for FREE users.
+ * Encourage messages from BUSINESS/PRO users are shown as the
+ * one readable preview peeking through the blur.
+ */
+function FreeConversationsView({
+  conversations,
+  onUpgrade,
+}: {
+  conversations: ConversationItem[]
+  onUpgrade: () => void
+}) {
+  const minRows = 8
+  const ghostCount = Math.max(0, minRows - conversations.length)
+
+  // Check if a conversation's last message looks like an encouragement
+  const isEncourageMessage = (msg: string | null) => {
+    if (!msg) return false
+    return msg.includes('Passe Business') || msg.includes('PAKT Business') || msg.includes('débloquer')
+  }
+
+  return (
+    <div className="space-y-0 pt-2 select-none">
+      {conversations.map((item, index) => {
+        const hasEncourage = isEncourageMessage(item.lastMessage)
+
+        return (
+          <div key={item.id}>
+            {index === 3 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
+            <motion.div
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.04 }}
+            >
+              <div className={`flex items-center gap-3 p-3 rounded-2xl cursor-default ${
+                hasEncourage ? 'bg-gold/[0.04] border border-gold/10' : ''
+              }`}>
+                <div className="relative shrink-0">
+                  <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${
+                    hasEncourage ? 'ring-gold/25' : 'ring-white/[0.06]'
+                  }`}>
+                    {item.otherUser.photos?.[0] ? (
+                      <img
+                        src={(item.otherUser.photos as string[])[0]}
+                        alt=""
+                        className={`w-full h-full object-cover ${
+                          hasEncourage
+                            ? 'blur-[8px] scale-[1.2] brightness-[0.65] saturate-50'
+                            : 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-0'
+                        }`}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                    )}
+                  </div>
+
+                  {/* Notification badge */}
+                  <span className={`absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-dark ${
+                    hasEncourage ? 'bg-gold' : 'bg-gold/50'
+                  }`} />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  {hasEncourage ? (
+                    <>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-[13px] font-semibold text-gold/80 truncate">
+                          Nouveau message
+                        </p>
+                        {item.lastMessageAt && (
+                          <span className="text-[10px] text-white/25 shrink-0 ml-2">
+                            {formatTime(item.lastMessageAt)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[12px] text-white/50 truncate leading-relaxed">
+                        &ldquo;{item.lastMessage}&rdquo;
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="h-[14px] w-24 rounded-full bg-white/[0.07]" />
+                        <div className="h-[10px] w-12 rounded-full bg-white/[0.04]" />
+                      </div>
+                      <div className="h-[11px] w-40 rounded-full bg-white/[0.04]" />
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )
+      })}
+
+      {conversations.length < 4 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
+
+      {/* Ghost rows */}
+      {Array.from({ length: ghostCount }).map((_, i) => (
+        <motion.div
+          key={`ghost-c-${i}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: (conversations.length + i) * 0.04 }}
+        >
+          <GhostConversationRow index={i + conversations.length} />
+        </motion.div>
+      ))}
+    </div>
   )
 }
 
@@ -275,7 +480,6 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true)
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
-  const [overlayDismissed, setOverlayDismissed] = useState(false)
 
   const currentUserId = session?.user?.id
 
@@ -625,7 +829,12 @@ export default function MatchesPage() {
             ))}
           </div>
         ) : tab === 'matches' ? (
-          matches.length === 0 ? (
+          isFree ? (
+            <FreeMatchesView
+              matches={matches}
+              onUpgrade={() => handleCheckout('business')}
+            />
+          ) : matches.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
               <span className="text-5xl">⚔️</span>
               <div>
@@ -634,12 +843,9 @@ export default function MatchesPage() {
               </div>
             </div>
           ) : (
-            <div className="relative">
-              {/* Match cards — fully blurred when FREE */}
-              <div className={`space-y-2 pt-2 ${isFree ? 'select-none' : ''}`}>
+            <div className="space-y-2 pt-2">
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
-                const blurForFree = isFree
 
                 return (
                   <motion.div
@@ -647,34 +853,30 @@ export default function MatchesPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`rounded-2xl ${item.isLocked && !blurForFree ? 'bg-dark-200/50 border border-gold/10 p-1' : ''}`}
+                    className={`rounded-2xl ${item.isLocked ? 'bg-dark-200/50 border border-gold/10 p-1' : ''}`}
                   >
                     <button
                       type="button"
-                      disabled={isOpening || blurForFree}
+                      disabled={isOpening}
                       onClick={() =>
                         openConversation(item.otherUser.id, item.conversationId, item.id, item.isLocked)
                       }
-                      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-colors text-left ${
-                        blurForFree
-                          ? 'cursor-default'
-                          : 'hover:bg-dark-200 active:bg-dark-300 disabled:opacity-60'
-                      }`}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                     >
                       <div className="relative shrink-0">
-                        <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${blurForFree ? 'ring-white/10' : 'ring-gold/30'}`}>
+                        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
                           {item.otherUser.photos?.[0] ? (
                             <img
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
                               className={`w-full h-full object-cover ${
-                                blurForFree ? 'blur-[12px] scale-125 brightness-[0.6] saturate-0' : item.isLocked ? 'blur-md scale-110 brightness-75' : ''
+                                item.isLocked ? 'blur-md scale-110 brightness-75' : ''
                               }`}
                             />
                           ) : (
                             <div
                               className={`w-full h-full flex items-center justify-center text-2xl ${
-                                blurForFree ? 'blur-[10px] brightness-50' : item.isLocked ? 'blur-sm brightness-75' : ''
+                                item.isLocked ? 'blur-sm brightness-75' : ''
                               }`}
                             >
                               👤
@@ -682,38 +884,32 @@ export default function MatchesPage() {
                           )}
                         </div>
 
-                        {!blurForFree && (
-                          <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                            {item.isLocked ? <Lock size={10} /> : '✓'}
-                          </div>
-                        )}
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
+                          {item.isLocked ? <Lock size={10} /> : '✓'}
+                        </div>
 
-                        {!item.isViewed && !item.isLocked && !blurForFree && (
+                        {!item.isViewed && !item.isLocked && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <p className={`font-semibold truncate ${blurForFree ? 'blur-[6px] text-white/40' : ''}`}>
-                            {blurForFree
-                              ? 'Membre PAKT'
-                              : item.isLocked
+                          <p className="font-semibold truncate">
+                            {item.isLocked
                               ? 'Match verrouillé'
                               : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
 
                           {item.createdAt && (
-                            <span className={`text-xs shrink-0 ml-2 ${blurForFree ? 'text-white/15' : 'text-white/30'}`}>
+                            <span className="text-white/30 text-xs shrink-0 ml-2">
                               {formatTime(item.createdAt)}
                             </span>
                           )}
                         </div>
 
-                        <p className={`text-sm truncate ${blurForFree ? 'blur-[5px] text-white/25' : 'text-white/40'}`}>
-                          {blurForFree
-                            ? 'Ce membre souhaite te contacter'
-                            : item.isLocked
+                        <p className="text-white/40 text-sm truncate">
+                          {item.isLocked
                             ? 'Passe Business pour débloquer ce match'
                             : isOpening
                             ? 'Ouverture...'
@@ -722,19 +918,10 @@ export default function MatchesPage() {
                       </div>
                     </button>
 
-                    {item.isLocked && !blurForFree && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
+                    {item.isLocked && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
                   </motion.div>
                 )
               })}
-              </div>
-
-              {/* Premium overlay on top */}
-              {isFree && matches.length > 0 && !overlayDismissed && (
-                <FreePremiumOverlay
-                  onUpgrade={() => handleCheckout('business')}
-                  onDismiss={() => setOverlayDismissed(true)}
-                />
-              )}
             </div>
           )
         ) : tab === 'likes' ? (
@@ -816,22 +1003,24 @@ export default function MatchesPage() {
               })}
             </div>
           )
+        ) : isFree ? (
+          <FreeConversationsView
+            conversations={conversations}
+            onUpgrade={() => handleCheckout('business')}
+          />
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
             <span className="text-5xl">✉️</span>
             <div>
               <h3 className="font-semibold text-lg mb-1">Aucune conversation pour le moment</h3>
-              <p className="text-white/40 text-sm">Tu peux envoyer un message depuis le profil de quelqu'un</p>
+              <p className="text-white/40 text-sm">Tu peux envoyer un message depuis le profil de quelqu&apos;un</p>
             </div>
           </div>
         ) : (
-          <div className="relative">
-            {/* Conversation rows — blurred when FREE */}
-            <div className={`space-y-1 pt-2 ${isFree ? 'select-none' : ''}`}>
+          <div className="space-y-1 pt-2">
             {conversations.map((item, index) => {
               const lastMessage = item.lastMessage || 'Nouveau message'
               const isOpening = openingConversation === item.otherUser.id
-              const blurForFree = isFree
 
               return (
                 <motion.div
@@ -842,65 +1031,45 @@ export default function MatchesPage() {
                 >
                   <button
                     type="button"
-                    disabled={isOpening || blurForFree}
+                    disabled={isOpening}
                     onClick={() => openConversation(item.otherUser.id, item.id, null, false)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-colors text-left ${
-                      blurForFree
-                        ? 'cursor-default'
-                        : 'hover:bg-dark-200 active:bg-dark-300 disabled:opacity-60'
-                    }`}
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">
-                      <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${blurForFree ? 'ring-white/10' : 'ring-gold/30'}`}>
+                      <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
                         {item.otherUser.photos?.[0] ? (
                           <img
                             src={(item.otherUser.photos as string[])[0]}
                             alt=""
-                            className={`w-full h-full object-cover ${blurForFree ? 'blur-[12px] scale-125 brightness-[0.6] saturate-0' : ''}`}
+                            className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className={`w-full h-full flex items-center justify-center text-2xl ${blurForFree ? 'blur-[10px] brightness-50' : ''}`}>👤</div>
+                          <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
                         )}
                       </div>
-
-                      {/* Notification badge stays visible for FREE */}
-                      {blurForFree && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gold border-2 border-dark flex items-center justify-center">
-                          <span className="text-[8px] font-black text-dark">1</span>
-                        </span>
-                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <p className={`font-semibold truncate ${blurForFree ? 'blur-[6px] text-white/40' : ''}`}>
-                          {blurForFree ? 'Membre PAKT' : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                        <p className="font-semibold truncate">
+                          {item.otherUser.first_name || item.otherUser.email || 'Profil'}
                         </p>
 
                         {item.lastMessageAt && (
-                          <span className={`text-xs shrink-0 ml-2 ${blurForFree ? 'text-white/15' : 'text-white/30'}`}>
+                          <span className="text-white/30 text-xs shrink-0 ml-2">
                             {formatTime(item.lastMessageAt)}
                           </span>
                         )}
                       </div>
 
-                      <p className={`text-sm truncate ${blurForFree ? 'blur-[5px] text-white/25' : 'text-white/40'}`}>
-                        {isOpening ? 'Ouverture...' : blurForFree ? 'Nouveau message en attente...' : lastMessage}
+                      <p className="text-white/40 text-sm truncate">
+                        {isOpening ? 'Ouverture...' : lastMessage}
                       </p>
                     </div>
                   </button>
                 </motion.div>
               )
             })}
-            </div>
-
-            {/* Premium overlay on top */}
-            {isFree && conversations.length > 0 && !overlayDismissed && (
-              <FreePremiumOverlay
-                onUpgrade={() => handleCheckout('business')}
-                onDismiss={() => setOverlayDismissed(true)}
-              />
-            )}
           </div>
         )}
       </div>
