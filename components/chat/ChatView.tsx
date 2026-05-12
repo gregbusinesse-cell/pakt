@@ -724,19 +724,28 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
       <div className="shrink-0 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+14px)] bg-dark-100 border-t border-dark-400">
         {canEncourage && (
-          <button
-            type="button"
-            onClick={sendEncouragement}
-            disabled={encourageSending || encourageCooldown}
-            className="mb-3 w-full flex items-center justify-center gap-2 h-11 rounded-[12px] bg-gold/10 border border-gold/25 text-gold text-sm font-semibold hover:bg-gold/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles size={16} />
-            {encourageCooldown
-              ? 'Encouragement envoyé'
-              : encourageSending
-              ? 'Envoi...'
-              : 'Encourager à débloquer'}
-          </button>
+          <div className="mb-3 rounded-[14px] border border-gold/15 bg-gold/[0.04] p-3">
+            <p className="text-[11px] text-white/40 text-center mb-2.5">
+              Ce membre est en plan Free et ne peut pas répondre.
+            </p>
+            <button
+              type="button"
+              onClick={sendEncouragement}
+              disabled={encourageSending || encourageCooldown}
+              className={`w-full flex items-center justify-center gap-2 h-11 rounded-[12px] text-sm font-bold transition-all ${
+                encourageCooldown
+                  ? 'bg-dark-300 text-white/30 cursor-default'
+                  : 'bg-gradient-to-r from-gold to-[#e2c06d] text-dark shadow-[0_2px_12px_rgba(212,168,83,0.2)] hover:shadow-[0_2px_18px_rgba(212,168,83,0.35)] active:scale-[0.98]'
+              } disabled:opacity-70`}
+            >
+              <Sparkles size={15} />
+              {encourageCooldown
+                ? 'Encouragement envoyé !'
+                : encourageSending
+                ? 'Envoi en cours...'
+                : 'Encourager à passer Business'}
+            </button>
+          </div>
         )}
 
         {inputLocked && (

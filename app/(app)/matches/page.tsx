@@ -10,7 +10,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { formatTime, normalizePlan } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
-import { MessageCircle, Users, Crown, Lock, Sparkles } from 'lucide-react'
+import { MessageCircle, Users, Crown, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type Tab = 'matches' | 'likes' | 'conversations'
@@ -185,52 +185,76 @@ function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   )
 }
 
-function FreePaywallOverlay({
-  title,
-  description,
-  ctaLabel,
+function FreePremiumOverlay({
   onUpgrade,
+  onDismiss,
 }: {
-  title: string
-  description: string
-  ctaLabel: string
   onUpgrade: () => void
+  onDismiss: () => void
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-[16px] border border-gold/25 bg-[#111111]/90 p-6 text-center shadow-[0_18px_55px_rgba(0,0,0,0.45),0_0_34px_rgba(212,168,83,0.12)] backdrop-blur-xl"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="absolute inset-0 z-30 flex items-center justify-center"
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.06] to-transparent pointer-events-none" />
+      {/* Backdrop */}
+      <div className="absolute inset-0 backdrop-blur-[6px] bg-gradient-to-b from-dark/60 via-dark/80 to-dark/90" />
 
-      <div className="relative">
-        <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
-          <Sparkles size={24} className="text-gold" />
+      {/* Gold ambient glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] rounded-full bg-gold/[0.06] blur-[80px] pointer-events-none" />
+
+      {/* Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ delay: 0.1, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="relative z-10 w-full max-w-[320px] mx-6"
+      >
+        <div className="relative overflow-hidden rounded-[20px] border border-gold/20 bg-[#0d0d0d]/95 shadow-[0_24px_80px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]">
+          {/* Top shimmer */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.04] to-transparent pointer-events-none" />
+
+          <div className="relative px-7 pt-8 pb-7 text-center">
+            {/* Icon */}
+            <div className="mx-auto mb-5 w-[60px] h-[60px] rounded-full bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/30 flex items-center justify-center shadow-[0_0_24px_rgba(212,168,83,0.15)]">
+              <Crown size={26} className="text-gold" />
+            </div>
+
+            <h2 className="text-[18px] font-bold text-white leading-tight tracking-[-0.01em]">
+              Tes opportunités t&apos;attendent
+            </h2>
+
+            <p className="mt-3 text-[13px] leading-[1.6] text-white/50">
+              Des membres ambitieux souhaitent discuter avec toi.
+              Passe Business pour voir leurs profils, débloquer tes
+              conversations et commencer à développer ton réseau.
+            </p>
+
+            {/* CTA */}
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="mt-6 h-[48px] w-full rounded-[14px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[14px] font-bold tracking-[-0.01em] shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_4px_28px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
+            >
+              Passer à PAKT Business
+            </button>
+
+            {/* Dismiss */}
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="mt-3 text-[12px] text-white/30 hover:text-white/50 transition-colors"
+            >
+              Plus tard
+            </button>
+          </div>
         </div>
-
-        <h2 className="text-lg font-bold text-white">{title}</h2>
-
-        <p className="mt-2 text-sm leading-relaxed text-white/55">
-          {description}
-        </p>
-
-        <button
-          type="button"
-          onClick={onUpgrade}
-          className="mt-5 h-12 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
-        >
-          {ctaLabel}
-        </button>
-      </div>
+      </motion.div>
     </motion.div>
   )
-}
-
-function maskName(name: string | null | undefined): string {
-  if (!name) return '••••••'
-  if (name.length <= 2) return name[0] + '•••'
-  return name.slice(0, 2) + '•'.repeat(Math.min(name.length - 2, 4))
 }
 
 export default function MatchesPage() {
@@ -251,6 +275,7 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true)
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
+  const [overlayDismissed, setOverlayDismissed] = useState(false)
 
   const currentUserId = session?.user?.id
 
@@ -610,19 +635,8 @@ export default function MatchesPage() {
             </div>
           ) : (
             <div className="relative">
-              {isFree && matches.length > 0 && (
-                <div className="absolute inset-0 z-20 flex items-start justify-center pt-8 pointer-events-auto">
-                  <div className="w-full px-2">
-                    <FreePaywallOverlay
-                      title="Débloque tes opportunités"
-                      description="Tes matchs t'attendent ! Passe Business pour voir leurs profils, discuter et développer ton réseau."
-                      ctaLabel="Passer à PAKT Business"
-                      onUpgrade={() => handleCheckout('business')}
-                    />
-                  </div>
-                </div>
-              )}
-              <div className={`space-y-2 pt-2 ${isFree ? 'pointer-events-none' : ''}`}>
+              {/* Match cards — fully blurred when FREE */}
+              <div className={`space-y-2 pt-2 ${isFree ? 'select-none' : ''}`}>
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
                 const blurForFree = isFree
@@ -641,22 +655,26 @@ export default function MatchesPage() {
                       onClick={() =>
                         openConversation(item.otherUser.id, item.conversationId, item.id, item.isLocked)
                       }
-                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
+                      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-colors text-left ${
+                        blurForFree
+                          ? 'cursor-default'
+                          : 'hover:bg-dark-200 active:bg-dark-300 disabled:opacity-60'
+                      }`}
                     >
                       <div className="relative shrink-0">
-                        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                        <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${blurForFree ? 'ring-white/10' : 'ring-gold/30'}`}>
                           {item.otherUser.photos?.[0] ? (
                             <img
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
                               className={`w-full h-full object-cover ${
-                                blurForFree || item.isLocked ? 'blur-md scale-110 brightness-75' : ''
+                                blurForFree ? 'blur-[12px] scale-125 brightness-[0.6] saturate-0' : item.isLocked ? 'blur-md scale-110 brightness-75' : ''
                               }`}
                             />
                           ) : (
                             <div
                               className={`w-full h-full flex items-center justify-center text-2xl ${
-                                blurForFree || item.isLocked ? 'blur-sm brightness-75' : ''
+                                blurForFree ? 'blur-[10px] brightness-50' : item.isLocked ? 'blur-sm brightness-75' : ''
                               }`}
                             >
                               👤
@@ -664,9 +682,11 @@ export default function MatchesPage() {
                           )}
                         </div>
 
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          {blurForFree || item.isLocked ? <Lock size={10} /> : '✓'}
-                        </div>
+                        {!blurForFree && (
+                          <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
+                            {item.isLocked ? <Lock size={10} /> : '✓'}
+                          </div>
+                        )}
 
                         {!item.isViewed && !item.isLocked && !blurForFree && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
@@ -675,24 +695,24 @@ export default function MatchesPage() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <p className="font-semibold truncate">
+                          <p className={`font-semibold truncate ${blurForFree ? 'blur-[6px] text-white/40' : ''}`}>
                             {blurForFree
-                              ? maskName(item.otherUser.first_name)
+                              ? 'Membre PAKT'
                               : item.isLocked
                               ? 'Match verrouillé'
                               : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
 
                           {item.createdAt && (
-                            <span className="text-white/30 text-xs shrink-0 ml-2">
+                            <span className={`text-xs shrink-0 ml-2 ${blurForFree ? 'text-white/15' : 'text-white/30'}`}>
                               {formatTime(item.createdAt)}
                             </span>
                           )}
                         </div>
 
-                        <p className={`text-white/40 text-sm truncate ${blurForFree ? 'blur-[5px]' : ''}`}>
+                        <p className={`text-sm truncate ${blurForFree ? 'blur-[5px] text-white/25' : 'text-white/40'}`}>
                           {blurForFree
-                            ? 'Nouveau message de ce profil'
+                            ? 'Ce membre souhaite te contacter'
                             : item.isLocked
                             ? 'Passe Business pour débloquer ce match'
                             : isOpening
@@ -707,6 +727,14 @@ export default function MatchesPage() {
                 )
               })}
               </div>
+
+              {/* Premium overlay on top */}
+              {isFree && matches.length > 0 && !overlayDismissed && (
+                <FreePremiumOverlay
+                  onUpgrade={() => handleCheckout('business')}
+                  onDismiss={() => setOverlayDismissed(true)}
+                />
+              )}
             </div>
           )
         ) : tab === 'likes' ? (
@@ -798,19 +826,8 @@ export default function MatchesPage() {
           </div>
         ) : (
           <div className="relative">
-            {isFree && conversations.length > 0 && (
-              <div className="absolute inset-0 z-20 flex items-start justify-center pt-8 pointer-events-auto">
-                <div className="w-full px-2">
-                  <FreePaywallOverlay
-                    title="Débloquer mes messages"
-                    description="Tu as reçu des messages ! Passe Business pour lire et répondre à tes conversations."
-                    ctaLabel="Passer à PAKT Business"
-                    onUpgrade={() => handleCheckout('business')}
-                  />
-                </div>
-              </div>
-            )}
-            <div className={`space-y-1 pt-2 ${isFree ? 'pointer-events-none' : ''}`}>
+            {/* Conversation rows — blurred when FREE */}
+            <div className={`space-y-1 pt-2 ${isFree ? 'select-none' : ''}`}>
             {conversations.map((item, index) => {
               const lastMessage = item.lastMessage || 'Nouveau message'
               const isOpening = openingConversation === item.otherUser.id
@@ -827,45 +844,48 @@ export default function MatchesPage() {
                     type="button"
                     disabled={isOpening || blurForFree}
                     onClick={() => openConversation(item.otherUser.id, item.id, null, false)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
+                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-colors text-left ${
+                      blurForFree
+                        ? 'cursor-default'
+                        : 'hover:bg-dark-200 active:bg-dark-300 disabled:opacity-60'
+                    }`}
                   >
                     <div className="relative shrink-0">
-                      <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                      <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${blurForFree ? 'ring-white/10' : 'ring-gold/30'}`}>
                         {item.otherUser.photos?.[0] ? (
                           <img
                             src={(item.otherUser.photos as string[])[0]}
                             alt=""
-                            className={`w-full h-full object-cover ${blurForFree ? 'blur-md scale-110 brightness-75' : ''}`}
+                            className={`w-full h-full object-cover ${blurForFree ? 'blur-[12px] scale-125 brightness-[0.6] saturate-0' : ''}`}
                           />
                         ) : (
-                          <div className={`w-full h-full flex items-center justify-center text-2xl ${blurForFree ? 'blur-sm brightness-75' : ''}`}>👤</div>
+                          <div className={`w-full h-full flex items-center justify-center text-2xl ${blurForFree ? 'blur-[10px] brightness-50' : ''}`}>👤</div>
                         )}
                       </div>
 
+                      {/* Notification badge stays visible for FREE */}
                       {blurForFree && (
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          <Lock size={10} />
-                        </div>
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gold border-2 border-dark flex items-center justify-center">
+                          <span className="text-[8px] font-black text-dark">1</span>
+                        </span>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <p className="font-semibold truncate">
-                          {blurForFree
-                            ? maskName(item.otherUser.first_name)
-                            : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                        <p className={`font-semibold truncate ${blurForFree ? 'blur-[6px] text-white/40' : ''}`}>
+                          {blurForFree ? 'Membre PAKT' : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                         </p>
 
                         {item.lastMessageAt && (
-                          <span className="text-white/30 text-xs shrink-0 ml-2">
+                          <span className={`text-xs shrink-0 ml-2 ${blurForFree ? 'text-white/15' : 'text-white/30'}`}>
                             {formatTime(item.lastMessageAt)}
                           </span>
                         )}
                       </div>
 
-                      <p className={`text-white/40 text-sm truncate ${blurForFree ? 'blur-[5px]' : ''}`}>
-                        {isOpening ? 'Ouverture...' : blurForFree ? 'Nouveau message reçu' : lastMessage}
+                      <p className={`text-sm truncate ${blurForFree ? 'blur-[5px] text-white/25' : 'text-white/40'}`}>
+                        {isOpening ? 'Ouverture...' : blurForFree ? 'Nouveau message en attente...' : lastMessage}
                       </p>
                     </div>
                   </button>
@@ -873,6 +893,14 @@ export default function MatchesPage() {
               )
             })}
             </div>
+
+            {/* Premium overlay on top */}
+            {isFree && conversations.length > 0 && !overlayDismissed && (
+              <FreePremiumOverlay
+                onUpgrade={() => handleCheckout('business')}
+                onDismiss={() => setOverlayDismissed(true)}
+              />
+            )}
           </div>
         )}
       </div>

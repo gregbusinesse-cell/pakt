@@ -100,19 +100,30 @@ export async function POST(req: NextRequest) {
       target_id: otherUserId,
     } as never)
 
-    // Send system message in conversation
+    // Send premium encourage message with random variant
     const { data: senderData } = await supabaseAdmin
       .from('profiles')
       .select('first_name')
       .eq('id', user.id)
       .single()
 
-    const senderName = senderData?.first_name || 'Un membre'
+    const senderName = senderData?.first_name || 'Un membre Business'
+
+    const encourageVariants = [
+      `${senderName} aimerait échanger avec toi sur un projet. Passe Business pour débloquer cette conversation.`,
+      `${senderName} pense que vos profils sont complémentaires et souhaite te contacter. Débloque tes messages avec PAKT Business.`,
+      `${senderName} a repéré ton profil et veut construire quelque chose avec toi. Passe Business pour commencer à discuter.`,
+      `${senderName} attend de pouvoir collaborer avec toi. Rejoins PAKT Business pour débloquer cette opportunité.`,
+      `${senderName} souhaite te proposer une opportunité. Passe Business pour accéder à cette conversation.`,
+      `${senderName} a vu ton potentiel et veut en discuter. Débloque tes conversations avec PAKT Business.`,
+    ]
+
+    const message = encourageVariants[Math.floor(Math.random() * encourageVariants.length)]
 
     await supabaseAdmin.from('messages').insert({
       conversation_id: conversationId,
       sender_id: user.id,
-      content: `${senderName} t'encourage à passer Business pour débloquer cette conversation et développer ton réseau ! Passe à PAKT Business pour répondre.`,
+      content: message,
       message_type: 'text',
       is_read: false,
     } as never)
