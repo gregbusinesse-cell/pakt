@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { formatTime, normalizePlan, isPaidPlan as isPaidPlanUtil, canChat } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
-import { MessageCircle, Users, Crown, Lock, Heart } from 'lucide-react'
+import { MessageCircle, Users, Crown, Lock, Heart, Zap, X, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type Tab = 'matches' | 'likes' | 'conversations'
@@ -52,6 +52,13 @@ interface ConversationItem {
   isLocked: boolean
 }
 
+interface EncouragementRow {
+  id: string
+  sender_id: string
+  target_id: string
+  created_at?: string | null
+}
+
 interface MatchItem {
   id: string
   type: 'match'
@@ -59,6 +66,7 @@ interface MatchItem {
   conversationId: string | null
   createdAt: string | null
   isViewed: boolean
+  hasEncouragement: boolean
 }
 
 interface LikeItem {
@@ -325,6 +333,9 @@ export default function MatchesPage() {
   const [tab, setTab] = useState<Tab>('matches')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [showChatPaywall, setShowChatPaywall] = useState(false)
+  const [selectedLike, setSelectedLike] = useState<LikeItem | null>(null)
+  const [likeActionLoading, setLikeActionLoading] = useState(false)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0)
 
   // Resolve auth
   useEffect(() => {
@@ -425,6 +436,87 @@ export default function MatchesPage() {
     refreshNotifications()
   }, [currentUserId, db, likes, refreshNotifications])
 
+  const handleAcceptLike = useCallback(async (likeItem: LikeItem) => {
+    if (!currentUserId || likeActionLoading) return
+    setLikeActionLoading(true)
+
+    try {
+      const otherUserId = likeItem.otherUser.id
+
+      // 1. Record our like back
+      const { error: likeError } = await db.from('likes').upsert(
+        { liker_id: currentUserId, liked_id: otherUserId },
+        { onConflict: 'liker_id,liked_id' }
+      )
+      if (likeError) {
+        console.error('[MATCHES] accept like - like insert error', likeError)
+        toast.error('Erreur lors du like')
+        return
+      }
+
+      // 2. Record swipe
+      await db.from('swipes').upsert(
+        { swiper_id: currentUserId, target_id: otherUserId, action: 'like' },
+        { onConflict: 'swiper_id,target_id' }
+      )
+
+      // 3. Create match via API (service role, bypasses RLS)
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      const token = currentSession?.access_token
+
+      if (token) {
+        const res = await fetch('/api/matches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ otherUserId }),
+        })
+        const payload = await res.json().catch(() => null)
+        if (!res.ok) {
+          console.error('[MATCHES] accept like - match API error', payload)
+        }
+      }
+
+      // 4. Remove from local likes state
+      setLikes((prev) => prev.filter((l) => l.likeId !== likeItem.likeId))
+      setSelectedLike(null)
+      setSelectedPhotoIndex(0)
+
+      toast.success('Match cree !')
+      refreshNotifications()
+      // Realtime subscription will auto-reload the data
+    } catch (error) {
+      console.error('[MATCHES] accept like catch', error)
+      toast.error('Erreur')
+    } finally {
+      setLikeActionLoading(false)
+    }
+  }, [currentUserId, db, likeActionLoading, refreshNotifications, supabase])
+
+  const handleRejectLike = useCallback(async (likeItem: LikeItem) => {
+    if (!currentUserId || likeActionLoading) return
+    setLikeActionLoading(true)
+
+    try {
+      // Record a dislike swipe so they don't reappear
+      await db.from('swipes').upsert(
+        { swiper_id: currentUserId, target_id: likeItem.otherUser.id, action: 'dislike' },
+        { onConflict: 'swiper_id,target_id' }
+      )
+
+      // Remove from local state
+      setLikes((prev) => prev.filter((l) => l.likeId !== likeItem.likeId))
+      setSelectedLike(null)
+      setSelectedPhotoIndex(0)
+
+      refreshNotifications()
+    } catch (error) {
+      console.error('[MATCHES] reject like catch', error)
+      toast.error('Erreur')
+    } finally {
+      setLikeActionLoading(false)
+    }
+  }, [currentUserId, db, likeActionLoading, refreshNotifications])
+
   const loadData = useCallback(async () => {
     if (!currentUserId) {
       setLoading(false)
@@ -438,6 +530,7 @@ export default function MatchesPage() {
         { data: conversationsData, error: conversationsError },
         { data: matchesData, error: matchesError },
         { data: likesData, error: likesError },
+        { data: encouragementsData, error: encouragementsError },
       ] = await Promise.all([
         db
           .from('conversations')
@@ -454,15 +547,25 @@ export default function MatchesPage() {
           .select('id, liker_id, created_at, is_viewed')
           .eq('liked_id', currentUserId)
           .order('created_at', { ascending: false }),
+        db
+          .from('encouragements')
+          .select('id, sender_id, target_id, created_at')
+          .eq('target_id', currentUserId)
+          .order('created_at', { ascending: false }),
       ])
 
       if (conversationsError) console.error('[MATCHES] conversations select error', conversationsError)
       if (matchesError) console.error('[MATCHES] matches select error', matchesError)
       if (likesError) console.error('[MATCHES] likes select error', likesError)
+      if (encouragementsError) console.error('[MATCHES] encouragements select error', encouragementsError)
 
       const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
       const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
       const likeRows = likesError ? [] : ((likesData || []) as LikeRow[])
+      const encouragementRows = encouragementsError ? [] : ((encouragementsData || []) as EncouragementRow[])
+
+      // Build a set of sender IDs who encouraged the current user
+      const encouragedBySet = new Set(encouragementRows.map((e) => e.sender_id))
 
       console.log('[MATCHES] fetched', { conversations: conversationRows.length, matches: matchRows.length, likes: likeRows.length })
 
@@ -538,13 +641,17 @@ export default function MatchesPage() {
           conversationId: linkedConversation?.id || null,
           createdAt: match.created_at || null,
           isViewed: Boolean(match.is_viewed),
+          hasEncouragement: encouragedBySet.has(otherUserId),
         })
       })
 
       const cleanMatchItems = Array.from(matchItemsByPair.values())
 
-      // Build likes
-      const likeItems = likeRows.map((like) => {
+      // Build likes — exclude already-matched users
+      const likeItems = likeRows.filter((like) => {
+        const pairKey = getPairKey(currentUserId, like.liker_id)
+        return !matchItemsByPair.has(pairKey)
+      }).map((like) => {
         const pairKey = getPairKey(currentUserId, like.liker_id)
         const linkedMatch = matchItemsByPair.get(pairKey)
         const linkedConversation = conversationByPair.get(pairKey)
@@ -606,6 +713,7 @@ export default function MatchesPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'encouragements' }, () => loadData())
       .subscribe()
 
     return () => {
@@ -757,6 +865,8 @@ export default function MatchesPage() {
             <div className="space-y-2 pt-2">
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
+                const showEncourageBanner = !userCanChat && item.hasEncouragement
+                const otherName = item.otherUser.first_name || 'Cette personne'
 
                 return (
                   <motion.div
@@ -764,6 +874,7 @@ export default function MatchesPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
+                    className={showEncourageBanner ? 'rounded-2xl border border-gold/15 bg-dark-200/40 overflow-hidden' : ''}
                   >
                     <button
                       type="button"
@@ -773,7 +884,7 @@ export default function MatchesPage() {
                     >
                       {/* Avatar — always clear, never blurred */}
                       <div className="relative shrink-0">
-                        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                        <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${showEncourageBanner ? 'ring-gold/50' : 'ring-gold/30'}`}>
                           {item.otherUser.photos?.[0] ? (
                             <img
                               src={(item.otherUser.photos as string[])[0]}
@@ -788,7 +899,7 @@ export default function MatchesPage() {
                         </div>
 
                         <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          ✓
+                          {showEncourageBanner ? <Zap size={10} /> : '✓'}
                         </div>
 
                         {!item.isViewed && (
@@ -800,7 +911,7 @@ export default function MatchesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {item.otherUser.first_name || 'Profil'}
+                            {otherName}
                             {item.otherUser.age ? `, ${item.otherUser.age}` : ''}
                           </p>
 
@@ -816,17 +927,48 @@ export default function MatchesPage() {
                             ? 'Ouverture...'
                             : userCanChat
                               ? 'Nouveau match ! Dis bonjour'
-                              : 'Passe Business pour discuter'}
+                              : showEncourageBanner
+                                ? 'Souhaite echanger avec vous'
+                                : 'Passe Business pour discuter'}
                         </p>
                       </div>
 
                       {/* Lock icon hint for free users */}
-                      {!userCanChat && (
+                      {!userCanChat && !showEncourageBanner && (
                         <div className="shrink-0 w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center">
                           <Lock size={14} className="text-gold/60" />
                         </div>
                       )}
                     </button>
+
+                    {/* Encouragement banner — only for free users who received one */}
+                    {showEncourageBanner && (
+                      <div className="px-3 pb-3">
+                        <div className="rounded-[12px] border border-gold/15 bg-gradient-to-r from-gold/[0.06] to-transparent p-3">
+                          <div className="flex items-start gap-2.5">
+                            <div className="shrink-0 mt-0.5 w-7 h-7 rounded-full bg-gold/15 border border-gold/25 flex items-center justify-center">
+                              <Zap size={13} className="text-gold" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[12px] leading-[1.55] text-white/60">
+                                <span className="font-semibold text-white/80">{otherName}</span>
+                                {' '}utilise deja PAKT Business et vous encourage a faire de meme pour echanger ensemble.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleCheckout('business')
+                                }}
+                                className="mt-2 h-[30px] px-4 rounded-[8px] bg-gold text-dark text-[11px] font-bold hover:bg-gold-light active:scale-[0.97] transition-all"
+                              >
+                                Passer Business
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 )
               })}
@@ -858,11 +1000,10 @@ export default function MatchesPage() {
                   >
                     <button
                       type="button"
-                      disabled={isOpening}
+                      disabled={likeActionLoading}
                       onClick={() => {
-                        if (item.conversationId) {
-                          openConversation(item.otherUser.id, item.conversationId, null)
-                        }
+                        setSelectedLike(item)
+                        setSelectedPhotoIndex(0)
                       }}
                       className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                     >
@@ -884,6 +1025,7 @@ export default function MatchesPage() {
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
                             {item.otherUser.first_name || 'Profil'}
+                            {item.otherUser.age ? `, ${item.otherUser.age}` : ''}
                           </p>
                           {item.createdAt && (
                             <span className="text-white/30 text-xs shrink-0 ml-2">
@@ -892,8 +1034,12 @@ export default function MatchesPage() {
                           )}
                         </div>
                         <p className="text-white/40 text-sm truncate">
-                          {isOpening ? 'Ouverture...' : "Cette personne t'a like"}
+                          {likeActionLoading ? 'Chargement...' : "Cette personne t'a like"}
                         </p>
+                      </div>
+
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center">
+                        <ChevronLeft size={14} className="text-gold/60 rotate-180" />
                       </div>
                     </button>
                   </motion.div>
@@ -1043,6 +1189,149 @@ export default function MatchesPage() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Business Pro: Like Profile Viewer ── */}
+      <AnimatePresence>
+        {selectedLike && (
+          <motion.div
+            key="like-profile-viewer"
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+            className="fixed inset-0 z-[100] bg-dark overflow-y-auto"
+          >
+            {(() => {
+              const p = selectedLike.otherUser
+              const photos = Array.isArray(p.photos)
+                ? (p.photos as string[]).filter((s) => typeof s === 'string' && s.trim().length > 0)
+                : []
+              const interests = Array.isArray(p.interests)
+                ? (p.interests as string[]).filter((s) => typeof s === 'string' && s.trim().length > 0)
+                : []
+              const safeIdx = photos.length > 0 ? selectedPhotoIndex % photos.length : 0
+
+              return (
+                <>
+                  {/* Back button */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLike(null)}
+                    className="absolute top-4 left-4 z-[110] w-10 h-10 rounded-full bg-black/50 backdrop-blur-xl border border-white/10 flex items-center justify-center hover:bg-black/70 transition-colors"
+                  >
+                    <ChevronLeft size={20} className="text-white" />
+                  </button>
+
+                  <div className="flex flex-col items-center pb-36">
+                    <div className="max-w-md mx-auto px-4 py-6 space-y-6 w-full">
+                      {/* Photo */}
+                      <div className="relative">
+                        {photos.length > 0 ? (
+                          <img
+                            src={photos[safeIdx]}
+                            className="w-full aspect-[3/4] object-cover rounded-2xl cursor-pointer select-none"
+                            alt={p.first_name || ''}
+                            draggable={false}
+                            onClick={() => {
+                              if (photos.length <= 1) return
+                              setSelectedPhotoIndex((prev) => (prev + 1) % photos.length)
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full aspect-[3/4] rounded-2xl bg-dark-300 flex items-center justify-center">
+                            <span className="text-8xl">👤</span>
+                          </div>
+                        )}
+
+                        {/* Photo dots */}
+                        {photos.length > 1 && (
+                          <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-20 pointer-events-none">
+                            {photos.map((_, i) => (
+                              <div
+                                key={i}
+                                className={`h-1 w-6 rounded-full transition ${
+                                  i === safeIdx ? 'bg-white' : 'bg-white/30'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* "Liked you" badge */}
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                          <span className="inline-flex items-center rounded-full bg-gold text-dark px-4 py-1.5 text-xs font-bold shadow-lg">
+                            Cette personne vous a like
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Name / Age / City */}
+                      <div>
+                        <h2 className="text-white font-medium text-xl">
+                          {p.first_name || 'Utilisateur'},{' '}
+                          <span className="text-white/80 font-normal text-lg">{p.age ?? ''}</span>
+                        </h2>
+                        {p.city ? <p className="text-white/60">{p.city}</p> : null}
+                      </div>
+
+                      {/* Bio */}
+                      <div className="bg-dark-200 border border-dark-500 rounded-[12px] p-4">
+                        <p className="text-white/70 text-sm leading-relaxed">{p.bio || 'Aucune bio'}</p>
+                      </div>
+
+                      {/* Interests */}
+                      {interests.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {interests.map((interest) => (
+                            <span key={interest} className="bg-dark-300 text-white/70 text-xs px-3 py-1 rounded-full">
+                              {interest}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Accept / Reject buttons — fixed at bottom */}
+                  <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[110]">
+                    <div className="flex items-center justify-center gap-6">
+                      {/* Reject */}
+                      <motion.button
+                        type="button"
+                        disabled={likeActionLoading}
+                        onClick={() => handleRejectLike(selectedLike)}
+                        whileHover={{ scale: 1.06, y: -2 }}
+                        whileTap={{ scale: 0.94 }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                        className="w-[68px] h-[68px] rounded-full flex items-center justify-center bg-black/55 border border-red-500/20 shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)] hover:border-red-400/35 backdrop-blur-xl disabled:opacity-35 disabled:pointer-events-none"
+                        aria-label="Refuser"
+                      >
+                        <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/10 to-transparent opacity-70" />
+                        <X size={28} strokeWidth={2.1} className="relative text-red-300" />
+                      </motion.button>
+
+                      {/* Accept */}
+                      <motion.button
+                        type="button"
+                        disabled={likeActionLoading}
+                        onClick={() => handleAcceptLike(selectedLike)}
+                        whileHover={{ scale: 1.07, y: -2 }}
+                        whileTap={{ scale: 0.94 }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                        className="w-[68px] h-[68px] rounded-full flex items-center justify-center bg-gold border border-gold-light/50 shadow-[0_18px_45px_rgba(0,0,0,0.42),0_0_34px_rgba(212,168,83,0.28),inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-gold-light backdrop-blur-xl disabled:opacity-35 disabled:pointer-events-none"
+                        aria-label="Accepter"
+                      >
+                        <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/30 to-transparent opacity-80" />
+                        <Heart size={28} strokeWidth={2.1} className="relative text-dark fill-dark/10" />
+                      </motion.button>
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

@@ -170,9 +170,9 @@ END $$;
 CREATE TABLE IF NOT EXISTS encouragements (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   sender_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  receiver_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(sender_id, receiver_id)
+  target_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  conversation_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -333,7 +333,7 @@ DROP POLICY IF EXISTS "Users can see encouragements" ON encouragements;
 DROP POLICY IF EXISTS "Users can insert encouragements" ON encouragements;
 
 CREATE POLICY "Users can see encouragements" ON encouragements
-  FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+  FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = target_id);
 CREATE POLICY "Users can insert encouragements" ON encouragements
   FOR INSERT WITH CHECK (auth.uid() = sender_id);
 
@@ -423,6 +423,7 @@ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE likes;
   ALTER PUBLICATION supabase_realtime ADD TABLE messages;
   ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
+  ALTER PUBLICATION supabase_realtime ADD TABLE encouragements;
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Realtime publication update note: %', SQLERRM;
 END $$;
