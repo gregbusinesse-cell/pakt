@@ -1,10 +1,9 @@
-﻿'use client'
+'use client'
 
 // app/(app)/matches/page.tsx
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
@@ -90,7 +89,7 @@ function formatLastMessage(
 
   const isMine = lastMessage.sender_id === currentUserId
   const otherUserName = otherUser.first_name || 'Cette personne'
-  const prefix = isMine ? 'Vous avez envoyé' : `${otherUserName} vous a envoyé`
+  const prefix = isMine ? 'Vous avez envoye' : `${otherUserName} vous a envoye`
 
   if (lastMessage.message_type === 'audio') return `${prefix} un vocal`
   if (lastMessage.message_type === 'image') return `${prefix} une photo`
@@ -150,11 +149,11 @@ function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
           </div>
 
           <h2 className="text-[17px] font-bold text-white leading-snug">
-            Tes opportunités t&apos;attendent
+            Tes opportunites t&apos;attendent
           </h2>
 
           <p className="mt-2.5 text-[12.5px] leading-[1.65] text-white/45 max-w-[280px] mx-auto">
-            Passe Business pour voir les profils, débloquer tes conversations et développer ton réseau.
+            Passe Business pour voir les profils, debloquer tes conversations et developper ton reseau.
           </p>
 
           <button
@@ -162,10 +161,10 @@ function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
             onClick={onUpgrade}
             className="mt-5 h-[46px] w-full rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[13.5px] font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] active:scale-[0.98] transition-all"
           >
-            Passer à PAKT Business
+            Passer a PAKT Business
           </button>
 
-          <p className="mt-3 text-[11px] text-white/20">Annulable à tout moment</p>
+          <p className="mt-3 text-[11px] text-white/20">Annulable a tout moment</p>
         </div>
       </div>
     </motion.div>
@@ -179,9 +178,9 @@ function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
         <Lock size={18} className="text-gold" />
       </div>
 
-      <p className="text-sm font-semibold text-white">Match verrouillé</p>
+      <p className="text-sm font-semibold text-white">Match verrouille</p>
       <p className="mt-1 text-xs leading-relaxed text-white/50">
-        Les deux membres doivent avoir au minimum PAKT Business pour échanger.
+        Les deux membres doivent avoir au minimum PAKT Business pour echanger.
       </p>
 
       <button
@@ -204,65 +203,81 @@ function FreeMatchesView({
   onUpgrade: () => void
   onMarkViewed: (matchId: string) => void
 }) {
-  if (matches.length === 0) {
-    return (
-      <div className="pt-6">
-        <FreeUpgradeCTA onUpgrade={onUpgrade} />
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-0 pt-2 select-none">
-      {matches.map((item, index) => (
-        <div key={item.id}>
-          {index === 3 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
-
-          <motion.button
-            type="button"
-            onClick={() => onMarkViewed(item.id)}
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.04 }}
-            className="w-full flex items-center gap-3 p-3 rounded-2xl text-left cursor-default"
-          >
-            <div className="relative shrink-0">
-              <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
-                {item.otherUser.photos?.[0] ? (
-                  <img
-                    src={(item.otherUser.photos as string[])[0]}
-                    alt=""
-                    className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-                )}
-              </div>
-
-              {!item.isViewed && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
-              )}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
-                {item.createdAt && (
-                  <span className="text-[10px] text-white/30 shrink-0 ml-2">
-                    {formatTime(item.createdAt)}
-                  </span>
-                )}
-              </div>
-
-              <p className="text-xs text-white/35 truncate">
-                Nouveau match. Passe Business pour voir le profil.
-              </p>
-            </div>
-          </motion.button>
+    <div className="pt-4">
+      {/* Match count card — same style as likes */}
+      <div className="rounded-[16px] border border-gold/20 bg-dark-200 p-5 text-center">
+        <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center">
+          <Users size={20} className="text-gold" />
         </div>
-      ))}
 
-      {matches.length < 4 && matches.length > 0 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
+        <p className="text-3xl font-black text-gold">{matches.length}</p>
+        <p className="mt-1 text-sm text-white/50">
+          {matches.length === 0
+            ? 'Aucun match pour le moment'
+            : matches.length === 1
+              ? 'match'
+              : 'matchs'}
+        </p>
+
+        <button
+          type="button"
+          onClick={onUpgrade}
+          className="mt-4 h-11 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
+        >
+          Passer a PAKT Business
+        </button>
+      </div>
+
+      {/* Blurred match list */}
+      {matches.length > 0 && (
+        <div className="mt-4 space-y-1 select-none">
+          {matches.map((item, index) => (
+            <motion.button
+              key={item.id}
+              type="button"
+              onClick={() => onMarkViewed(item.id)}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.04 }}
+              className="w-full flex items-center gap-3 p-3 rounded-2xl text-left cursor-default"
+            >
+              <div className="relative shrink-0">
+                <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
+                  {item.otherUser.photos?.[0] ? (
+                    <img
+                      src={(item.otherUser.photos as string[])[0]}
+                      alt=""
+                      className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                  )}
+                </div>
+
+                {!item.isViewed && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
+                  {item.createdAt && (
+                    <span className="text-[10px] text-white/30 shrink-0 ml-2">
+                      Match {formatTime(item.createdAt)}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-white/35 truncate">
+                  Nouveau match. Passe Business pour voir le profil.
+                </p>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -283,7 +298,7 @@ function FreeLikesView({
 
         <p className="text-3xl font-black text-gold">{likes.length}</p>
         <p className="mt-1 text-sm text-white/50">
-          {likes.length > 1 ? 'personnes t’ont liké' : 'personne t’a liké'}
+          {likes.length > 1 ? "personnes t'ont like" : "personne t'a like"}
         </p>
 
         <button
@@ -328,7 +343,7 @@ function FreeLikesView({
                 )}
               </div>
               <p className="text-xs text-white/35 truncate">
-                Profil masqué réservé aux membres Business Pro
+                Profil masque reserve aux membres Business Pro
               </p>
             </div>
           </motion.div>
@@ -402,7 +417,6 @@ function FreeConversationsView({
 }
 
 export default function MatchesPage() {
-  const session = useSession()
   const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
@@ -418,8 +432,31 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true)
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-  const currentUserId = session?.user?.id
+  // Resolve auth — don't rely on useSession() which can have timing issues
+  useEffect(() => {
+    let mounted = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return
+      if (data.session?.user?.id) {
+        setCurrentUserId(data.session.user.id)
+      }
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+      setCurrentUserId(session?.user?.id ?? null)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase])
 
   const handleCheckout = async (plan: 'business' | 'business_pro') => {
     try {
@@ -430,7 +467,7 @@ export default function MatchesPage() {
       const token = currentSession?.access_token
 
       if (!token) {
-        toast.error('Utilisateur non connecté')
+        toast.error('Utilisateur non connecte')
         return
       }
 
@@ -499,7 +536,7 @@ export default function MatchesPage() {
     refreshNotifications()
   }, [currentUserId, db, likes, refreshNotifications])
 
-  const loadConversations = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!currentUserId) {
       setLoading(false)
       return
@@ -532,22 +569,26 @@ export default function MatchesPage() {
 
       if (conversationsError) {
         console.error('[MATCHES] conversations select error', conversationsError)
-        toast.error(`Erreur conversations: ${conversationsError.message}`)
       }
 
       if (matchesError) {
         console.error('[MATCHES] matches select error', matchesError)
-        toast.error(`Erreur matchs: ${matchesError.message}`)
       }
 
       if (likesError) {
         console.error('[MATCHES] likes select error', likesError)
-        toast.error(`Erreur likes: ${likesError.message}`)
       }
 
       const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
       const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
       const likeRows = likesError ? [] : ((likesData || []) as LikeRow[])
+
+      console.log('[MATCHES] fetched data', {
+        conversations: conversationRows.length,
+        matches: matchRows.length,
+        likes: likeRows.length,
+        currentUserId,
+      })
 
       const conversationOtherIds = conversationRows.map((conversation) =>
         conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
@@ -573,7 +614,6 @@ export default function MatchesPage() {
 
         if (profilesError) {
           console.error('[MATCHES] profiles select error', profilesError)
-          toast.error(`Erreur profils: ${profilesError.message}`)
         } else {
           const profiles = (profilesData || []) as Profile[]
           profileMap = new Map<string, Profile>(
@@ -684,7 +724,7 @@ export default function MatchesPage() {
       setMatches(cleanMatchItems)
       setLikes(likeItems)
     } catch (error) {
-      console.error('[MATCHES] loadConversations catch', error)
+      console.error('[MATCHES] loadData catch', error)
       toast.error('Erreur chargement messages')
       setConversations([])
       setMatches([])
@@ -694,9 +734,49 @@ export default function MatchesPage() {
     }
   }, [currentUserId, db, profile?.plan])
 
+  // Load data when userId is resolved
   useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+    loadData()
+  }, [loadData])
+
+  // Realtime subscription — refresh on changes to matches, likes, messages
+  useEffect(() => {
+    if (!currentUserId) return
+
+    const channel = supabase
+      .channel(`matches-page-realtime-${currentUserId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'matches' },
+        () => {
+          console.log('[MATCHES] realtime matches change detected')
+          loadData()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes' },
+        () => {
+          console.log('[MATCHES] realtime likes change detected')
+          loadData()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages' },
+        () => loadData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations' },
+        () => loadData()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUserId, loadData, supabase])
 
   useEffect(() => {
     if (tab === 'likes') {
@@ -788,6 +868,11 @@ export default function MatchesPage() {
           >
             <Users size={15} />
             Matchs
+            {matches.length > 0 && (
+              <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {matches.length > 9 ? '9+' : matches.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -814,7 +899,7 @@ export default function MatchesPage() {
             }`}
           >
             <MessageCircle size={15} />
-            Conversations
+            Conv.
           </button>
         </div>
       </div>
@@ -844,7 +929,7 @@ export default function MatchesPage() {
               <span className="text-5xl">⚔️</span>
               <div>
                 <h3 className="font-semibold text-lg mb-1">Pas encore de matchs</h3>
-                <p className="text-white/40 text-sm">Continue à swiper pour trouver tes matchs !</p>
+                <p className="text-white/40 text-sm">Continue a swiper pour trouver tes matchs !</p>
               </div>
             </div>
           ) : (
@@ -904,7 +989,7 @@ export default function MatchesPage() {
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
                             {item.isLocked
-                              ? 'Match verrouillé'
+                              ? 'Match verrouille'
                               : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                           </p>
 
@@ -917,10 +1002,10 @@ export default function MatchesPage() {
 
                         <p className="text-white/40 text-sm truncate">
                           {item.isLocked
-                            ? 'Les deux membres doivent être Business'
+                            ? 'Les deux membres doivent etre Business'
                             : isOpening
                               ? 'Ouverture...'
-                              : '🎉 Nouveau match ! Dis bonjour'}
+                              : 'Nouveau match ! Dis bonjour'}
                         </p>
                       </div>
                     </button>
@@ -939,7 +1024,7 @@ export default function MatchesPage() {
               <span className="text-5xl">👑</span>
               <div>
                 <h3 className="font-semibold text-lg mb-1">Aucun like pour le moment</h3>
-                <p className="text-white/40 text-sm">Les personnes qui te likent apparaîtront ici.</p>
+                <p className="text-white/40 text-sm">Les personnes qui te likent apparaitront ici.</p>
               </div>
             </div>
           ) : (
@@ -998,8 +1083,8 @@ export default function MatchesPage() {
                           {isOpening
                             ? 'Ouverture...'
                             : canOpen
-                              ? 'Cette personne t’a liké'
-                              : 'Like reçu'}
+                              ? "Cette personne t'a like"
+                              : 'Like recu'}
                         </p>
                       </div>
                     </button>
@@ -1019,7 +1104,7 @@ export default function MatchesPage() {
             <div>
               <h3 className="font-semibold text-lg mb-1">Aucune conversation pour le moment</h3>
               <p className="text-white/40 text-sm">
-                Tes conversations apparaîtront ici quand les deux membres pourront discuter.
+                Tes conversations apparaitront ici quand les deux membres pourront discuter.
               </p>
             </div>
           </div>
@@ -1076,7 +1161,7 @@ export default function MatchesPage() {
 
                       <p className="text-white/40 text-sm truncate">
                         {item.isLocked
-                          ? 'Les deux membres doivent être Business'
+                          ? 'Les deux membres doivent etre Business'
                           : isOpening
                             ? 'Ouverture...'
                             : lastMessage}
