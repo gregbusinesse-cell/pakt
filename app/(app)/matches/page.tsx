@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { formatTime, normalizePlan, isPaidPlan as isPaidPlanUtil, canChat } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
@@ -59,7 +59,6 @@ interface MatchItem {
   conversationId: string | null
   createdAt: string | null
   isViewed: boolean
-  isLocked: boolean
 }
 
 interface LikeItem {
@@ -89,11 +88,11 @@ function formatLastMessage(
 
   const isMine = lastMessage.sender_id === currentUserId
   const otherUserName = otherUser.first_name || 'Cette personne'
-  const prefix = isMine ? 'Vous avez envoye' : `${otherUserName} vous a envoye`
+  const prefix = isMine ? 'Vous' : otherUserName
 
-  if (lastMessage.message_type === 'audio') return `${prefix} un vocal`
-  if (lastMessage.message_type === 'image') return `${prefix} une photo`
-  if (lastMessage.message_type === 'file') return `${prefix} un document`
+  if (lastMessage.message_type === 'audio') return `${prefix} a envoye un vocal`
+  if (lastMessage.message_type === 'image') return `${prefix} a envoye une photo`
+  if (lastMessage.message_type === 'file') return `${prefix} a envoye un document`
   if (lastMessage.message_type === 'text' || !lastMessage.message_type) return lastMessage.content || null
 
   return null
@@ -153,7 +152,7 @@ function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
           </h2>
 
           <p className="mt-2.5 text-[12.5px] leading-[1.65] text-white/45 max-w-[280px] mx-auto">
-            Passe Business pour voir les profils, debloquer tes conversations et developper ton reseau.
+            Passe Business pour debloquer tes conversations et developper ton reseau.
           </p>
 
           <button
@@ -168,117 +167,6 @@ function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
         </div>
       </div>
     </motion.div>
-  )
-}
-
-function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
-  return (
-    <div className="mt-3 rounded-[14px] border border-gold/20 bg-black/35 p-4 text-center backdrop-blur-md">
-      <div className="mx-auto mb-3 w-11 h-11 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
-        <Lock size={18} className="text-gold" />
-      </div>
-
-      <p className="text-sm font-semibold text-white">Match verrouille</p>
-      <p className="mt-1 text-xs leading-relaxed text-white/50">
-        Les deux membres doivent avoir au minimum PAKT Business pour echanger.
-      </p>
-
-      <button
-        type="button"
-        onClick={onUpgrade}
-        className="mt-3 h-10 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
-      >
-        Passer Business
-      </button>
-    </div>
-  )
-}
-
-function FreeMatchesView({
-  matches,
-  onUpgrade,
-  onMarkViewed,
-}: {
-  matches: MatchItem[]
-  onUpgrade: () => void
-  onMarkViewed: (matchId: string) => void
-}) {
-  return (
-    <div className="pt-4">
-      {/* Match count card — same style as likes */}
-      <div className="rounded-[16px] border border-gold/20 bg-dark-200 p-5 text-center">
-        <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center">
-          <Users size={20} className="text-gold" />
-        </div>
-
-        <p className="text-3xl font-black text-gold">{matches.length}</p>
-        <p className="mt-1 text-sm text-white/50">
-          {matches.length === 0
-            ? 'Aucun match pour le moment'
-            : matches.length === 1
-              ? 'match'
-              : 'matchs'}
-        </p>
-
-        <button
-          type="button"
-          onClick={onUpgrade}
-          className="mt-4 h-11 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
-        >
-          Passer a PAKT Business
-        </button>
-      </div>
-
-      {/* Blurred match list */}
-      {matches.length > 0 && (
-        <div className="mt-4 space-y-1 select-none">
-          {matches.map((item, index) => (
-            <motion.button
-              key={item.id}
-              type="button"
-              onClick={() => onMarkViewed(item.id)}
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.04 }}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl text-left cursor-default"
-            >
-              <div className="relative shrink-0">
-                <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
-                  {item.otherUser.photos?.[0] ? (
-                    <img
-                      src={(item.otherUser.photos as string[])[0]}
-                      alt=""
-                      className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-                  )}
-                </div>
-
-                {!item.isViewed && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
-                )}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
-                  {item.createdAt && (
-                    <span className="text-[10px] text-white/30 shrink-0 ml-2">
-                      Match {formatTime(item.createdAt)}
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-white/35 truncate">
-                  Nouveau match. Passe Business pour voir le profil.
-                </p>
-              </div>
-            </motion.button>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -310,45 +198,47 @@ function FreeLikesView({
         </button>
       </div>
 
-      <div className="mt-4 space-y-1 select-none">
-        {likes.map((item, index) => (
-          <motion.div
-            key={item.likeId}
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.04 }}
-            className="flex items-center gap-3 p-3 rounded-2xl"
-          >
-            <div className="relative shrink-0">
-              <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/20">
-                {item.otherUser.photos?.[0] ? (
-                  <img
-                    src={(item.otherUser.photos as string[])[0]}
-                    alt=""
-                    className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-                )}
+      {likes.length > 0 && (
+        <div className="mt-4 space-y-1 select-none">
+          {likes.map((item, index) => (
+            <motion.div
+              key={item.likeId}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.04 }}
+              className="flex items-center gap-3 p-3 rounded-2xl"
+            >
+              <div className="relative shrink-0">
+                <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/20">
+                  {item.otherUser.photos?.[0] ? (
+                    <img
+                      src={(item.otherUser.photos as string[])[0]}
+                      alt=""
+                      className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
-                {item.createdAt && (
-                  <span className="text-[10px] text-white/30 shrink-0 ml-2">
-                    {formatTime(item.createdAt)}
-                  </span>
-                )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
+                  {item.createdAt && (
+                    <span className="text-[10px] text-white/30 shrink-0 ml-2">
+                      {formatTime(item.createdAt)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-white/35 truncate">
+                  Profil masque reserve aux membres Business Pro
+                </p>
               </div>
-              <p className="text-xs text-white/35 truncate">
-                Profil masque reserve aux membres Business Pro
-              </p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -425,6 +315,7 @@ export default function MatchesPage() {
   const currentPlan = normalizePlan(profile?.plan)
   const isBusinessPro = currentPlan === 'business_pro'
   const isFree = currentPlan === 'free'
+  const userCanChat = isPaidPlan(currentPlan)
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [matches, setMatches] = useState<MatchItem[]>([])
@@ -433,8 +324,9 @@ export default function MatchesPage() {
   const [openingConversation, setOpeningConversation] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('matches')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [showChatPaywall, setShowChatPaywall] = useState(false)
 
-  // Resolve auth — don't rely on useSession() which can have timing issues
+  // Resolve auth
   useEffect(() => {
     let mounted = true
 
@@ -495,7 +387,7 @@ export default function MatchesPage() {
 
   const markMatchViewed = useCallback(
     async (matchId: string) => {
-      if (!matchId || matchId.startsWith('conversation-match-')) return
+      if (!matchId) return
 
       const { error } = await db.from('matches').update({ is_viewed: true }).eq('id', matchId)
 
@@ -525,10 +417,7 @@ export default function MatchesPage() {
       .eq('is_viewed', false)
 
     if (error) {
-      console.error('[MATCHES] mark received likes viewed error', {
-        currentUserId,
-        error,
-      })
+      console.error('[MATCHES] mark received likes viewed error', { currentUserId, error })
       return
     }
 
@@ -567,42 +456,25 @@ export default function MatchesPage() {
           .order('created_at', { ascending: false }),
       ])
 
-      if (conversationsError) {
-        console.error('[MATCHES] conversations select error', conversationsError)
-      }
-
-      if (matchesError) {
-        console.error('[MATCHES] matches select error', matchesError)
-      }
-
-      if (likesError) {
-        console.error('[MATCHES] likes select error', likesError)
-      }
+      if (conversationsError) console.error('[MATCHES] conversations select error', conversationsError)
+      if (matchesError) console.error('[MATCHES] matches select error', matchesError)
+      if (likesError) console.error('[MATCHES] likes select error', likesError)
 
       const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
       const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
       const likeRows = likesError ? [] : ((likesData || []) as LikeRow[])
 
-      console.log('[MATCHES] fetched data', {
-        conversations: conversationRows.length,
-        matches: matchRows.length,
-        likes: likeRows.length,
-        currentUserId,
-      })
+      console.log('[MATCHES] fetched', { conversations: conversationRows.length, matches: matchRows.length, likes: likeRows.length })
 
-      const conversationOtherIds = conversationRows.map((conversation) =>
-        conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
+      const conversationOtherIds = conversationRows.map((c) =>
+        c.user1_id === currentUserId ? c.user2_id : c.user1_id
       )
-
-      const matchOtherIds = matchRows.map((match) =>
-        match.user1_id === currentUserId ? match.user2_id : match.user1_id
+      const matchOtherIds = matchRows.map((m) =>
+        m.user1_id === currentUserId ? m.user2_id : m.user1_id
       )
+      const likeOtherIds = likeRows.map((l) => l.liker_id)
 
-      const likeOtherIds = likeRows.map((like) => like.liker_id)
-
-      const allUserIds = Array.from(
-        new Set([...conversationOtherIds, ...matchOtherIds, ...likeOtherIds])
-      )
+      const allUserIds = Array.from(new Set([...conversationOtherIds, ...matchOtherIds, ...likeOtherIds]))
 
       let profileMap = new Map<string, Profile>()
 
@@ -615,40 +487,28 @@ export default function MatchesPage() {
         if (profilesError) {
           console.error('[MATCHES] profiles select error', profilesError)
         } else {
-          const profiles = (profilesData || []) as Profile[]
-          profileMap = new Map<string, Profile>(
-            profiles.map((userProfile) => [userProfile.id, userProfile])
-          )
+          profileMap = new Map((profilesData as Profile[]).map((p) => [p.id, p]))
         }
       }
 
       const conversationByPair = new Map<string, ConversationRow>()
-
-      conversationRows.forEach((conversation) => {
-        conversationByPair.set(getPairKey(conversation.user1_id, conversation.user2_id), conversation)
+      conversationRows.forEach((c) => {
+        conversationByPair.set(getPairKey(c.user1_id, c.user2_id), c)
       })
 
+      // Build conversations
       const conversationItems = await Promise.all(
         conversationRows.map(async (conversation) => {
-          const otherUserId =
-            conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
-
+          const otherUserId = conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
           const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
 
-          const { data: lastMessageData, error: lastMessageError } = await db
+          const { data: lastMessageData } = await db
             .from('messages')
             .select('content, created_at, message_type, sender_id')
             .eq('conversation_id', conversation.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
-
-          if (lastMessageError) {
-            console.error('[MATCHES] last message select error', {
-              conversationId: conversation.id,
-              error: lastMessageError,
-            })
-          }
 
           const lastMessage = (lastMessageData || null) as LastMessageRow | null
 
@@ -663,14 +523,13 @@ export default function MatchesPage() {
         })
       )
 
+      // Build matches — NO isLocked, matches are always visible
       const matchItemsByPair = new Map<string, MatchItem>()
-
       matchRows.forEach((match) => {
         const otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id
         const pairKey = getPairKey(currentUserId, otherUserId)
         const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
         const linkedConversation = conversationByPair.get(pairKey)
-        const locked = !canChat(profile?.plan, otherUser.plan)
 
         matchItemsByPair.set(pairKey, {
           id: match.id,
@@ -679,12 +538,12 @@ export default function MatchesPage() {
           conversationId: linkedConversation?.id || null,
           createdAt: match.created_at || null,
           isViewed: Boolean(match.is_viewed),
-          isLocked: locked,
         })
       })
 
       const cleanMatchItems = Array.from(matchItemsByPair.values())
 
+      // Build likes
       const likeItems = likeRows.map((like) => {
         const pairKey = getPairKey(currentUserId, like.liker_id)
         const linkedMatch = matchItemsByPair.get(pairKey)
@@ -702,22 +561,21 @@ export default function MatchesPage() {
         }
       })
 
+      // Sort
       conversationItems.sort((a, b) => {
-        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
-        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
-        return bTime - aTime
+        const aT = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
+        const bT = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
+        return bT - aT
       })
-
       cleanMatchItems.sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return bTime - aTime
+        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bT - aT
       })
-
       likeItems.sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return bTime - aTime
+        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bT - aT
       })
 
       setConversations(conversationItems)
@@ -734,43 +592,20 @@ export default function MatchesPage() {
     }
   }, [currentUserId, db, profile?.plan])
 
-  // Load data when userId is resolved
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  // Realtime subscription — refresh on changes to matches, likes, messages
+  // Realtime
   useEffect(() => {
     if (!currentUserId) return
 
     const channel = supabase
-      .channel(`matches-page-realtime-${currentUserId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'matches' },
-        () => {
-          console.log('[MATCHES] realtime matches change detected')
-          loadData()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'likes' },
-        () => {
-          console.log('[MATCHES] realtime likes change detected')
-          loadData()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages' },
-        () => loadData()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'conversations' },
-        () => loadData()
-      )
+      .channel(`matches-page-rt-${currentUserId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadData())
       .subscribe()
 
     return () => {
@@ -779,25 +614,23 @@ export default function MatchesPage() {
   }, [currentUserId, loadData, supabase])
 
   useEffect(() => {
-    if (tab === 'likes') {
-      void markReceivedLikesViewed()
-    }
+    if (tab === 'likes') void markReceivedLikesViewed()
   }, [markReceivedLikesViewed, tab])
 
+  // Open conversation — paywall check happens HERE
   const openConversation = async (
     otherUserId: string,
     existingConversationId?: string | null,
-    matchId?: string | null,
-    locked?: boolean
+    matchId?: string | null
   ) => {
     if (!currentUserId || !otherUserId) return
 
-    if (matchId) {
-      await markMatchViewed(matchId)
-    }
+    // Mark match as viewed regardless of plan
+    if (matchId) await markMatchViewed(matchId)
 
-    if (locked) {
-      toast.error('Conversation verrouillée. Passe Business pour discuter.')
+    // PAYWALL: block messaging for non-paid users
+    if (!userCanChat) {
+      setShowChatPaywall(true)
       return
     }
 
@@ -805,19 +638,12 @@ export default function MatchesPage() {
 
     try {
       if (existingConversationId) {
-        const { error: readError } = await db
+        await db
           .from('messages')
           .update({ is_read: true })
           .eq('conversation_id', existingConversationId)
           .neq('sender_id', currentUserId)
           .eq('is_read', false)
-
-        if (readError) {
-          console.error('[MATCHES] mark messages read error', {
-            conversationId: existingConversationId,
-            error: readError,
-          })
-        }
 
         refreshNotifications()
         router.push(`/chat/${existingConversationId}?type=match&userId=${otherUserId}`)
@@ -835,10 +661,6 @@ export default function MatchesPage() {
       }
 
       if (!conversationId) {
-        console.error('[MATCHES] get_or_create_conversation returned null', {
-          currentUserId,
-          otherUserId,
-        })
         toast.error('Conversation introuvable')
         return
       }
@@ -852,6 +674,10 @@ export default function MatchesPage() {
       setOpeningConversation(null)
     }
   }
+
+  // ─── RENDER ─────────────────────────────────────────────
+
+  const unviewedMatchCount = matches.filter((m) => !m.isViewed).length
 
   return (
     <div className="h-full flex flex-col bg-dark">
@@ -918,13 +744,8 @@ export default function MatchesPage() {
             ))}
           </div>
         ) : tab === 'matches' ? (
-          isFree ? (
-            <FreeMatchesView
-              matches={matches}
-              onUpgrade={() => handleCheckout('business')}
-              onMarkViewed={markMatchViewed}
-            />
-          ) : matches.length === 0 ? (
+          /* ── MATCHES TAB — visible for ALL plans, no blur ── */
+          matches.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
               <span className="text-5xl">⚔️</span>
               <div>
@@ -943,41 +764,31 @@ export default function MatchesPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`rounded-2xl ${
-                      item.isLocked ? 'bg-dark-200/50 border border-gold/10 p-1' : ''
-                    }`}
                   >
                     <button
                       type="button"
                       disabled={isOpening}
-                      onClick={() =>
-                        openConversation(item.otherUser.id, item.conversationId, item.id, item.isLocked)
-                      }
+                      onClick={() => openConversation(item.otherUser.id, item.conversationId, item.id)}
                       className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                     >
+                      {/* Avatar — always clear, never blurred */}
                       <div className="relative shrink-0">
                         <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
                           {item.otherUser.photos?.[0] ? (
                             <img
                               src={(item.otherUser.photos as string[])[0]}
-                              alt=""
-                              className={`w-full h-full object-cover ${
-                                item.isLocked ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
-                              }`}
+                              alt={item.otherUser.first_name || ''}
+                              className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div
-                              className={`w-full h-full flex items-center justify-center text-2xl ${
-                                item.isLocked ? 'blur-[10px] brightness-[0.5]' : ''
-                              }`}
-                            >
+                            <div className="w-full h-full flex items-center justify-center text-2xl">
                               👤
                             </div>
                           )}
                         </div>
 
                         <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          {item.isLocked ? <Lock size={10} /> : '✓'}
+                          ✓
                         </div>
 
                         {!item.isViewed && (
@@ -985,12 +796,12 @@ export default function MatchesPage() {
                         )}
                       </div>
 
+                      {/* Info — real name, real time, always visible */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {item.isLocked
-                              ? 'Match verrouille'
-                              : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                            {item.otherUser.first_name || 'Profil'}
+                            {item.otherUser.age ? `, ${item.otherUser.age}` : ''}
                           </p>
 
                           {item.createdAt && (
@@ -1001,22 +812,28 @@ export default function MatchesPage() {
                         </div>
 
                         <p className="text-white/40 text-sm truncate">
-                          {item.isLocked
-                            ? 'Les deux membres doivent etre Business'
-                            : isOpening
-                              ? 'Ouverture...'
-                              : 'Nouveau match ! Dis bonjour'}
+                          {isOpening
+                            ? 'Ouverture...'
+                            : userCanChat
+                              ? 'Nouveau match ! Dis bonjour'
+                              : 'Passe Business pour discuter'}
                         </p>
                       </div>
-                    </button>
 
-                    {item.isLocked && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
+                      {/* Lock icon hint for free users */}
+                      {!userCanChat && (
+                        <div className="shrink-0 w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center">
+                          <Lock size={14} className="text-gold/60" />
+                        </div>
+                      )}
+                    </button>
                   </motion.div>
                 )
               })}
             </div>
           )
         ) : tab === 'likes' ? (
+          /* ── LIKES TAB — blurred for non-Pro ── */
           !isBusinessPro ? (
             <FreeLikesView likes={likes} onUpgrade={() => handleCheckout('business_pro')} />
           ) : likes.length === 0 ? (
@@ -1031,7 +848,6 @@ export default function MatchesPage() {
             <div className="space-y-1 pt-2">
               {likes.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
-                const canOpen = item.conversationId
 
                 return (
                   <motion.div
@@ -1045,7 +861,7 @@ export default function MatchesPage() {
                       disabled={isOpening}
                       onClick={() => {
                         if (item.conversationId) {
-                          openConversation(item.otherUser.id, item.conversationId, null, false)
+                          openConversation(item.otherUser.id, item.conversationId, null)
                         }
                       }}
                       className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
@@ -1059,9 +875,7 @@ export default function MatchesPage() {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl">
-                              👤
-                            </div>
+                            <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
                           )}
                         </div>
                       </div>
@@ -1069,22 +883,16 @@ export default function MatchesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                            {item.otherUser.first_name || 'Profil'}
                           </p>
-
                           {item.createdAt && (
                             <span className="text-white/30 text-xs shrink-0 ml-2">
                               {formatTime(item.createdAt)}
                             </span>
                           )}
                         </div>
-
                         <p className="text-white/40 text-sm truncate">
-                          {isOpening
-                            ? 'Ouverture...'
-                            : canOpen
-                              ? "Cette personne t'a like"
-                              : 'Like recu'}
+                          {isOpening ? 'Ouverture...' : "Cette personne t'a like"}
                         </p>
                       </div>
                     </button>
@@ -1093,89 +901,150 @@ export default function MatchesPage() {
               })}
             </div>
           )
-        ) : isFree ? (
-          <FreeConversationsView
-            conversations={conversations}
-            onUpgrade={() => handleCheckout('business')}
-          />
-        ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
-            <span className="text-5xl">✉️</span>
-            <div>
-              <h3 className="font-semibold text-lg mb-1">Aucune conversation pour le moment</h3>
-              <p className="text-white/40 text-sm">
-                Tes conversations apparaitront ici quand les deux membres pourront discuter.
-              </p>
-            </div>
-          </div>
         ) : (
-          <div className="space-y-1 pt-2">
-            {conversations.map((item, index) => {
-              const lastMessage = item.lastMessage || 'Nouveau message'
-              const isOpening = openingConversation === item.otherUser.id
+          /* ── CONVERSATIONS TAB ── */
+          isFree ? (
+            <FreeConversationsView
+              conversations={conversations}
+              onUpgrade={() => handleCheckout('business')}
+            />
+          ) : conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
+              <span className="text-5xl">✉️</span>
+              <div>
+                <h3 className="font-semibold text-lg mb-1">Aucune conversation</h3>
+                <p className="text-white/40 text-sm">
+                  Tes conversations apparaitront ici apres un match.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1 pt-2">
+              {conversations.map((item, index) => {
+                const lastMessage = item.lastMessage || 'Nouveau message'
+                const isOpening = openingConversation === item.otherUser.id
 
-              return (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className={item.isLocked ? 'rounded-2xl bg-dark-200/50 border border-gold/10 p-1' : ''}
-                >
-                  <button
-                    type="button"
-                    disabled={isOpening}
-                    onClick={() => openConversation(item.otherUser.id, item.id, null, item.isLocked)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className={item.isLocked ? 'rounded-2xl bg-dark-200/50 border border-gold/10 p-1' : ''}
                   >
-                    <div className="relative shrink-0">
-                      <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
-                        {item.otherUser.photos?.[0] ? (
-                          <img
-                            src={(item.otherUser.photos as string[])[0]}
-                            alt=""
-                            className={`w-full h-full object-cover ${
-                              item.isLocked ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
-                            }`}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
-                        )}
+                    <button
+                      type="button"
+                      disabled={isOpening}
+                      onClick={() => openConversation(item.otherUser.id, item.id, null)}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
+                          {item.otherUser.photos?.[0] ? (
+                            <img
+                              src={(item.otherUser.photos as string[])[0]}
+                              alt=""
+                              className={`w-full h-full object-cover ${
+                                item.isLocked ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
+                              }`}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="font-semibold truncate">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="font-semibold truncate">
+                            {item.isLocked
+                              ? 'Conversation verrouillée'
+                              : item.otherUser.first_name || 'Profil'}
+                          </p>
+                          {item.lastMessageAt && (
+                            <span className="text-white/30 text-xs shrink-0 ml-2">
+                              {formatTime(item.lastMessageAt)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-white/40 text-sm truncate">
                           {item.isLocked
-                            ? 'Conversation verrouillée'
-                            : item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                            ? 'Passe Business pour discuter'
+                            : isOpening
+                              ? 'Ouverture...'
+                              : lastMessage}
                         </p>
-
-                        {item.lastMessageAt && (
-                          <span className="text-white/30 text-xs shrink-0 ml-2">
-                            {formatTime(item.lastMessageAt)}
-                          </span>
-                        )}
                       </div>
-
-                      <p className="text-white/40 text-sm truncate">
-                        {item.isLocked
-                          ? 'Les deux membres doivent etre Business'
-                          : isOpening
-                            ? 'Ouverture...'
-                            : lastMessage}
-                      </p>
-                    </div>
-                  </button>
-
-                  {item.isLocked && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
-                </motion.div>
-              )
-            })}
-          </div>
+                    </button>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )
         )}
       </div>
+
+      {/* ── Chat Paywall Modal ── */}
+      <AnimatePresence>
+        {showChatPaywall && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setShowChatPaywall(false)}
+              className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[91] max-w-sm mx-auto"
+            >
+              <div className="relative overflow-hidden rounded-[20px] border border-gold/20 bg-[#111111] shadow-[0_25px_70px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]">
+                <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.04] to-transparent pointer-events-none" />
+
+                <div className="relative px-6 pt-7 pb-6 text-center">
+                  <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center">
+                    <MessageCircle size={22} className="text-gold" />
+                  </div>
+
+                  <h3 className="text-[17px] font-bold text-white leading-snug">
+                    Messagerie reservee aux membres Business
+                  </h3>
+
+                  <p className="mt-2.5 text-[13px] leading-relaxed text-white/45 max-w-[260px] mx-auto">
+                    Passe a PAKT Business pour envoyer des messages a tes matchs et developper ton reseau.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChatPaywall(false)
+                      handleCheckout('business')
+                    }}
+                    className="mt-5 h-[46px] w-full rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[13.5px] font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_6px_30px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
+                  >
+                    Passer a PAKT Business
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowChatPaywall(false)}
+                    className="mt-2.5 h-[42px] w-full rounded-[12px] border border-white/10 bg-white/[0.04] text-white/50 text-[13px] font-medium hover:bg-white/[0.08] hover:text-white/70 transition-all"
+                  >
+                    Annuler
+                  </button>
+
+                  <p className="mt-3 text-[11px] text-white/20">Annulable a tout moment</p>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
