@@ -219,47 +219,45 @@ export default function SettingsPage() {
   )
 
     const plans = [
-  {
-    key: 'free' as const,
-    name: 'FREE',
-    price: 'Gratuit',
-    badge: 'FREE',
-    features: [
-      '10 swipes / jour',
-      '5 likes / jour',
-    ],
-  },
-  {
-    key: 'business' as const,
-    name: 'BUSINESS',
-    price: '5€',
-    suffix: '/mois',
-    badge: 'BUSINESS',
-    features: [
-      '20 swipes / jour',
-      '10 likes / jour',
-      '1 message / jour',
-      'Accès aux matchs',
-      'Messages illimités uniquement avec les matchs',
-    ],
-  },
-  {
-    key: 'business_pro' as const,
-    name: 'BUSINESS PRO',
-    price: '10€',
-    suffix: '/mois',
-    badge: 'PRO',
-    features: [
-  'Swipes illimités',
-  'Likes illimités',
-  'Messages illimités',
-  'Accès aux matchs',
-  'Voir les personnes qui vous ont liké',
-  'Filtres avancés (âge + distance)',
-  'Accès prioritaire aux événements',
-],
-  },
-]
+      {
+        key: 'free' as const,
+        name: 'FREE',
+        price: 'Gratuit',
+        badge: 'FREE',
+        features: [
+          'Swipes illimités',
+          'Likes illimités',
+          'Pas de messagerie',
+        ],
+      },
+      {
+        key: 'business' as const,
+        name: 'BUSINESS',
+        price: '5€',
+        suffix: '/mois',
+        badge: 'BUSINESS',
+        features: [
+          'Swipes illimités',
+          'Likes illimités',
+          'Messagerie (si les deux membres sont Business+)',
+          'Encourager les membres Free',
+        ],
+      },
+      {
+        key: 'business_pro' as const,
+        name: 'BUSINESS PRO',
+        price: '10€',
+        suffix: '/mois',
+        badge: 'PRO',
+        features: [
+          'Tout Business inclus',
+          'Voir qui vous a liké',
+          'Retour en arrière (annuler un swipe)',
+          'Filtres avancés (âge + distance)',
+          'Accès prioritaire aux événements',
+        ],
+      },
+    ]
   const getPlanButton = (plan: PlanKey) => {
     if (plan === 'free') return null
 
@@ -453,9 +451,64 @@ export default function SettingsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.18 }}
-                className="py-16 flex items-center justify-center"
+                className="space-y-4 pb-32"
               >
-                <p className="text-white/50 text-sm">Très prochainement</p>
+                <div className="text-center py-3">
+                  <span className="text-xs font-bold text-gold/60 tracking-widest uppercase">Changelog beta</span>
+                </div>
+
+                {[
+                  {
+                    version: 'v1.2.0-beta',
+                    date: '13 mai 2025',
+                    changes: [
+                      'Nouveau bouton retour arrière (Business Pro)',
+                      'Suppression du bouton message sur le swipe',
+                      'Nouveau layout des boutons : annuler / dislike / like',
+                      'Mise à jour des plans et fonctionnalités',
+                      'Nouveau changelog dans les Actus',
+                    ],
+                  },
+                  {
+                    version: 'v1.1.0-beta',
+                    date: '8 mai 2025',
+                    changes: [
+                      'Validation de qualité des photos (400x400px min)',
+                      'Nouveau système de plans : Free / Business / Business Pro',
+                      'Les deux membres doivent être Business+ pour discuter',
+                      'Suppression des limites de swipes et likes quotidiens',
+                      'Système d\'encouragement pour inviter les membres Free',
+                    ],
+                  },
+                  {
+                    version: 'v1.0.0-beta',
+                    date: '1 mai 2025',
+                    changes: [
+                      'Lancement de PAKT en version beta',
+                      'Swipe, matchs, conversations',
+                      'Profils avec photos et centres d\'intérêt',
+                      'Plans gratuit et premium',
+                    ],
+                  },
+                ].map((release) => (
+                  <div
+                    key={release.version}
+                    className="bg-dark-200 border border-dark-500 rounded-[12px] p-5"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-bold text-gold">{release.version}</span>
+                      <span className="text-xs text-white/30">{release.date}</span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {release.changes.map((change, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-white/60">
+                          <span className="text-gold/60 mt-0.5 shrink-0">&#x2022;</span>
+                          {change}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </motion.div>
             )}
 
@@ -493,7 +546,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.0.0</div>
+      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.2.0-beta</div>
     </div>
   )
 }

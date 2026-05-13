@@ -146,6 +146,8 @@ function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
       >
         Passer Business
       </button>
+
+      <p className="mt-2 text-[11px] text-white/20">Annulable à tout moment</p>
     </div>
   )
 }
@@ -179,6 +181,8 @@ function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
         >
           Passer Business Pro
         </button>
+
+        <p className="mt-3 text-[11px] text-white/20">Annulable à tout moment</p>
       </div>
     </motion.div>
   )
@@ -290,9 +294,9 @@ function FreeMatchesView({
   matches: MatchItem[]
   onUpgrade: () => void
 }) {
-  // Pad to at least 8 visible rows
-  const minRows = 8
-  const ghostCount = Math.max(0, minRows - matches.length)
+  // Pad ghost rows: if user has real data, just fill to 6. If no data, show 4 ghosts max.
+  const targetRows = matches.length > 0 ? 6 : 4
+  const ghostCount = Math.max(0, targetRows - matches.length)
 
   return (
     <div className="space-y-0 pt-2 select-none">
@@ -312,7 +316,7 @@ function FreeMatchesView({
                     <img
                       src={(item.otherUser.photos as string[])[0]}
                       alt=""
-                      className="w-full h-full object-cover blur-[14px] scale-[1.3] brightness-[0.5] saturate-0"
+                      className="w-full h-full object-cover blur-[12px] scale-[1.25] brightness-[0.6] saturate-[0.6]"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
@@ -361,8 +365,8 @@ function FreeConversationsView({
   conversations: ConversationItem[]
   onUpgrade: () => void
 }) {
-  const minRows = 8
-  const ghostCount = Math.max(0, minRows - conversations.length)
+  const targetRows = conversations.length > 0 ? 6 : 4
+  const ghostCount = Math.max(0, targetRows - conversations.length)
 
   // Check if a conversation's last message looks like an encouragement
   const isEncourageMessage = (msg: string | null) => {
@@ -397,7 +401,7 @@ function FreeConversationsView({
                         className={`w-full h-full object-cover ${
                           hasEncourage
                             ? 'blur-[8px] scale-[1.2] brightness-[0.65] saturate-50'
-                            : 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-0'
+                            : 'blur-[12px] scale-[1.25] brightness-[0.6] saturate-[0.6]'
                         }`}
                       />
                     ) : (

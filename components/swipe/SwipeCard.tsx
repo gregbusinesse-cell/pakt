@@ -4,13 +4,14 @@
 
 import { useState } from 'react'
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion'
-import { Heart, MessageCircle, X } from 'lucide-react'
+import { Heart, Undo2, X } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
 
 interface Props {
   profile: Profile
   onSwipe: (dir: 'left' | 'right') => void
-  onMessage?: () => void
+  onUndo?: () => void
+  canUndo?: boolean
   disabledActions?: boolean
   hasLikedYou?: boolean
   zIndex?: number
@@ -46,7 +47,8 @@ function cleanStringArray(value: unknown): string[] {
 export default function SwipeCard({
   profile,
   onSwipe,
-  onMessage,
+  onUndo,
+  canUndo = false,
   disabledActions = false,
   hasLikedYou,
   zIndex = 0,
@@ -114,9 +116,9 @@ export default function SwipeCard({
     onSwipe(dir)
   }
 
-  const handleMessage = () => {
+  const handleUndo = () => {
     if (disabledActions) return
-    onMessage?.()
+    onUndo?.()
   }
 
   const actionButtonBase =
@@ -187,6 +189,22 @@ export default function SwipeCard({
               {isTop && !isOwnProfile && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
                   <div className="flex items-center justify-center gap-5">
+                    {/* Undo (left) */}
+                    <motion.button
+                      type="button"
+                      onClick={handleUndo}
+                      disabled={disabledActions || !canUndo}
+                      whileHover={{ scale: 1.06, y: -2 }}
+                      whileTap={{ scale: 0.94 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                      className={`${actionButtonBase} bg-black/55 border border-white/15 shadow-[0_18px_45px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)] hover:border-white/25`}
+                      aria-label="Retour"
+                    >
+                      <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/10 to-transparent opacity-70" />
+                      <Undo2 size={24} strokeWidth={2.1} className="relative text-white/70" />
+                    </motion.button>
+
+                    {/* Dislike (middle) */}
                     <motion.button
                       type="button"
                       onClick={() => swipeManual('left')}
@@ -201,20 +219,7 @@ export default function SwipeCard({
                       <X size={28} strokeWidth={2.1} className="relative text-red-300" />
                     </motion.button>
 
-                    <motion.button
-                      type="button"
-                      onClick={handleMessage}
-                      disabled={disabledActions}
-                      whileHover={{ scale: 1.06, y: -2 }}
-                      whileTap={{ scale: 0.94 }}
-                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-                      className={`${actionButtonBase} bg-[#121212]/72 border border-gold/25 shadow-[0_18px_45px_rgba(0,0,0,0.48),0_0_24px_rgba(212,168,83,0.12),inset_0_1px_0_rgba(255,255,255,0.10)] hover:border-gold/45`}
-                      aria-label="Message"
-                    >
-                      <span className="absolute inset-0 rounded-full bg-gradient-to-b from-white/12 to-transparent opacity-70" />
-                      <MessageCircle size={27} strokeWidth={2} className="relative text-gold" />
-                    </motion.button>
-
+                    {/* Like (right) */}
                     <motion.button
                       type="button"
                       onClick={() => swipeManual('right')}

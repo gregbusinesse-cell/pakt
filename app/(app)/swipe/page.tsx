@@ -53,6 +53,8 @@ export default function SwipePage() {
   const [loading, setLoading] = useState(true)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
   const [showMatch, setShowMatch] = useState(false)
+  const [lastSwipedProfile, setLastSwipedProfile] = useState<Profile | null>(null)
+  const [lastSwipeDir, setLastSwipeDir] = useState<'left' | 'right' | null>(null)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -341,6 +343,10 @@ export default function SwipePage() {
         return
       }
 
+      // Save for undo
+      setLastSwipedProfile(swipedProfile)
+      setLastSwipeDir(dir)
+
       // Remove from stack
       setProfiles((prev) => {
         const next = prev.filter((item) => item.id !== swipedProfile.id)
@@ -421,18 +427,49 @@ export default function SwipePage() {
     }
   }
 
-  const handleMessageTap = async () => {
-    if (!currentProfile || !profile) return
+  const handleUndo = async () => {
+    if (!sessionUserId || !lastSwipedProfile) return
 
-    const myPlan = normalizePlan(profile.plan)
-
-    if (!isPaidPlan(myPlan)) {
-      toast.error('Passe Business pour envoyer des messages.')
+    if (!isPro) {
+      toast.error('Le retour en arrière est réservé aux membres Business Pro.')
       router.push('/settings')
       return
     }
 
-    router.push(`/chat/new?userId=${currentProfile.id}&type=direct`)
+    try {
+      // Delete the swipe record
+      await db
+        .from('swipes')
+        .delete()
+        .eq('swiper_id', sessionUserId)
+        .eq('target_id', lastSwipedProfile.id)
+
+      // If it was a like, also remove the like
+      if (lastSwipeDir === 'right') {
+        await db
+          .from('likes')
+          .delete()
+          .eq('liker_id', sessionUserId)
+          .eq('liked_id', lastSwipedProfile.id)
+
+        // Remove match if one was created
+        const [user1_id, user2_id] = [sessionUserId, lastSwipedProfile.id].sort()
+        await db
+          .from('matches')
+          .delete()
+          .eq('user1_id', user1_id)
+          .eq('user2_id', user2_id)
+      }
+
+      // Re-insert the profile at the front of the stack
+      setProfiles((prev) => [lastSwipedProfile, ...prev])
+      setLastSwipedProfile(null)
+      setLastSwipeDir(null)
+      toast.success('Swipe annulé !')
+    } catch (error) {
+      console.error('[SWIPE] undo error', error)
+      toast.error('Erreur lors de l\'annulation')
+    }
   }
 
   return (
@@ -467,13 +504,14 @@ export default function SwipePage() {
                       if (!isTop) return
                       handleSwipe(swipeDirection, item)
                     }}
+                    onUndo={() => {
+                      if (!isTop) return
+                      handleUndo()
+                    }}
+                    canUndo={Boolean(lastSwipedProfile) && isPro}
                     hasLikedYou={likedMeIds.has(item.id)}
                     zIndex={zIndex}
                     isTop={isTop}
-                    onMessage={() => {
-                      if (!isTop) return
-                      handleMessageTap()
-                    }}
                   />
                 </div>
               )
