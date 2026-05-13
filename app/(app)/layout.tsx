@@ -153,10 +153,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       if (!mounted) return
 
       if (!session?.user) {
+        console.log('[APP_LAYOUT] no session in initAuth — waiting for auth state')
         setUserId(null)
         setProfile(null)
         setAuthLoading(false)
-        router.replace('/auth')
+        // Don't redirect here — server-side page.tsx already handles this.
+        // Redirecting here causes loops when cookies are being synced by middleware.
         return
       }
 
@@ -181,10 +183,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
 
-      if (!session?.user) {
+      console.log('[APP_LAYOUT] onAuthStateChange:', event, Boolean(session))
+
+      // Only react to actual sign-out, not INITIAL_SESSION
+      // The server-side page.tsx already handles redirect to /auth for unauthenticated users
+      if (event === 'SIGNED_OUT') {
         setUserId(null)
         setProfile(null)
         setAuthLoading(false)
@@ -192,7 +198,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         return
       }
 
-      setUserId(session.user.id)
+      if (session?.user) {
+        setUserId(session.user.id)
+      }
     })
 
     return () => {
