@@ -10,7 +10,9 @@ interface AppState {
   activeTab: 'swipe' | 'matches' | 'profile' | 'settings'
   setActiveTab: (tab: 'swipe' | 'matches' | 'profile' | 'settings') => void
 
+  /** @deprecated — no longer used, swipes are unlimited */
   swipesLeft: number
+  /** @deprecated — no longer used, swipes are unlimited */
   setSwipesLeft: (n: number) => void
 
   notificationsVersion: number

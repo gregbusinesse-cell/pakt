@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { useSession } from '@supabase/auth-helpers-react'
-import { INTERESTS, MAX_PHOTOS } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, validatePhoto } from '@/lib/utils'
 import { X, Plus, ChevronRight, ChevronLeft, MapPin } from 'lucide-react'
 import { getStoredRef, clearStoredRef } from '@/components/providers/RefCaptureProvider'
 
@@ -434,10 +434,21 @@ export default function OnboardingPage() {
     }))
   }
 
+  const [photoValidating, setPhotoValidating] = useState(false)
+
   const onDrop = useCallback(
-    (files: File[]) => {
+    async (files: File[]) => {
       const file = files[0]
       if (!file) return
+
+      setPhotoValidating(true)
+      const result = await validatePhoto(file)
+      setPhotoValidating(false)
+
+      if (!result.valid) {
+        toast.error(result.reason || 'Photo invalide')
+        return
+      }
 
       const url = URL.createObjectURL(file)
 
@@ -862,8 +873,16 @@ export default function OnboardingPage() {
               <div className="flex flex-col gap-5 pt-4">
                 <div>
                   <h2 className="text-3xl font-bold mb-1">Tes photos 📸</h2>
-                  <p className="text-white/50">Ajoute jusqu'à {MAX_PHOTOS} photos (min 1)</p>
+                  <p className="text-white/50">Ajoute jusqu&apos;à {MAX_PHOTOS} photos (min 1)</p>
+                  <p className="text-white/30 text-xs mt-1">Minimum 400×400px · JPG, PNG ou WebP</p>
                 </div>
+
+                {photoValidating && (
+                  <div className="flex items-center gap-2 text-gold text-sm">
+                    <div className="w-4 h-4 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+                    Vérification de la photo...
+                  </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-3 w-full max-w-[650px] mx-auto">
                   {visiblePhotoSlots.map((url, idx) => {

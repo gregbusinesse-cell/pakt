@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // app/(app)/matches/page.tsx
 
@@ -8,7 +8,7 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { formatTime, normalizePlan } from '@/lib/utils'
+import { formatTime, normalizePlan, isPaidPlan as isPaidPlanUtil, canChat } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
 import { MessageCircle, Users, Crown, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -73,8 +73,7 @@ function getPairKey(a: string, b: string) {
 }
 
 function isPaidPlan(plan: unknown) {
-  const normalized = normalizePlan(plan)
-  return normalized === 'business' || normalized === 'business_pro'
+  return isPaidPlanUtil(plan)
 }
 
 function formatLastMessage(
@@ -137,7 +136,7 @@ function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
 
       <p className="text-sm font-semibold text-white">Match verrouillé</p>
       <p className="mt-1 text-xs leading-relaxed text-white/50">
-        Deux comptes Free ont matché. Passe Business pour débloquer ce match et discuter.
+        Les deux membres doivent avoir au minimum PAKT Business pour échanger. Passe Business pour débloquer.
       </p>
 
       <button
@@ -630,7 +629,7 @@ export default function MatchesPage() {
         const pairKey = getPairKey(currentUserId, otherUserId)
         const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
         const linkedConversation = conversationByPair.get(pairKey)
-        const locked = !currentUserIsPaid && !isPaidPlan(otherUser.plan)
+        const locked = !canChat(profile?.plan, otherUser.plan)
 
         matchItemsByPair.set(pairKey, {
           id: match.id,
@@ -910,7 +909,7 @@ export default function MatchesPage() {
 
                         <p className="text-white/40 text-sm truncate">
                           {item.isLocked
-                            ? 'Passe Business pour débloquer ce match'
+                            ? 'Les deux membres doivent être Business'
                             : isOpening
                             ? 'Ouverture...'
                             : '🎉 Nouveau match ! Dis bonjour'}
@@ -993,7 +992,7 @@ export default function MatchesPage() {
                           {isOpening
                             ? 'Ouverture...'
                             : canOpen
-                            ? 'Cette personne t’a liké'
+                            ? 'Cette personne t\'a liké'
                             : 'Like reçu'}
                         </p>
                       </div>

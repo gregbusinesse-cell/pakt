@@ -5,9 +5,10 @@ import { twMerge } from 'tailwind-merge'
 
 export type PlanKey = 'free' | 'business' | 'business_pro'
 
+/** @deprecated — swipe/like limits removed. Free = unlimited swipes & likes, no messaging. */
 export const limits: Record<PlanKey, { swipes: number; messages: number; likes: number }> = {
-  free: { swipes: 10, messages: 0, likes: 5 },
-  business: { swipes: 20, messages: 1, likes: 10 },
+  free: { swipes: Infinity, messages: 0, likes: Infinity },
+  business: { swipes: Infinity, messages: Infinity, likes: Infinity },
   business_pro: { swipes: Infinity, messages: Infinity, likes: Infinity },
 }
 
@@ -17,8 +18,87 @@ export function normalizePlan(plan: unknown): PlanKey {
   return 'free'
 }
 
+/** Returns true if the plan grants messaging access (Business or Business Pro). */
+export function isPaidPlan(plan: unknown): boolean {
+  const p = normalizePlan(plan)
+  return p === 'business' || p === 'business_pro'
+}
+
+/**
+ * Returns true if BOTH users can chat together.
+ * Messaging requires both users to have at least Business.
+ */
+export function canChat(myPlan: unknown, otherPlan: unknown): boolean {
+  return isPaidPlan(myPlan) && isPaidPlan(otherPlan)
+}
+
 export function getTodayKey() {
   return new Date().toISOString().split('T')[0]
+}
+
+// ─── Photo validation ──────────────────────────────────────────────
+export const PHOTO_MIN_WIDTH = 400
+export const PHOTO_MIN_HEIGHT = 400
+export const PHOTO_MIN_SIZE_KB = 30
+export const PHOTO_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+
+export interface PhotoValidationResult {
+  valid: boolean
+  reason?: string
+}
+
+/**
+ * Validates an image file before upload.
+ * Checks: format, minimum file size, minimum dimensions.
+ */
+export function validatePhoto(file: File): Promise<PhotoValidationResult> {
+  return new Promise((resolve) => {
+    // Check format
+    if (!PHOTO_ACCEPTED_TYPES.includes(file.type) && !file.name.match(/\.(jpe?g|png|webp|heic|heif)$/i)) {
+      resolve({
+        valid: false,
+        reason: 'Format non supporté. Utilise un fichier JPG, PNG ou WebP.',
+      })
+      return
+    }
+
+    // Check minimum file size (very small files = likely corrupt or thumbnail)
+    if (file.size < PHOTO_MIN_SIZE_KB * 1024) {
+      resolve({
+        valid: false,
+        reason: `Cette photo est trop légère (${formatFileSize(file.size)}). Utilise une photo de meilleure qualité pour un rendu optimal.`,
+      })
+      return
+    }
+
+    // Check dimensions via Image object
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+
+      if (img.naturalWidth < PHOTO_MIN_WIDTH || img.naturalHeight < PHOTO_MIN_HEIGHT) {
+        resolve({
+          valid: false,
+          reason: `Cette photo est trop petite (${img.naturalWidth}×${img.naturalHeight}px). Pour un rendu net, utilise une photo d'au moins ${PHOTO_MIN_WIDTH}×${PHOTO_MIN_HEIGHT}px.`,
+        })
+        return
+      }
+
+      resolve({ valid: true })
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve({
+        valid: false,
+        reason: 'Impossible de lire cette image. Le fichier est peut-être corrompu.',
+      })
+    }
+
+    img.src = url
+  })
 }
 
 export function cn(...inputs: ClassValue[]) {

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // components/chat/ChatView.tsx
 
@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Message, Profile } from '@/lib/supabase/types'
-import { formatTime, formatFileSize, limits, normalizePlan, getTodayKey } from '@/lib/utils'
+import { formatTime, formatFileSize, normalizePlan, isPaidPlan, canChat } from '@/lib/utils'
 import {
   Send,
   Paperclip,
@@ -32,10 +32,7 @@ interface Props {
   otherUser: Profile
 }
 
-type ProfileWithLimits = Profile & {
-  messages_today?: number | null
-  last_message_date?: string | null
-}
+type ProfileWithLimits = Profile
 
 const MIN_AUDIO_SIZE_BYTES = 3000
 const MIN_RECORDING_MS = 900
@@ -137,11 +134,12 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const ignoreMouseUntilRef = useRef(0)
 
   const currentUserId = session?.user?.id
-  const todayKey = getTodayKey()
   const myPlan = normalizePlan(profile?.plan)
   const otherPlan = normalizePlan(otherUser.plan)
-  const isDirectSwipeMessage = conversationType === 'direct' && !hasMatchWithOtherUser
-  const canEncourage = (myPlan === 'business' || myPlan === 'business_pro') && otherPlan === 'free'
+  const bothCanChat = canChat(myPlan, otherPlan)
+  const iAmPaid = isPaidPlan(myPlan)
+  const otherIsFree = otherPlan === 'free'
+  const canEncourage = iAmPaid && otherIsFree
 
   const sendEncouragement = async () => {
     if (!currentUserId || !conversationId || encourageSending || encourageCooldown) return
@@ -235,111 +233,13 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     loadMatchStatus()
   }, [currentUserId, db, otherUser?.id])
 
-  const getFreshMessageLimits = useCallback(async () => {
-    if (!currentUserId) {
-      throw new Error('Session manquante')
+  const assertCanSendMessage = () => {
+    if (!iAmPaid) {
+      throw new Error('Passe à PAKT Business pour débloquer les conversations.')
     }
 
-    const { data, error } = await db
-      .from('profiles')
-      .select('plan, messages_today, last_message_date')
-      .eq('id', currentUserId)
-      .single()
-
-    if (error || !data) {
-      throw new Error('Profil introuvable')
-    }
-
-    const plan = normalizePlan(data.plan)
-    const planLimits = limits[plan]
-    const needsReset = data.last_message_date !== todayKey
-    const messagesToday = needsReset ? 0 : data.messages_today || 0
-
-    if (needsReset) {
-      const { error: resetError } = await db
-        .from('profiles')
-        .update({
-          messages_today: 0,
-          last_message_date: todayKey,
-        })
-        .eq('id', currentUserId)
-
-      if (resetError) throw resetError
-
-      if (profile) {
-        setProfile({
-          ...profile,
-          messages_today: 0,
-          last_message_date: todayKey,
-        } as any)
-      }
-    }
-
-    return {
-      plan,
-      messagesToday,
-      messageLimit: planLimits.messages,
-    }
-  }, [currentUserId, db, profile, setProfile, todayKey])
-
-  const incrementMessageCounter = useCallback(
-    async (currentMessagesToday: number) => {
-      if (!currentUserId) return
-
-      const nextMessagesToday = currentMessagesToday + 1
-
-      const { error } = await db
-        .from('profiles')
-        .update({
-          messages_today: nextMessagesToday,
-          last_message_date: todayKey,
-        })
-        .eq('id', currentUserId)
-
-      if (error) {
-        console.error('[CHAT] message counter update error', error)
-        return
-      }
-
-      if (profile) {
-        setProfile({
-          ...profile,
-          messages_today: nextMessagesToday,
-          last_message_date: todayKey,
-        } as any)
-      }
-    },
-    [currentUserId, db, profile, setProfile, todayKey]
-  )
-
-  const assertCanSendMessage = async () => {
-    if (hasMatchWithOtherUser) {
-      if (myPlan === 'free' && otherPlan === 'free') {
-        throw new Error('Ce match est verrouillé. Passez Business pour discuter avec ce profil.')
-      }
-
-      return {
-        shouldIncrementDirectCounter: false,
-        messagesToday: 0,
-      }
-    }
-
-    const freshLimits = await getFreshMessageLimits()
-
-    if (freshLimits.messageLimit === 0) {
-      throw new Error('Les messages depuis le swipe sont réservés au plan Business.')
-    }
-
-    if (
-      freshLimits.messageLimit !== Infinity &&
-      freshLimits.messagesToday >= freshLimits.messageLimit
-    ) {
-      throw new Error('Limite de message swipe atteinte pour aujourd’hui.')
-    }
-
-    return {
-      shouldIncrementDirectCounter: freshLimits.messageLimit !== Infinity,
-      messagesToday: freshLimits.messagesToday,
+    if (!isPaidPlan(otherPlan)) {
+      throw new Error('Ce membre est en plan Free. Envoie-lui un encouragement pour l\'inviter à passer Business.')
     }
   }
 
@@ -449,7 +349,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setSending(true)
 
     try {
-      const permission = await assertCanSendMessage()
+      assertCanSendMessage()
 
       let fileUrl: string | undefined
       let fileName: string | undefined
@@ -493,10 +393,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         return
       }
 
-      if (permission.shouldIncrementDirectCounter) {
-        await incrementMessageCounter(permission.messagesToday)
-      }
-
       setMessages((prev) => {
         const nextMessage = insertedMessage as Message
         if (prev.some((item) => item.id === nextMessage.id)) return prev
@@ -516,7 +412,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     if (recordingRef.current || stoppingRef.current || sending) return
 
     try {
-      await assertCanSendMessage()
+      assertCanSendMessage()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur profil')
       return
@@ -559,7 +455,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       }
 
       recorder.onerror = () => {
-        toast.error('Erreur pendant l’enregistrement audio')
+        toast.error('Erreur pendant l\'enregistrement audio')
         cleanupRecorder()
       }
 
@@ -655,7 +551,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setShowAttachMenu(false)
   }
 
-  const inputLocked = myPlan === 'free' && otherPlan === 'free' && hasMatchWithOtherUser
+  const inputLocked = !bothCanChat
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-dark">
@@ -748,9 +644,11 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           </div>
         )}
 
-        {inputLocked && (
+        {inputLocked && !canEncourage && (
           <p className="mb-2 text-center text-xs text-white/45">
-            Ce match est verrouillé avec le plan Free.
+            {!iAmPaid
+              ? 'Passe à PAKT Business pour débloquer les conversations.'
+              : 'Ce membre doit passer Business pour pouvoir échanger.'}
           </p>
         )}
 
@@ -799,7 +697,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={inputLocked ? 'Passe Business pour débloquer ce match' : 'Message...'}
+            placeholder={inputLocked ? (iAmPaid ? 'En attente du plan Business de ce membre' : 'Passe Business pour débloquer') : 'Message...'}
             rows={1}
             disabled={inputLocked}
             className="flex-1 min-h-[44px] bg-dark-300 rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold/30 resize-none text-sm max-h-24 overflow-y-auto disabled:opacity-50"

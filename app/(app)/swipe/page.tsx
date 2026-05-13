@@ -9,8 +9,8 @@ import { motion } from 'framer-motion'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import MatchModal from '@/components/swipe/MatchModal'
 import type { Profile } from '@/lib/supabase/types'
-import { limits, normalizePlan, getTodayKey } from '@/lib/utils'
-import { Crown, RefreshCw, Lock } from 'lucide-react'
+import { normalizePlan, isPaidPlan } from '@/lib/utils'
+import { RefreshCw, Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
@@ -33,61 +33,11 @@ function deterministicShuffle(items: Profile[], seed: string): Profile[] {
 type ProfileWithLocation = Profile & {
   city_lat?: number | null
   city_lng?: number | null
-  messages_today?: number | null
-  likes_today?: number | null
-  last_message_date?: string | null
-  last_like_date?: string | null
   preferences?: {
     distance_km?: number
     age_min?: number
     age_max?: number
   } | null
-}
-
-function PaywallModal({
-  open,
-  onClose,
-  onUpgrade,
-}: {
-  open: boolean
-  onClose: () => void
-  onUpgrade: () => void
-}) {
-  if (!open) return null
-
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-
-      <div className="absolute inset-0 flex items-center justify-center px-5">
-        <div className="w-full max-w-md bg-dark-200 border border-dark-500 rounded-[12px] p-5">
-          <h3 className="text-white font-semibold text-lg">Débloquer plus de possibilités</h3>
-
-          <p className="text-white/60 text-sm mt-2 leading-relaxed">
-            Votre plan actuel ne permet pas cette action. Passez à un plan supérieur pour continuer.
-          </p>
-
-          <div className="mt-5 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={onUpgrade}
-              className="h-[48px] w-full flex items-center justify-center rounded-[12px] bg-gold text-dark font-bold hover:bg-gold-light transition-colors"
-            >
-              Voir les plans
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-[48px] w-full flex items-center justify-center rounded-[12px] border border-dark-500 bg-[#1e1e1e] text-white/70 hover:text-white hover:border-dark-400 transition-colors"
-            >
-              Plus tard
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 export default function SwipePage() {
@@ -103,18 +53,14 @@ export default function SwipePage() {
   const [loading, setLoading] = useState(true)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
   const [showMatch, setShowMatch] = useState(false)
-  const [paywallOpen, setPaywallOpen] = useState(false)
-  const [lastSeenProfile, setLastSeenProfile] = useState<Profile | null>(null)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
   const sessionProvider = session?.user?.app_metadata?.provider
   const sessionEmailConfirmedAt = session?.user?.email_confirmed_at
 
-  const todayKey = getTodayKey()
+  const todayKey = new Date().toISOString().split('T')[0]
   const plan = normalizePlan(profile?.plan)
-  const planLimits = limits[plan]
-  const isFree = plan === 'free'
   const isPro = plan === 'business_pro'
 
   const userLat = profileWithLocation?.city_lat ?? null
@@ -123,59 +69,7 @@ export default function SwipePage() {
   const ageMin = isPro ? profileWithLocation?.preferences?.age_min ?? 18 : 18
   const ageMax = isPro ? profileWithLocation?.preferences?.age_max ?? 99 : 99
 
-  const profileSwipesToday =
-    profile?.last_swipe_date === todayKey ? profile?.swipes_today || 0 : 0
-
-  const reachedSwipeLimit =
-    planLimits.swipes !== Infinity && profileSwipesToday >= planLimits.swipes
-
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
-
-  const openPaywall = useCallback(() => {
-    setPaywallOpen(true)
-  }, [])
-
-  const syncDailyCounters = useCallback(async () => {
-    if (!sessionUserId || !profile) return
-
-    const updates: Record<string, number | string> = {}
-
-    if (profile.last_swipe_date !== todayKey) {
-      updates.swipes_today = 0
-      updates.last_swipe_date = todayKey
-    }
-
-    if (profileWithLocation?.last_message_date !== todayKey) {
-      updates.messages_today = 0
-      updates.last_message_date = todayKey
-    }
-
-    if (profileWithLocation?.last_like_date !== todayKey) {
-      updates.likes_today = 0
-      updates.last_like_date = todayKey
-    }
-
-    if (Object.keys(updates).length === 0) return
-
-    setProfile({
-      ...profile,
-      ...updates,
-    })
-
-    const { error } = await db.from('profiles').update(updates).eq('id', sessionUserId)
-
-    if (error) {
-      console.error('[SWIPE] daily counters reset error', error)
-    }
-  }, [
-    db,
-    profile,
-    profileWithLocation?.last_message_date,
-    profileWithLocation?.last_like_date,
-    sessionUserId,
-    setProfile,
-    todayKey,
-  ])
 
   const getOrCreateConversation = useCallback(
     async (otherUserId: string) => {
@@ -379,11 +273,7 @@ export default function SwipePage() {
     }
   }, [router, supabase])
 
-  useEffect(() => {
-    if (!sessionUserId) return
-    void syncDailyCounters()
-  }, [sessionUserId, syncDailyCounters])
-
+  // Auto-confirm email for Google users
   useEffect(() => {
     if (!sessionUserId) return
     if (sessionProvider !== 'google') return
@@ -427,42 +317,9 @@ export default function SwipePage() {
   const stackForRender = profiles.slice(0, STACK_RENDER_COUNT).slice().reverse()
   const showInitialLoading = loading && profiles.length === 0
 
-  // Track last visible profile for limit overlay fallback
-  if (currentProfile && currentProfile.id !== lastSeenProfile?.id) {
-    setLastSeenProfile(currentProfile)
-  }
-
-  // Profile to show behind blur when limit reached but stack is empty
-  const limitFallbackProfile = reachedSwipeLimit && profiles.length === 0 ? lastSeenProfile : null
-
   const handleSwipe = async (dir: 'left' | 'right', swipedProfile: Profile) => {
     if (!sessionUserId || !profile || !swipedProfile?.id) {
       toast.error('Swipe impossible')
-      return
-    }
-
-    const latestPlan = normalizePlan(profile.plan)
-    const otherPlan = normalizePlan(swipedProfile.plan)
-    const latestLimits = limits[latestPlan]
-    const latestSwipesToday =
-      profile.last_swipe_date === todayKey ? profile.swipes_today || 0 : 0
-    const latestLikesToday =
-      (profile as ProfileWithLocation).last_like_date === todayKey
-        ? (profile as ProfileWithLocation).likes_today || 0
-        : 0
-
-    if (latestLimits.swipes !== Infinity && latestSwipesToday >= latestLimits.swipes) {
-      openPaywall()
-      return
-    }
-
-    if (dir === 'right' && latestLimits.likes !== Infinity && latestLikesToday >= latestLimits.likes) {
-      toast.error(
-        latestPlan === 'free'
-          ? 'Limite quotidienne atteinte. Passez Business pour envoyer plus de likes.'
-          : 'Passez Business Pro pour des likes illimités.'
-      )
-      openPaywall()
       return
     }
 
@@ -484,44 +341,16 @@ export default function SwipePage() {
         return
       }
 
-      const newSwipesCount = latestSwipesToday + 1
-      if (latestLimits.swipes !== Infinity && newSwipesCount >= latestLimits.swipes) {
-  setTimeout(() => {
-    loadProfiles()
-  }, 50)
-}
-      const updatedProfile = {
-        ...profile,
-        swipes_today: newSwipesCount,
-        last_swipe_date: todayKey,
-      }
-
-      setProfile(updatedProfile)
-
-      const { error: profileUpdateError } = await db
-        .from('profiles')
-        .update({
-          swipes_today: newSwipesCount,
-          last_swipe_date: todayKey,
-        })
-        .eq('id', sessionUserId)
-
-      if (profileUpdateError) {
-        console.error('[SWIPE] profile swipe count update error', profileUpdateError)
-      }
-
+      // Remove from stack
       setProfiles((prev) => {
-  if (newSwipesCount >= latestLimits.swipes) {
-    return []
-  }
-
-  const next = prev.filter((item) => item.id !== swipedProfile.id)
+        const next = prev.filter((item) => item.id !== swipedProfile.id)
         if (next[0]) void recordProfileView(next[0].id)
         return next
       })
 
       if (dir !== 'right') return
 
+      // Record like
       const { error: likeError } = await db.from('likes').upsert(
         {
           liker_id: sessionUserId,
@@ -539,28 +368,7 @@ export default function SwipePage() {
         return
       }
 
-      if (latestLimits.likes !== Infinity) {
-        const newLikesCount = latestLikesToday + 1
-
-        setProfile({
-          ...updatedProfile,
-          likes_today: newLikesCount,
-          last_like_date: todayKey,
-        } as any)
-
-        const { error: likeCountUpdateError } = await db
-          .from('profiles')
-          .update({
-            likes_today: newLikesCount,
-            last_like_date: todayKey,
-          })
-          .eq('id', sessionUserId)
-
-        if (likeCountUpdateError) {
-          console.error('[SWIPE] profile like count update error', likeCountUpdateError)
-        }
-      }
-
+      // Check for mutual like (match)
       const { data: mutualLike, error: matchCheckError } = await db
         .from('likes')
         .select('*')
@@ -593,10 +401,12 @@ export default function SwipePage() {
           return
         }
 
-        const freeFreeMatch = latestPlan === 'free' && otherPlan === 'free'
+        const myPlan = normalizePlan(profile.plan)
+        const otherPlan = normalizePlan(swipedProfile.plan)
+        const bothCanChat = isPaidPlan(myPlan) && isPaidPlan(otherPlan)
 
-        if (freeFreeMatch) {
-          toast.success('Match créé. Passe Business pour le débloquer.')
+        if (!bothCanChat) {
+          toast.success('Nouveau match ! Passe Business pour discuter.')
           return
         }
 
@@ -614,28 +424,11 @@ export default function SwipePage() {
   const handleMessageTap = async () => {
     if (!currentProfile || !profile) return
 
-    if (isFree) {
-      toast.error('Les messages depuis le swipe sont réservés au plan Business.')
-      openPaywall()
-      return
-    }
+    const myPlan = normalizePlan(profile.plan)
 
-    const latestPlan = normalizePlan(profile.plan)
-    const latestLimits = limits[latestPlan]
-    const latestMessagesToday =
-      (profile as ProfileWithLocation).last_message_date === todayKey
-        ? (profile as ProfileWithLocation).messages_today || 0
-        : 0
-
-    if (latestLimits.messages === 0) {
-      toast.error('Les messages depuis le swipe sont réservés au plan Business.')
-      openPaywall()
-      return
-    }
-
-    if (latestLimits.messages !== Infinity && latestMessagesToday >= latestLimits.messages) {
-      toast.error('Limite de message swipe atteinte pour aujourd’hui.')
-      openPaywall()
+    if (!isPaidPlan(myPlan)) {
+      toast.error('Passe Business pour envoyer des messages.')
+      router.push('/settings')
       return
     }
 
@@ -646,14 +439,6 @@ export default function SwipePage() {
     <div className="min-h-[calc(100dvh-100px)] flex flex-col bg-dark">
       <div className="flex items-center justify-between px-5 pt-5 pb-2 shrink-0">
         <h1 className="text-2xl font-black tracking-wider text-gold-gradient">PAKT</h1>
-
-        {planLimits.swipes !== Infinity && (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-white/50">
-              {Math.max(0, planLimits.swipes - profileSwipesToday)} swipes restants
-            </span>
-          </div>
-        )}
       </div>
 
       <div className="flex-1 relative px-4 pb-2 min-h-[calc(100dvh-185px)]">
@@ -666,23 +451,10 @@ export default function SwipePage() {
           </div>
         ) : !isEmailVerified ? (
           <EmailLocked />
-        ) : profiles.length === 0 && !limitFallbackProfile ? (
+        ) : profiles.length === 0 ? (
           <EmptyState onRefresh={loadProfiles} />
         ) : (
           <div className="relative h-full min-h-[calc(100dvh-185px)]">
-            {/* Fallback: show last seen profile behind blur when stack is empty but limit reached */}
-            {limitFallbackProfile && (
-              <div className="absolute inset-0" style={{ zIndex: 10 }}>
-                <SwipeCard
-                  profile={limitFallbackProfile}
-                  onSwipe={() => {}}
-                  zIndex={10}
-                  isTop={true}
-                  disabledActions={true}
-                />
-              </div>
-            )}
-
             {stackForRender.map((item, index) => {
               const isTop = item.id === currentProfile?.id
               const zIndex = isTop ? 20 : 10 + index
@@ -702,24 +474,13 @@ export default function SwipePage() {
                       if (!isTop) return
                       handleMessageTap()
                     }}
-                    disabledActions={isTop ? reachedSwipeLimit : true}
                   />
                 </div>
               )
             })}
-
-            {reachedSwipeLimit && (
-              <SwipeLimitOverlay plan={plan} onUpgrade={() => router.push('/settings')} />
-            )}
           </div>
         )}
       </div>
-
-      <PaywallModal
-        open={paywallOpen}
-        onClose={() => setPaywallOpen(false)}
-        onUpgrade={() => router.push('/settings')}
-      />
 
       <MatchModal
         isOpen={showMatch}
@@ -728,64 +489,6 @@ export default function SwipePage() {
         onClose={() => setShowMatch(false)}
       />
     </div>
-  )
-}
-
-function SwipeLimitOverlay({
-  plan,
-  onUpgrade,
-}: {
-  plan: 'free' | 'business' | 'business_pro'
-  onUpgrade: () => void
-}) {
-  const ctaLabel = plan === 'free' ? 'Passer à PAKT Business' : 'Passer à PAKT Business Pro'
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="absolute inset-0 z-30 flex items-center justify-center pointer-events-auto"
-    >
-      {/* Blur + dark overlay that blocks all interaction underneath */}
-      <div className="absolute inset-0 backdrop-blur-[14px] bg-black/55" />
-
-      <motion.div
-        initial={{ scale: 0.92, opacity: 0, y: 16 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ delay: 0.15, duration: 0.35, ease: 'easeOut' }}
-        className="relative z-10 w-full max-w-sm mx-6 bg-dark-200/95 border border-gold/20 rounded-[16px] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]"
-      >
-        <div className="flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-full bg-gold/10 border-2 border-gold/30 flex items-center justify-center mb-5">
-            <Crown size={28} className="text-gold" />
-          </div>
-
-          <h2 className="text-xl font-bold text-white mb-2">Limite atteinte</h2>
-
-          <p className="text-white/50 text-sm leading-relaxed mb-6">
-            Passe à l&apos;offre supérieure pour continuer à découvrir plus de profils.
-          </p>
-
-          <button
-            type="button"
-            onClick={onUpgrade}
-            className="w-full h-[50px] flex items-center justify-center gap-2 rounded-[12px] bg-gold text-dark font-bold text-[15px] hover:bg-gold-light transition-colors shadow-[0_8px_24px_rgba(212,168,83,0.25)]"
-          >
-            <Crown size={16} />
-            {ctaLabel}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {}}
-            className="mt-2 w-full h-[44px] flex items-center justify-center rounded-[12px] text-white/50 text-sm hover:text-white/70 transition-colors"
-          >
-            Revenir demain
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
   )
 }
 
@@ -800,9 +503,9 @@ function EmptyState({ onRefresh }: { onRefresh: () => void }) {
         <span className="text-6xl">🌍</span>
 
         <div>
-          <h2 className="text-2xl font-bold mb-2">C’est calme par ici</h2>
+          <h2 className="text-2xl font-bold mb-2">C&apos;est calme par ici</h2>
           <p className="text-white/50 text-sm">
-            Tu as vu tous les profils disponibles pour l’instant.
+            Tu as vu tous les profils disponibles pour l&apos;instant.
           </p>
         </div>
 

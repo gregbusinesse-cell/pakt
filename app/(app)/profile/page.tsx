@@ -9,7 +9,7 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
-import { INTERESTS, MAX_PHOTOS } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, validatePhoto } from '@/lib/utils'
 import { Check, X, Plus, LogOut, Crown } from 'lucide-react'
 
 import { useRouter } from 'next/navigation'
@@ -439,10 +439,21 @@ export default function ProfilePage() {
     setNewPhotos(nextNewItems.map((item) => item.file))
   }
 
+  const [photoValidating, setPhotoValidating] = useState(false)
+
   const onDrop = useCallback(
-    (files: File[]) => {
+    async (files: File[]) => {
       const file = files[0]
       if (!file) return
+
+      setPhotoValidating(true)
+      const result = await validatePhoto(file)
+      setPhotoValidating(false)
+
+      if (!result.valid) {
+        toast.error(result.reason || 'Photo invalide')
+        return
+      }
 
       const url = URL.createObjectURL(file)
 
