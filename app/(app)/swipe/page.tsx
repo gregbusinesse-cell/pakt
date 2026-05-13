@@ -429,12 +429,12 @@ export default function SwipePage() {
   }
 
   const handleUndo = async () => {
-    if (!sessionUserId || !lastSwipedProfile) return
-
     if (!isPro) {
       setShowUndoPaywall(true)
       return
     }
+
+    if (!sessionUserId || !lastSwipedProfile) return
 
     try {
       // Delete the swipe record
@@ -508,7 +508,7 @@ export default function SwipePage() {
                       if (!isTop) return
                       handleUndo()
                     }}
-                    canUndo={Boolean(lastSwipedProfile)}
+                    canUndo={true}
                     hasLikedYou={likedMeIds.has(item.id)}
                     zIndex={zIndex}
                     isTop={isTop}

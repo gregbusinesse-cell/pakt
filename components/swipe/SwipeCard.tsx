@@ -189,11 +189,11 @@ export default function SwipeCard({
               {isTop && !isOwnProfile && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
                   <div className="flex items-center justify-center gap-5">
-                    {/* Undo (left) */}
+                    {/* Undo (left) — always clickable, paywall handled in onClick */}
                     <motion.button
                       type="button"
                       onClick={handleUndo}
-                      disabled={disabledActions || !canUndo}
+                      disabled={disabledActions}
                       whileHover={{ scale: 1.06, y: -2 }}
                       whileTap={{ scale: 0.94 }}
                       transition={{ type: 'spring', stiffness: 420, damping: 24 }}
