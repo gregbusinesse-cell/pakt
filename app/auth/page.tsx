@@ -22,11 +22,23 @@ export default function AuthPage() {
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
+    let redirecting = false
+
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        // Laisse "/" décider onboarding vs swipe
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[AUTH] onAuthStateChange:', event, Boolean(session))
+
+      // Only redirect on actual sign-in events, NOT on INITIAL_SESSION
+      // INITIAL_SESSION fires on every page load and causes infinite loops
+      // when the server-side cookie check doesn't match client state
+      if (
+        session &&
+        !redirecting &&
+        (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')
+      ) {
+        redirecting = true
+        console.log('[AUTH] redirecting to / after', event)
         window.location.href = '/'
       }
     })
