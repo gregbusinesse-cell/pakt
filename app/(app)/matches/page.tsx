@@ -723,7 +723,16 @@ export default function MatchesPage() {
 
   useEffect(() => {
     if (tab === 'likes') void markReceivedLikesViewed()
-  }, [markReceivedLikesViewed, tab])
+    if (tab === 'matches') {
+      // Mark all unviewed matches as viewed when switching to matches tab
+      const unviewedMatches = matches.filter((m) => !m.isViewed)
+      if (unviewedMatches.length > 0) {
+        for (const m of unviewedMatches) {
+          void markMatchViewed(m.id)
+        }
+      }
+    }
+  }, [markReceivedLikesViewed, markMatchViewed, matches, tab])
 
   // Open conversation — paywall check happens HERE
   const openConversation = async (
@@ -802,11 +811,24 @@ export default function MatchesPage() {
           >
             <Users size={15} />
             Matchs
-            {matches.length > 0 && (
-              <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {matches.length > 9 ? '9+' : matches.length}
-              </span>
-            )}
+            {(() => {
+              const unreadMatchCount = matches.filter((m) => !m.isViewed).length
+              if (unreadMatchCount > 0) {
+                return (
+                  <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {unreadMatchCount > 9 ? '9+' : unreadMatchCount}
+                  </span>
+                )
+              }
+              if (matches.length > 0) {
+                return (
+                  <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-gold/15 text-gold/70 text-[10px] font-semibold flex items-center justify-center">
+                    {matches.length}
+                  </span>
+                )
+              }
+              return null
+            })()}
           </button>
 
           <button
@@ -818,11 +840,24 @@ export default function MatchesPage() {
           >
             <Crown size={15} />
             Likes
-            {likes.length > 0 && (
-              <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {likes.length > 9 ? '9+' : likes.length}
-              </span>
-            )}
+            {(() => {
+              const unreadLikeCount = likes.filter((l) => !l.isViewed).length
+              if (unreadLikeCount > 0) {
+                return (
+                  <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {unreadLikeCount > 9 ? '9+' : unreadLikeCount}
+                  </span>
+                )
+              }
+              if (likes.length > 0) {
+                return (
+                  <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-gold/15 text-gold/70 text-[10px] font-semibold flex items-center justify-center">
+                    {likes.length}
+                  </span>
+                )
+              }
+              return null
+            })()}
           </button>
 
           <button
