@@ -2,11 +2,11 @@
 
 // app/(app)/settings/page.tsx
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { Check, ChevronRight, Crown } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Crown, X as XIcon } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { createClient } from '@/lib/supabase/client'
 import ReferralTab from '@/components/settings/ReferralTab'
@@ -109,6 +109,191 @@ function EventsTab() {
         </motion.div>
       )}
     </motion.div>
+  )
+}
+
+const CHANGELOG = [
+  {
+    version: 'v1.1',
+    date: '13 mai 2025',
+    summary: 'Nouveaux plans, undo, messagerie repensée',
+    changes: [
+      'Nouveaux plans : Free / Business / Business Pro',
+      'Messagerie entre membres Business',
+      'Suppression des messages directs depuis le swipe',
+      'Retour en arrière (undo) réservé Business Pro',
+      'Nouveau layout des boutons : annuler / dislike / like',
+      'Validation qualité des photos (400x400px min)',
+      'Likes reçus visibles pour Business Pro',
+      'Système d\'encouragement pour inviter les membres Free',
+      'Nouveau système de conversations Business',
+      'Blur amélioré pour les profils verrouillés',
+      'Swipes et likes illimités pour tous',
+    ],
+  },
+  {
+    version: null,
+    date: '10 mai 2025',
+    summary: 'Sortie de l\'application',
+    changes: [
+      'Swipe, matchs et conversations',
+      'Profils avec photos et centres d\'intérêt',
+      'Plans gratuit et premium',
+    ],
+  },
+]
+
+function ChangelogTab() {
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const drawerRef = useRef<HTMLDivElement>(null)
+
+  // Lock body scroll when drawer is open
+  useEffect(() => {
+    if (drawerOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [drawerOpen])
+
+  return (
+    <>
+      <motion.div
+        key="news"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18 }}
+        className="space-y-3 pb-32"
+      >
+        <div className="text-center py-2">
+          <span className="text-[11px] font-bold text-gold/50 tracking-widest uppercase">Changelog</span>
+        </div>
+
+        {CHANGELOG.map((release, idx) => (
+          <motion.div
+            key={release.version ?? 'launch'}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.06, duration: 0.25 }}
+            className="bg-dark-200 border border-dark-500 rounded-[14px] px-4 py-3.5"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                {release.version && (
+                  <span className="text-[11px] font-bold text-dark bg-gold px-2 py-0.5 rounded-full">
+                    {release.version}
+                  </span>
+                )}
+                <span className="text-xs text-white/30">{release.date}</span>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-white/60">{release.summary}</p>
+          </motion.div>
+        ))}
+
+        <motion.button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.15 }}
+          className="w-full mt-2 h-11 flex items-center justify-center gap-2 rounded-[12px] border border-gold/20 bg-gold/[0.04] text-gold text-sm font-semibold hover:bg-gold/[0.08] active:scale-[0.98] transition-all"
+        >
+          Voir tous les changements
+          <ChevronDown size={15} />
+        </motion.button>
+      </motion.div>
+
+      {/* Drawer / Full-screen panel */}
+      <AnimatePresence>
+        {drawerOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setDrawerOpen(false)}
+              className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+            />
+
+            {/* Panel */}
+            <motion.div
+              ref={drawerRef}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+              className="fixed inset-x-0 bottom-0 z-[101] max-h-[88dvh] bg-dark-200 border-t border-gold/15 rounded-t-[20px] shadow-[0_-20px_60px_rgba(0,0,0,0.6)] flex flex-col"
+            >
+              {/* Handle bar */}
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <div className="w-10 h-1 rounded-full bg-white/15" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-dark-500 shrink-0">
+                <h2 className="text-lg font-bold text-white">Changelog</h2>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+                >
+                  <XIcon size={16} className="text-white/50" />
+                </button>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">
+                {CHANGELOG.map((release, idx) => (
+                  <motion.div
+                    key={release.version ?? 'launch'}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.08, duration: 0.3 }}
+                  >
+                    {/* Release header */}
+                    <div className="flex items-center gap-3 mb-3">
+                      {release.version ? (
+                        <span className="text-xs font-bold text-dark bg-gold px-2.5 py-0.5 rounded-full">
+                          {release.version}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-gold/70 px-0.5">🚀</span>
+                      )}
+                      <span className="text-xs text-white/30">{release.date}</span>
+                    </div>
+
+                    {/* Changes list */}
+                    <div className="bg-dark-300/50 border border-dark-500 rounded-[12px] px-4 py-3 space-y-2">
+                      {release.changes.map((change, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: -6 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.08 + i * 0.03, duration: 0.2 }}
+                          className="flex items-start gap-2.5 text-[13px] text-white/55 leading-relaxed"
+                        >
+                          <span className="text-gold/50 mt-[3px] shrink-0 text-[8px]">&#x25CF;</span>
+                          {change}
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+                ))}
+
+                <div className="text-center pt-4 pb-8">
+                  <span className="text-[11px] text-white/15">PAKT v1.1</span>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   )
 }
 
@@ -239,7 +424,7 @@ export default function SettingsPage() {
         features: [
           'Swipes illimités',
           'Likes illimités',
-          'Messagerie (si les deux membres sont Business+)',
+          'Messagerie entre membres Business',
           'Encourager les membres Free',
         ],
       },
@@ -444,73 +629,7 @@ export default function SettingsPage() {
 
             {tab === 'events' && <EventsTab />}
 
-            {tab === 'news' && (
-              <motion.div
-                key="news"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
-                className="space-y-4 pb-32"
-              >
-                <div className="text-center py-3">
-                  <span className="text-xs font-bold text-gold/60 tracking-widest uppercase">Changelog beta</span>
-                </div>
-
-                {[
-                  {
-                    version: 'v1.2.0-beta',
-                    date: '13 mai 2025',
-                    changes: [
-                      'Nouveau bouton retour arrière (Business Pro)',
-                      'Suppression du bouton message sur le swipe',
-                      'Nouveau layout des boutons : annuler / dislike / like',
-                      'Mise à jour des plans et fonctionnalités',
-                      'Nouveau changelog dans les Actus',
-                    ],
-                  },
-                  {
-                    version: 'v1.1.0-beta',
-                    date: '8 mai 2025',
-                    changes: [
-                      'Validation de qualité des photos (400x400px min)',
-                      'Nouveau système de plans : Free / Business / Business Pro',
-                      'Les deux membres doivent être Business+ pour discuter',
-                      'Suppression des limites de swipes et likes quotidiens',
-                      'Système d\'encouragement pour inviter les membres Free',
-                    ],
-                  },
-                  {
-                    version: 'v1.0.0-beta',
-                    date: '1 mai 2025',
-                    changes: [
-                      'Lancement de PAKT en version beta',
-                      'Swipe, matchs, conversations',
-                      'Profils avec photos et centres d\'intérêt',
-                      'Plans gratuit et premium',
-                    ],
-                  },
-                ].map((release) => (
-                  <div
-                    key={release.version}
-                    className="bg-dark-200 border border-dark-500 rounded-[12px] p-5"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-bold text-gold">{release.version}</span>
-                      <span className="text-xs text-white/30">{release.date}</span>
-                    </div>
-                    <ul className="space-y-1.5">
-                      {release.changes.map((change, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-white/60">
-                          <span className="text-gold/60 mt-0.5 shrink-0">&#x2022;</span>
-                          {change}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </motion.div>
-            )}
+            {tab === 'news' && <ChangelogTab />}
 
             {tab === 'referral' && <ReferralTab />}
 
@@ -546,7 +665,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.2.0-beta</div>
+      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.1</div>
     </div>
   )
 }

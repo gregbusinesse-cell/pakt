@@ -5,12 +5,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import MatchModal from '@/components/swipe/MatchModal'
 import type { Profile } from '@/lib/supabase/types'
 import { normalizePlan, isPaidPlan } from '@/lib/utils'
-import { RefreshCw, Lock } from 'lucide-react'
+import { RefreshCw, Lock, Crown, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
@@ -55,6 +55,7 @@ export default function SwipePage() {
   const [showMatch, setShowMatch] = useState(false)
   const [lastSwipedProfile, setLastSwipedProfile] = useState<Profile | null>(null)
   const [lastSwipeDir, setLastSwipeDir] = useState<'left' | 'right' | null>(null)
+  const [showUndoPaywall, setShowUndoPaywall] = useState(false)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -431,8 +432,7 @@ export default function SwipePage() {
     if (!sessionUserId || !lastSwipedProfile) return
 
     if (!isPro) {
-      toast.error('Le retour en arrière est réservé aux membres Business Pro.')
-      router.push('/settings')
+      setShowUndoPaywall(true)
       return
     }
 
@@ -508,7 +508,7 @@ export default function SwipePage() {
                       if (!isTop) return
                       handleUndo()
                     }}
-                    canUndo={Boolean(lastSwipedProfile) && isPro}
+                    canUndo={Boolean(lastSwipedProfile)}
                     hasLikedYou={likedMeIds.has(item.id)}
                     zIndex={zIndex}
                     isTop={isTop}
@@ -526,6 +526,66 @@ export default function SwipePage() {
         matchedProfile={matchedProfile}
         onClose={() => setShowMatch(false)}
       />
+
+      {/* Undo paywall modal */}
+      <AnimatePresence>
+        {showUndoPaywall && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setShowUndoPaywall(false)}
+              className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[91] max-w-sm mx-auto"
+            >
+              <div className="relative overflow-hidden rounded-[20px] border border-gold/20 bg-[#111111] shadow-[0_25px_70px_rgba(0,0,0,0.6),0_0_40px_rgba(212,168,83,0.08)]">
+                <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.04] to-transparent pointer-events-none" />
+
+                <div className="relative px-6 pt-7 pb-6 text-center">
+                  <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center">
+                    <Undo2 size={22} className="text-gold" />
+                  </div>
+
+                  <h3 className="text-[17px] font-bold text-white leading-snug">
+                    Fonctionnalité Business Pro
+                  </h3>
+
+                  <p className="mt-2.5 text-[13px] leading-relaxed text-white/45 max-w-[260px] mx-auto">
+                    Le retour en arrière te permet de revenir sur ton dernier swipe. Passe Business Pro pour ne plus rater aucune opportunité.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUndoPaywall(false)
+                      router.push('/settings')
+                    }}
+                    className="mt-5 h-[46px] w-full rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[13.5px] font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_6px_30px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
+                  >
+                    Passer Business Pro
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowUndoPaywall(false)}
+                    className="mt-2.5 h-10 w-full rounded-[12px] text-white/40 text-[13px] font-medium hover:text-white/60 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
