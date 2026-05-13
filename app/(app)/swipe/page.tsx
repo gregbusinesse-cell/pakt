@@ -555,11 +555,11 @@ export default function SwipePage() {
                   </div>
 
                   <h3 className="text-[17px] font-bold text-white leading-snug">
-                    Fonctionnalité Business Pro
+                    Retour en arrière réservé aux membres Business Pro
                   </h3>
 
                   <p className="mt-2.5 text-[13px] leading-relaxed text-white/45 max-w-[260px] mx-auto">
-                    Le retour en arrière te permet de revenir sur ton dernier swipe. Passe Business Pro pour ne plus rater aucune opportunité.
+                    Passe à Business Pro pour annuler ton dernier swipe et retrouver le profil précédent.
                   </p>
 
                   <button
@@ -576,7 +576,7 @@ export default function SwipePage() {
                   <button
                     type="button"
                     onClick={() => setShowUndoPaywall(false)}
-                    className="mt-2.5 h-10 w-full rounded-[12px] text-white/40 text-[13px] font-medium hover:text-white/60 transition-colors"
+                    className="mt-2.5 h-[42px] w-full rounded-[12px] border border-white/10 bg-white/[0.04] text-white/50 text-[13px] font-medium hover:bg-white/[0.08] hover:text-white/70 transition-all"
                   >
                     Annuler
                   </button>

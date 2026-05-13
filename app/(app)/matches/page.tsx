@@ -188,47 +188,6 @@ function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   )
 }
 
-function GhostMatchRow({ index }: { index: number }) {
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-2xl">
-      <div className="relative shrink-0">
-        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300/80 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
-          <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-        </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-1">
-          <div className="h-[14px] w-20 rounded-full bg-white/[0.07]" />
-          <div className="h-[10px] w-10 rounded-full bg-white/[0.04]" />
-        </div>
-        <div className="h-[11px] w-36 rounded-full bg-white/[0.04]" />
-      </div>
-    </div>
-  )
-}
-
-function GhostConversationRow({ index }: { index: number }) {
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-2xl">
-      <div className="relative shrink-0">
-        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300/80 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
-          <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-        </div>
-        {/* Fake notification dot */}
-        {index < 3 && (
-          <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-gold/60 border-2 border-dark" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-1">
-          <div className="h-[14px] w-24 rounded-full bg-white/[0.07]" />
-          <div className="h-[10px] w-12 rounded-full bg-white/[0.04]" />
-        </div>
-        <div className="h-[11px] w-44 rounded-full bg-white/[0.04]" />
-      </div>
-    </div>
-  )
-}
 
 function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
   return (
@@ -294,9 +253,14 @@ function FreeMatchesView({
   matches: MatchItem[]
   onUpgrade: () => void
 }) {
-  // Pad ghost rows: if user has real data, just fill to 6. If no data, show 4 ghosts max.
-  const targetRows = matches.length > 0 ? 6 : 4
-  const ghostCount = Math.max(0, targetRows - matches.length)
+  // No matches at all → just the CTA, no fakes
+  if (matches.length === 0) {
+    return (
+      <div className="pt-6">
+        <FreeUpgradeCTA onUpgrade={onUpgrade} />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-0 pt-2 select-none">
@@ -316,7 +280,7 @@ function FreeMatchesView({
                     <img
                       src={(item.otherUser.photos as string[])[0]}
                       alt=""
-                      className="w-full h-full object-cover blur-[12px] scale-[1.25] brightness-[0.6] saturate-[0.6]"
+                      className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
@@ -336,19 +300,7 @@ function FreeMatchesView({
       ))}
 
       {/* CTA if fewer than 4 real matches */}
-      {matches.length < 4 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
-
-      {/* Ghost rows to fill */}
-      {Array.from({ length: ghostCount }).map((_, i) => (
-        <motion.div
-          key={`ghost-m-${i}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: (matches.length + i) * 0.04 }}
-        >
-          <GhostMatchRow index={i + matches.length} />
-        </motion.div>
-      ))}
+      {matches.length < 4 && matches.length > 0 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
     </div>
   )
 }
@@ -365,13 +317,19 @@ function FreeConversationsView({
   conversations: ConversationItem[]
   onUpgrade: () => void
 }) {
-  const targetRows = conversations.length > 0 ? 6 : 4
-  const ghostCount = Math.max(0, targetRows - conversations.length)
-
   // Check if a conversation's last message looks like an encouragement
   const isEncourageMessage = (msg: string | null) => {
     if (!msg) return false
     return msg.includes('Passe Business') || msg.includes('PAKT Business') || msg.includes('débloquer')
+  }
+
+  // No conversations → just the CTA, no fakes
+  if (conversations.length === 0) {
+    return (
+      <div className="pt-6">
+        <FreeUpgradeCTA onUpgrade={onUpgrade} />
+      </div>
+    )
   }
 
   return (
@@ -401,7 +359,7 @@ function FreeConversationsView({
                         className={`w-full h-full object-cover ${
                           hasEncourage
                             ? 'blur-[8px] scale-[1.2] brightness-[0.65] saturate-50'
-                            : 'blur-[12px] scale-[1.25] brightness-[0.6] saturate-[0.6]'
+                            : 'blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]'
                         }`}
                       />
                     ) : (
@@ -448,19 +406,7 @@ function FreeConversationsView({
         )
       })}
 
-      {conversations.length < 4 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
-
-      {/* Ghost rows */}
-      {Array.from({ length: ghostCount }).map((_, i) => (
-        <motion.div
-          key={`ghost-c-${i}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: (conversations.length + i) * 0.04 }}
-        >
-          <GhostConversationRow index={i + conversations.length} />
-        </motion.div>
-      ))}
+      {conversations.length < 4 && conversations.length > 0 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
     </div>
   )
 }
@@ -873,13 +819,13 @@ export default function MatchesPage() {
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
                               className={`w-full h-full object-cover ${
-                                item.isLocked ? 'blur-md scale-110 brightness-75' : ''
+                                item.isLocked ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
                               }`}
                             />
                           ) : (
                             <div
                               className={`w-full h-full flex items-center justify-center text-2xl ${
-                                item.isLocked ? 'blur-sm brightness-75' : ''
+                                item.isLocked ? 'blur-[10px] brightness-[0.5]' : ''
                               }`}
                             >
                               👤

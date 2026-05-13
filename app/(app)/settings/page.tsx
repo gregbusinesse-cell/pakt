@@ -132,7 +132,7 @@ const CHANGELOG = [
     ],
   },
   {
-    version: null,
+    version: 'v1.0',
     date: '10 mai 2025',
     summary: 'Sortie de l\'application',
     changes: [
@@ -182,7 +182,11 @@ function ChangelogTab() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 {release.version && (
-                  <span className="text-[11px] font-bold text-dark bg-gold px-2 py-0.5 rounded-full">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    release.version === 'v1.0'
+                      ? 'bg-white/10 text-white/50 border border-white/10'
+                      : 'text-dark bg-gold'
+                  }`}>
                     {release.version}
                   </span>
                 )}
@@ -257,12 +261,14 @@ function ChangelogTab() {
                   >
                     {/* Release header */}
                     <div className="flex items-center gap-3 mb-3">
-                      {release.version ? (
-                        <span className="text-xs font-bold text-dark bg-gold px-2.5 py-0.5 rounded-full">
+                      {release.version && (
+                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                          release.version === 'v1.0'
+                            ? 'bg-white/10 text-white/50 border border-white/10'
+                            : 'text-dark bg-gold'
+                        }`}>
                           {release.version}
                         </span>
-                      ) : (
-                        <span className="text-xs font-bold text-gold/70 px-0.5">🚀</span>
                       )}
                       <span className="text-xs text-white/30">{release.date}</span>
                     </div>
@@ -644,7 +650,7 @@ export default function SettingsPage() {
               >
                 {[
                   { label: 'Mentions légales', href: '/legal/legal-notice' },
-                  { label: "Conditions générales d’utilisation", href: '/legal/cgu' },
+                  { label: "Conditions générales d'utilisation", href: '/legal/cgu' },
                   { label: 'Politique de confidentialité', href: '/legal/privacy' },
                   { label: 'Conditions générales de vente', href: '/legal/billing' },
                   { label: 'Remboursement et résiliation', href: '/legal/remboursement-resiliation' },
@@ -659,6 +665,20 @@ export default function SettingsPage() {
                     <ChevronRight size={16} className="text-white/30" />
                   </a>
                 ))}
+
+                {/* Support section */}
+                <div className="mt-6 bg-dark-200 border border-dark-500 rounded-[12px] p-5">
+                  <h3 className="text-sm font-bold text-white mb-2">Besoin d&apos;aide ?</h3>
+                  <p className="text-xs leading-relaxed text-white/50 mb-4">
+                    Une question, un problème technique, une demande de remboursement, un signalement ou besoin d&apos;assistance ? Notre équipe est là pour vous aider.
+                  </p>
+                  <a
+                    href="mailto:paktsupport@gmail.com"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] bg-gold/10 border border-gold/20 text-gold text-sm font-semibold hover:bg-gold/15 transition-colors"
+                  >
+                    paktsupport@gmail.com
+                  </a>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
