@@ -34,7 +34,11 @@ function ChatPageContent() {
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        console.error('[CHAT_PAGE] getSession error', error)
+      }
+
       if (!mounted) return
 
       if (!data.session) {
@@ -64,7 +68,6 @@ function ChatPageContent() {
     }
   }, [router, supabase])
 
-  // Load other user profile
   useEffect(() => {
     if (!userId) {
       setInitError('Utilisateur introuvable')
@@ -78,62 +81,122 @@ function ChatPageContent() {
       .single()
       .then(({ data, error }: { data: Profile | null; error: any }) => {
         if (error || !data) {
-          console.error('[CHAT] profile fetch error', error)
+          console.error('[CHAT_PAGE] profile fetch error', {
+            userId,
+            error,
+          })
           setInitError('Profil introuvable')
           return
         }
+
         setOtherUser(data)
       })
   }, [db, userId])
 
-  // Init or load conversation
   useEffect(() => {
     if (!sessionUserId || !userId) return
 
     const initConversation = async () => {
       try {
+        let nextConversationId: string | null = null
+
         if (params.id === 'new') {
           const { data, error } = await db.rpc('get_or_create_conversation', {
             other_user_id: userId,
           })
 
           if (error) {
-            console.error('[CHAT] get_or_create_conversation RPC error', error)
+            console.error('[CHAT_PAGE] get_or_create_conversation RPC error', {
+              sessionUserId,
+              otherUserId: userId,
+              error,
+            })
             setInitError(`Impossible de créer la conversation : ${error.message}`)
             return
           }
 
           if (!data) {
-            console.error('[CHAT] get_or_create_conversation returned null')
+            console.error('[CHAT_PAGE] get_or_create_conversation returned null', {
+              sessionUserId,
+              otherUserId: userId,
+            })
             setInitError('Impossible de créer la conversation')
             return
           }
 
-          setConversationId(data as string)
+          nextConversationId = data as string
+          setConversationId(nextConversationId)
         } else {
-          setConversationId(params.id as string)
+          nextConversationId = params.id as string
+          setConversationId(nextConversationId)
         }
 
         const [user1_id, user2_id] = [sessionUserId, userId].sort()
 
-        const { data: matchData } = await db
+        const { data: matchData, error: matchError } = await db
           .from('matches')
-          .select('id')
+          .select('id, is_viewed')
           .eq('user1_id', user1_id)
           .eq('user2_id', user2_id)
           .maybeSingle()
 
-        setConversationType(matchData ? 'match' : requestedConversationType)
+        if (matchError) {
+          console.error('[CHAT_PAGE] match fetch error', {
+            user1_id,
+            user2_id,
+            error: matchError,
+          })
+        }
+
+        if (matchData?.id) {
+          setConversationType('match')
+
+          if (matchData.is_viewed === false) {
+            const { error: matchViewedError } = await db
+              .from('matches')
+              .update({ is_viewed: true })
+              .eq('id', matchData.id)
+
+            if (matchViewedError) {
+              console.error('[CHAT_PAGE] mark match viewed error', {
+                matchId: matchData.id,
+                error: matchViewedError,
+              })
+            } else {
+              refreshNotifications()
+            }
+          }
+        } else {
+          setConversationType(requestedConversationType)
+        }
+
+        if (nextConversationId) {
+          const { error: readError } = await db
+            .from('messages')
+            .update({ is_read: true })
+            .eq('conversation_id', nextConversationId)
+            .neq('sender_id', sessionUserId)
+            .eq('is_read', false)
+
+          if (readError) {
+            console.error('[CHAT_PAGE] mark messages read error', {
+              conversationId: nextConversationId,
+              sessionUserId,
+              error: readError,
+            })
+          } else {
+            refreshNotifications()
+          }
+        }
       } catch (err) {
-        console.error('[CHAT] initConversation catch', err)
-        setInitError('Erreur lors de l\'ouverture du chat')
+        console.error('[CHAT_PAGE] initConversation catch', err)
+        setInitError("Erreur lors de l'ouverture du chat")
       }
     }
 
     initConversation()
-  }, [db, params.id, requestedConversationType, sessionUserId, userId])
+  }, [db, params.id, refreshNotifications, requestedConversationType, sessionUserId, userId])
 
-  // Mark messages as read
   useEffect(() => {
     if (!conversationId || !sessionUserId) return
 
@@ -145,13 +208,21 @@ function ChatPageContent() {
         .neq('sender_id', sessionUserId)
         .eq('is_read', false)
 
-      if (!error) refreshNotifications()
+      if (error) {
+        console.error('[CHAT_PAGE] markAsRead effect error', {
+          conversationId,
+          sessionUserId,
+          error,
+        })
+        return
+      }
+
+      refreshNotifications()
     }
 
     markAsRead()
   }, [conversationId, db, sessionUserId, refreshNotifications])
 
-  // Error state
   if (initError) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-dark px-6 text-center gap-4">
@@ -167,9 +238,12 @@ function ChatPageContent() {
     )
   }
 
-  // Loading state with safety timeout
   if (sessionLoading || !otherUser || !conversationId) {
-    return <ChatLoadingTimeout onTimeout={() => setInitError('Le chat n\'a pas pu se charger. Réessayez.')} />
+    return (
+      <ChatLoadingTimeout
+        onTimeout={() => setInitError("Le chat n'a pas pu se charger. Réessayez.")}
+      />
+    )
   }
 
   return (
@@ -181,11 +255,7 @@ function ChatPageContent() {
   )
 }
 
-function ChatLoadingTimeout({
-  onTimeout,
-}: {
-  onTimeout: () => void
-}) {
+function ChatLoadingTimeout({ onTimeout }: { onTimeout: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onTimeout, 10000)
     return () => clearTimeout(timer)

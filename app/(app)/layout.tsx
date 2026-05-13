@@ -26,75 +26,110 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null)
   const [totalNotifications, setTotalNotifications] = useState(0)
 
+  const isChatRoute = pathname?.startsWith('/chat')
+
   const refreshNotificationCount = useCallback(async () => {
     if (!userId) {
       setTotalNotifications(0)
       return
     }
 
-    const { count: unreadMatches } = await db
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
-      .eq('is_viewed', false)
+    try {
+      const [
+        { count: unreadMatches, error: matchesError },
+        { count: unreadLikes, error: likesError },
+        { data: conversationsData, error: conversationsError },
+      ] = await Promise.all([
+        db
+          .from('matches')
+          .select('id', { count: 'exact', head: true })
+          .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+          .eq('is_viewed', false),
+        db
+          .from('likes')
+          .select('id', { count: 'exact', head: true })
+          .eq('liked_id', userId)
+          .eq('is_viewed', false),
+        db
+          .from('conversations')
+          .select('id')
+          .or(`user1_id.eq.${userId},user2_id.eq.${userId}`),
+      ])
 
-    const { data: conversationsData } = await db
-      .from('conversations')
-      .select('id')
-      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+      if (matchesError) {
+        console.error('[NAVBAR] unread matches count error', matchesError)
+      }
 
-    const conversationIds = ((conversationsData || []) as { id: string }[]).map((item) => item.id)
+      if (likesError) {
+        console.error('[NAVBAR] unread likes count error', likesError)
+      }
 
-    let unreadMessages = 0
+      if (conversationsError) {
+        console.error('[NAVBAR] conversations select error', conversationsError)
+      }
 
-    if (conversationIds.length > 0) {
-      const { count } = await db
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .in('conversation_id', conversationIds)
-        .neq('sender_id', userId)
-        .eq('is_read', false)
+      const conversationIds = ((conversationsData || []) as { id: string }[]).map(
+        (item) => item.id
+      )
 
-      unreadMessages = count || 0
+      let unreadMessages = 0
+
+      if (conversationIds.length > 0) {
+        const { count, error: messagesError } = await db
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .in('conversation_id', conversationIds)
+          .neq('sender_id', userId)
+          .eq('is_read', false)
+
+        if (messagesError) {
+          console.error('[NAVBAR] unread messages count error', messagesError)
+        }
+
+        unreadMessages = count || 0
+      }
+
+      const total = (unreadMatches || 0) + (unreadLikes || 0) + unreadMessages
+
+      console.error('[NAVBAR] notification count refreshed', {
+        userId,
+        unreadMatches: unreadMatches || 0,
+        unreadLikes: unreadLikes || 0,
+        unreadMessages,
+        total,
+      })
+
+      setTotalNotifications(total)
+    } catch (error) {
+      console.error('[NAVBAR] refreshNotificationCount catch', error)
+      setTotalNotifications(0)
     }
-
-    setTotalNotifications((unreadMatches || 0) + unreadMessages)
   }, [db, userId])
 
   useEffect(() => {
     let mounted = true
 
-    const initAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+    const loadProfile = async (nextUserId: string) => {
+      const { data, error } = (await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', nextUserId)
+        .maybeSingle()) as unknown as { data: Profile | null; error: any }
+
+      if (error) {
+        console.error('[APP_LAYOUT] profile select error', error)
+      }
 
       if (!mounted) return
 
-      if (!session?.user) {
+      if (!data) {
+        setProfile(null)
         setAuthLoading(false)
-        router.replace('/auth')
+        router.replace('/onboarding')
         return
       }
 
-      setUserId(session.user.id)
-
-      if (session.user.email_confirmed_at) {
-        await supabase
-          .from('profiles')
-          .update({ email_confirmed: true } as never)
-          .eq('id', session.user.id)
-      }
-
-      const { data } = (await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .maybeSingle()) as unknown as { data: Profile | null }
-
-      if (!mounted) return
-
-      if (!data || data.is_onboarded !== true) {
+      if (data.is_onboarded !== true) {
         setProfile(null)
         setAuthLoading(false)
         router.replace('/onboarding')
@@ -105,18 +140,59 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       setAuthLoading(false)
     }
 
+    const initAuth = async () => {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        console.error('[APP_LAYOUT] getSession error', sessionError)
+      }
+
+      if (!mounted) return
+
+      if (!session?.user) {
+        setUserId(null)
+        setProfile(null)
+        setAuthLoading(false)
+        router.replace('/auth')
+        return
+      }
+
+      setUserId(session.user.id)
+
+      if (session.user.email_confirmed_at) {
+        const { error: emailUpdateError } = await supabase
+          .from('profiles')
+          .update({ email_confirmed: true } as never)
+          .eq('id', session.user.id)
+          .neq('email_confirmed', true)
+
+        if (emailUpdateError) {
+          console.error('[APP_LAYOUT] email_confirmed update error', emailUpdateError)
+        }
+      }
+
+      await loadProfile(session.user.id)
+    }
+
     initAuth()
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+
       if (!session?.user) {
         setUserId(null)
         setProfile(null)
+        setAuthLoading(false)
         router.replace('/auth')
-      } else {
-        setUserId(session.user.id)
+        return
       }
+
+      setUserId(session.user.id)
     })
 
     return () => {
@@ -127,7 +203,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!authLoading) refreshNotificationCount()
-  }, [authLoading, refreshNotificationCount, notificationsVersion])
+  }, [authLoading, refreshNotificationCount, notificationsVersion, pathname])
 
   useEffect(() => {
     if (!userId) return
@@ -144,7 +220,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         { event: '*', schema: 'public', table: 'matches' },
         () => refreshNotificationCount()
       )
-      .subscribe()
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'likes' },
+        () => refreshNotificationCount()
+      )
+      .subscribe((status) => {
+        console.error('[NAVBAR] realtime status', status)
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -153,7 +236,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark text-white">
+      <div className="h-[100dvh] flex items-center justify-center bg-dark text-white">
         <div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent animate-spin" />
       </div>
     )
@@ -162,10 +245,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (!userId) return null
 
   return (
-    <div className="flex flex-col min-h-screen bg-dark text-white">
-      <main className="flex-1 pb-[100px]">{children}</main>
+    <div className="h-[100dvh] overflow-hidden flex flex-col bg-dark text-white">
+      <main
+        className={
+          isChatRoute
+            ? 'flex-1 min-h-0 overflow-hidden pb-[calc(env(safe-area-inset-bottom)+74px)]'
+            : 'flex-1 min-h-0 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+86px)]'
+        }
+      >
+        {children}
+      </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-2">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-[calc(env(safe-area-inset-bottom)+8px)]">
         {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href
           const showBadge = href === '/matches' && totalNotifications > 0

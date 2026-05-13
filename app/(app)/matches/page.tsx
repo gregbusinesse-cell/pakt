@@ -10,7 +10,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { formatTime, normalizePlan, isPaidPlan as isPaidPlanUtil, canChat } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
-import { MessageCircle, Users, Crown, Lock } from 'lucide-react'
+import { MessageCircle, Users, Crown, Lock, Heart } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type Tab = 'matches' | 'likes' | 'conversations'
@@ -31,8 +31,10 @@ interface MatchRow {
 }
 
 interface LikeRow {
+  id: string
   liker_id: string
   created_at?: string | null
+  is_viewed?: boolean | null
 }
 
 interface LastMessageRow {
@@ -48,6 +50,7 @@ interface ConversationItem {
   otherUser: Profile
   lastMessage: string | null
   lastMessageAt: string | null
+  isLocked: boolean
 }
 
 interface MatchItem {
@@ -62,8 +65,10 @@ interface MatchItem {
 
 interface LikeItem {
   id: string
+  likeId: string
   otherUser: Profile
   createdAt: string | null
+  isViewed: boolean
   isMatched: boolean
   conversationId: string | null
 }
@@ -127,6 +132,46 @@ function createFallbackProfile(userId: string): Profile {
   } as Profile
 }
 
+function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="relative my-3"
+    >
+      <div className="relative overflow-hidden rounded-[18px] border border-gold/20 bg-[#0d0d0d]">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.05] via-transparent to-transparent pointer-events-none" />
+
+        <div className="relative px-6 pt-7 pb-6 text-center">
+          <div className="mx-auto mb-4 w-[52px] h-[52px] rounded-full bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/25 flex items-center justify-center">
+            <Crown size={22} className="text-gold" />
+          </div>
+
+          <h2 className="text-[17px] font-bold text-white leading-snug">
+            Tes opportunités t&apos;attendent
+          </h2>
+
+          <p className="mt-2.5 text-[12.5px] leading-[1.65] text-white/45 max-w-[280px] mx-auto">
+            Passe Business pour voir les profils, débloquer tes conversations et développer ton réseau.
+          </p>
+
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="mt-5 h-[46px] w-full rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[13.5px] font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] active:scale-[0.98] transition-all"
+          >
+            Passer à PAKT Business
+          </button>
+
+          <p className="mt-3 text-[11px] text-white/20">Annulable à tout moment</p>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
   return (
     <div className="mt-3 rounded-[14px] border border-gold/20 bg-black/35 p-4 text-center backdrop-blur-md">
@@ -136,7 +181,7 @@ function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
 
       <p className="text-sm font-semibold text-white">Match verrouillé</p>
       <p className="mt-1 text-xs leading-relaxed text-white/50">
-        Les deux membres doivent avoir au minimum PAKT Business pour échanger. Passe Business pour débloquer.
+        Les deux membres doivent avoir au minimum PAKT Business pour échanger.
       </p>
 
       <button
@@ -146,114 +191,19 @@ function LockedMatchOverlay({ onUpgrade }: { onUpgrade: () => void }) {
       >
         Passer Business
       </button>
-
-      <p className="mt-2 text-[11px] text-white/20">Annulable à tout moment</p>
     </div>
   )
 }
 
-function BusinessProLikesOverlay({ onUpgrade }: { onUpgrade: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-[16px] border border-gold/25 bg-[#111111]/85 p-6 text-center shadow-[0_18px_55px_rgba(0,0,0,0.45),0_0_34px_rgba(212,168,83,0.12)] backdrop-blur-xl"
-    >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.06] to-transparent pointer-events-none" />
-
-      <div className="relative">
-        <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center">
-          <Lock size={24} className="text-gold" />
-        </div>
-
-        <h2 className="text-lg font-bold text-white">
-          Likes reçus réservés aux membres Business Pro
-        </h2>
-
-        <p className="mt-2 text-sm leading-relaxed text-white/55">
-          Découvrez qui vous a liké et débloquez vos connexions potentielles.
-        </p>
-
-        <button
-          type="button"
-          onClick={onUpgrade}
-          className="mt-5 h-12 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
-        >
-          Passer Business Pro
-        </button>
-
-        <p className="mt-3 text-[11px] text-white/20">Annulable à tout moment</p>
-      </div>
-    </motion.div>
-  )
-}
-
-
-function FreeUpgradeCTA({ onUpgrade }: { onUpgrade: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="relative my-3"
-    >
-      {/* Card */}
-      <div className="relative overflow-hidden rounded-[18px] border border-gold/20 bg-[#0d0d0d]">
-        {/* Top shimmer line */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
-        {/* Subtle gold gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-gold/[0.05] via-transparent to-transparent pointer-events-none" />
-        {/* Ambient glow behind card */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[120px] rounded-full bg-gold/[0.04] blur-[60px] pointer-events-none" />
-
-        <div className="relative px-6 pt-7 pb-6 text-center">
-          {/* Icon */}
-          <div className="mx-auto mb-4 w-[52px] h-[52px] rounded-full bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/25 flex items-center justify-center shadow-[0_0_20px_rgba(212,168,83,0.12)]">
-            <Crown size={22} className="text-gold" />
-          </div>
-
-          <h2 className="text-[17px] font-bold text-white leading-snug">
-            Tes opportunités t&apos;attendent
-          </h2>
-
-          <p className="mt-2.5 text-[12.5px] leading-[1.65] text-white/45 max-w-[280px] mx-auto">
-            Des membres ambitieux souhaitent discuter avec toi.
-            Passe Business pour voir leurs profils, débloquer
-            tes conversations et développer ton réseau.
-          </p>
-
-          {/* CTA */}
-          <button
-            type="button"
-            onClick={onUpgrade}
-            className="mt-5 h-[46px] w-full rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-[13.5px] font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_6px_30px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
-          >
-            Passer à PAKT Business
-          </button>
-
-          <p className="mt-3 text-[11px] text-white/20">
-            Annulable à tout moment
-          </p>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-/**
- * Renders the blurred match rows for FREE users.
- * Real matches are rendered blurred, then padded with ghost rows
- * so the page always looks full. The CTA is inserted inline after
- * the 3rd row.
- */
 function FreeMatchesView({
   matches,
   onUpgrade,
+  onMarkViewed,
 }: {
   matches: MatchItem[]
   onUpgrade: () => void
+  onMarkViewed: (matchId: string) => void
 }) {
-  // No matches at all → just the CTA, no fakes
   if (matches.length === 0) {
     return (
       <div className="pt-6">
@@ -264,52 +214,130 @@ function FreeMatchesView({
 
   return (
     <div className="space-y-0 pt-2 select-none">
-      {/* Real matches — blurred */}
       {matches.map((item, index) => (
         <div key={item.id}>
           {index === 3 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
-          <motion.div
+
+          <motion.button
+            type="button"
+            onClick={() => onMarkViewed(item.id)}
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.04 }}
+            className="w-full flex items-center gap-3 p-3 rounded-2xl text-left cursor-default"
           >
-            <div className="flex items-center gap-3 p-3 rounded-2xl cursor-default">
-              <div className="relative shrink-0">
-                <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
-                  {item.otherUser.photos?.[0] ? (
-                    <img
-                      src={(item.otherUser.photos as string[])[0]}
-                      alt=""
-                      className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-                  )}
-                </div>
+            <div className="relative shrink-0">
+              <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
+                {item.otherUser.photos?.[0] ? (
+                  <img
+                    src={(item.otherUser.photos as string[])[0]}
+                    alt=""
+                    className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="h-[14px] w-20 rounded-full bg-white/[0.08]" />
-                  <div className="h-[10px] w-10 rounded-full bg-white/[0.04]" />
-                </div>
-                <div className="h-[11px] w-32 rounded-full bg-white/[0.04]" />
-              </div>
+
+              {!item.isViewed && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
+              )}
             </div>
-          </motion.div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
+                {item.createdAt && (
+                  <span className="text-[10px] text-white/30 shrink-0 ml-2">
+                    {formatTime(item.createdAt)}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-white/35 truncate">
+                Nouveau match. Passe Business pour voir le profil.
+              </p>
+            </div>
+          </motion.button>
         </div>
       ))}
 
-      {/* CTA if fewer than 4 real matches */}
       {matches.length < 4 && matches.length > 0 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
     </div>
   )
 }
 
-/**
- * Renders the blurred conversation rows for FREE users.
- * Encourage messages from BUSINESS/PRO users are shown as the
- * one readable preview peeking through the blur.
- */
+function FreeLikesView({
+  likes,
+  onUpgrade,
+}: {
+  likes: LikeItem[]
+  onUpgrade: () => void
+}) {
+  return (
+    <div className="pt-4">
+      <div className="rounded-[16px] border border-gold/20 bg-dark-200 p-5 text-center">
+        <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center">
+          <Heart size={20} className="text-gold" />
+        </div>
+
+        <p className="text-3xl font-black text-gold">{likes.length}</p>
+        <p className="mt-1 text-sm text-white/50">
+          {likes.length > 1 ? 'personnes t’ont liké' : 'personne t’a liké'}
+        </p>
+
+        <button
+          type="button"
+          onClick={onUpgrade}
+          className="mt-4 h-11 w-full rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors"
+        >
+          Passer Business Pro
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-1 select-none">
+        {likes.map((item, index) => (
+          <motion.div
+            key={item.likeId}
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.04 }}
+            className="flex items-center gap-3 p-3 rounded-2xl"
+          >
+            <div className="relative shrink-0">
+              <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/20">
+                {item.otherUser.photos?.[0] ? (
+                  <img
+                    src={(item.otherUser.photos as string[])[0]}
+                    alt=""
+                    className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <div className="h-[14px] w-24 rounded-full bg-white/[0.08]" />
+                {item.createdAt && (
+                  <span className="text-[10px] text-white/30 shrink-0 ml-2">
+                    {formatTime(item.createdAt)}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-white/35 truncate">
+                Profil masqué réservé aux membres Business Pro
+              </p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function FreeConversationsView({
   conversations,
   onUpgrade,
@@ -317,13 +345,6 @@ function FreeConversationsView({
   conversations: ConversationItem[]
   onUpgrade: () => void
 }) {
-  // Check if a conversation's last message looks like an encouragement
-  const isEncourageMessage = (msg: string | null) => {
-    if (!msg) return false
-    return msg.includes('Passe Business') || msg.includes('PAKT Business') || msg.includes('débloquer')
-  }
-
-  // No conversations → just the CTA, no fakes
   if (conversations.length === 0) {
     return (
       <div className="pt-6">
@@ -334,79 +355,48 @@ function FreeConversationsView({
 
   return (
     <div className="space-y-0 pt-2 select-none">
-      {conversations.map((item, index) => {
-        const hasEncourage = isEncourageMessage(item.lastMessage)
+      {conversations.map((item, index) => (
+        <div key={item.id}>
+          {index === 3 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
 
-        return (
-          <div key={item.id}>
-            {index === 3 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
-            <motion.div
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.04 }}
-            >
-              <div className={`flex items-center gap-3 p-3 rounded-2xl cursor-default ${
-                hasEncourage ? 'bg-gold/[0.04] border border-gold/10' : ''
-              }`}>
-                <div className="relative shrink-0">
-                  <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${
-                    hasEncourage ? 'ring-gold/25' : 'ring-white/[0.06]'
-                  }`}>
-                    {item.otherUser.photos?.[0] ? (
-                      <img
-                        src={(item.otherUser.photos as string[])[0]}
-                        alt=""
-                        className={`w-full h-full object-cover ${
-                          hasEncourage
-                            ? 'blur-[8px] scale-[1.2] brightness-[0.65] saturate-50'
-                            : 'blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]'
-                        }`}
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
-                    )}
-                  </div>
-
-                  {/* Notification badge */}
-                  <span className={`absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-dark ${
-                    hasEncourage ? 'bg-gold' : 'bg-gold/50'
-                  }`} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  {hasEncourage ? (
-                    <>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="text-[13px] font-semibold text-gold/80 truncate">
-                          Nouveau message
-                        </p>
-                        {item.lastMessageAt && (
-                          <span className="text-[10px] text-white/25 shrink-0 ml-2">
-                            {formatTime(item.lastMessageAt)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[12px] text-white/50 truncate leading-relaxed">
-                        &ldquo;{item.lastMessage}&rdquo;
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="h-[14px] w-24 rounded-full bg-white/[0.07]" />
-                        <div className="h-[10px] w-12 rounded-full bg-white/[0.04]" />
-                      </div>
-                      <div className="h-[11px] w-40 rounded-full bg-white/[0.04]" />
-                    </>
-                  )}
-                </div>
+          <motion.div
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.04 }}
+            className="flex items-center gap-3 p-3 rounded-2xl cursor-default"
+          >
+            <div className="relative shrink-0">
+              <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-white/[0.06]">
+                {item.otherUser.photos?.[0] ? (
+                  <img
+                    src={(item.otherUser.photos as string[])[0]}
+                    alt=""
+                    className="w-full h-full object-cover blur-[16px] scale-[1.35] brightness-[0.55] saturate-[0.7]"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-dark-300 to-dark-400" />
+                )}
               </div>
-            </motion.div>
-          </div>
-        )
-      })}
+            </div>
 
-      {conversations.length < 4 && conversations.length > 0 && <FreeUpgradeCTA onUpgrade={onUpgrade} />}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <div className="h-[14px] w-24 rounded-full bg-white/[0.07]" />
+                {item.lastMessageAt && (
+                  <span className="text-[10px] text-white/25 shrink-0 ml-2">
+                    {formatTime(item.lastMessageAt)}
+                  </span>
+                )}
+              </div>
+              <div className="h-[11px] w-40 rounded-full bg-white/[0.04]" />
+            </div>
+          </motion.div>
+        </div>
+      ))}
+
+      {conversations.length < 4 && conversations.length > 0 && (
+        <FreeUpgradeCTA onUpgrade={onUpgrade} />
+      )}
     </div>
   )
 }
@@ -416,11 +406,10 @@ export default function MatchesPage() {
   const supabase = useMemo(() => createClient(), [])
   const db = supabase as any
   const router = useRouter()
-  const { profile } = useAppStore()
+  const { profile, refreshNotifications } = useAppStore()
 
   const currentPlan = normalizePlan(profile?.plan)
   const isBusinessPro = currentPlan === 'business_pro'
-  const currentUserIsPaid = isPaidPlan(profile?.plan)
   const isFree = currentPlan === 'free'
 
   const [conversations, setConversations] = useState<ConversationItem[]>([])
@@ -462,9 +451,53 @@ export default function MatchesPage() {
 
       window.location.href = data.url
     } catch (error) {
+      console.error('[MATCHES] checkout error', error)
       toast.error(error instanceof Error ? error.message : 'Erreur Stripe')
     }
   }
+
+  const markMatchViewed = useCallback(
+    async (matchId: string) => {
+      if (!matchId || matchId.startsWith('conversation-match-')) return
+
+      const { error } = await db.from('matches').update({ is_viewed: true }).eq('id', matchId)
+
+      if (error) {
+        console.error('[MATCHES] mark match viewed error', { matchId, error })
+        return
+      }
+
+      setMatches((prev) =>
+        prev.map((item) => (item.id === matchId ? { ...item, isViewed: true } : item))
+      )
+      refreshNotifications()
+    },
+    [db, refreshNotifications]
+  )
+
+  const markReceivedLikesViewed = useCallback(async () => {
+    if (!currentUserId) return
+
+    const hasUnreadLikes = likes.some((like) => !like.isViewed)
+    if (!hasUnreadLikes) return
+
+    const { error } = await db
+      .from('likes')
+      .update({ is_viewed: true })
+      .eq('liked_id', currentUserId)
+      .eq('is_viewed', false)
+
+    if (error) {
+      console.error('[MATCHES] mark received likes viewed error', {
+        currentUserId,
+        error,
+      })
+      return
+    }
+
+    setLikes((prev) => prev.map((like) => ({ ...like, isViewed: true })))
+    refreshNotifications()
+  }, [currentUserId, db, likes, refreshNotifications])
 
   const loadConversations = useCallback(async () => {
     if (!currentUserId) {
@@ -490,18 +523,27 @@ export default function MatchesPage() {
           .select('*')
           .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
           .order('created_at', { ascending: false }),
-        isBusinessPro
-          ? db
-              .from('likes')
-              .select('liker_id, created_at')
-              .eq('liked_id', currentUserId)
-              .order('created_at', { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
+        db
+          .from('likes')
+          .select('id, liker_id, created_at, is_viewed')
+          .eq('liked_id', currentUserId)
+          .order('created_at', { ascending: false }),
       ])
 
-      if (conversationsError) toast.error(`Erreur conversations: ${conversationsError.message}`)
-      if (matchesError) toast.error(`Erreur matchs: ${matchesError.message}`)
-      if (likesError) toast.error(`Erreur likes: ${likesError.message}`)
+      if (conversationsError) {
+        console.error('[MATCHES] conversations select error', conversationsError)
+        toast.error(`Erreur conversations: ${conversationsError.message}`)
+      }
+
+      if (matchesError) {
+        console.error('[MATCHES] matches select error', matchesError)
+        toast.error(`Erreur matchs: ${matchesError.message}`)
+      }
+
+      if (likesError) {
+        console.error('[MATCHES] likes select error', likesError)
+        toast.error(`Erreur likes: ${likesError.message}`)
+      }
 
       const conversationRows = conversationsError ? [] : ((conversationsData || []) as ConversationRow[])
       const matchRows = matchesError ? [] : ((matchesData || []) as MatchRow[])
@@ -515,7 +557,7 @@ export default function MatchesPage() {
         match.user1_id === currentUserId ? match.user2_id : match.user1_id
       )
 
-      const likeOtherIds = isBusinessPro ? likeRows.map((like) => like.liker_id) : []
+      const likeOtherIds = likeRows.map((like) => like.liker_id)
 
       const allUserIds = Array.from(
         new Set([...conversationOtherIds, ...matchOtherIds, ...likeOtherIds])
@@ -530,6 +572,7 @@ export default function MatchesPage() {
           .in('id', allUserIds)
 
         if (profilesError) {
+          console.error('[MATCHES] profiles select error', profilesError)
           toast.error(`Erreur profils: ${profilesError.message}`)
         } else {
           const profiles = (profilesData || []) as Profile[]
@@ -552,13 +595,20 @@ export default function MatchesPage() {
 
           const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
 
-          const { data: lastMessageData } = await db
+          const { data: lastMessageData, error: lastMessageError } = await db
             .from('messages')
             .select('content, created_at, message_type, sender_id')
             .eq('conversation_id', conversation.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
+
+          if (lastMessageError) {
+            console.error('[MATCHES] last message select error', {
+              conversationId: conversation.id,
+              error: lastMessageError,
+            })
+          }
 
           const lastMessage = (lastMessageData || null) as LastMessageRow | null
 
@@ -568,6 +618,7 @@ export default function MatchesPage() {
             otherUser,
             lastMessage: formatLastMessage(lastMessage, currentUserId, otherUser),
             lastMessageAt: lastMessage?.created_at || conversation.created_at || null,
+            isLocked: !canChat(profile?.plan, otherUser.plan),
           }
         })
       )
@@ -592,44 +643,24 @@ export default function MatchesPage() {
         })
       })
 
-      conversationRows.forEach((conversation) => {
-        const otherUserId =
-          conversation.user1_id === currentUserId ? conversation.user2_id : conversation.user1_id
-        const pairKey = getPairKey(currentUserId, otherUserId)
-
-        if (matchItemsByPair.has(pairKey)) return
-
-        const otherUser = profileMap.get(otherUserId) || createFallbackProfile(otherUserId)
-
-        matchItemsByPair.set(pairKey, {
-          id: `conversation-match-${conversation.id}`,
-          type: 'match',
-          otherUser,
-          conversationId: conversation.id,
-          createdAt: conversation.created_at || null,
-          isViewed: true,
-          isLocked: false,
-        })
-      })
-
       const cleanMatchItems = Array.from(matchItemsByPair.values())
 
-      const likeItems = isBusinessPro
-        ? likeRows.map((like) => {
-            const pairKey = getPairKey(currentUserId, like.liker_id)
-            const linkedMatch = matchItemsByPair.get(pairKey)
-            const linkedConversation = conversationByPair.get(pairKey)
-            const otherUser = profileMap.get(like.liker_id) || createFallbackProfile(like.liker_id)
+      const likeItems = likeRows.map((like) => {
+        const pairKey = getPairKey(currentUserId, like.liker_id)
+        const linkedMatch = matchItemsByPair.get(pairKey)
+        const linkedConversation = conversationByPair.get(pairKey)
+        const otherUser = profileMap.get(like.liker_id) || createFallbackProfile(like.liker_id)
 
-            return {
-              id: like.liker_id,
-              otherUser,
-              createdAt: like.created_at || null,
-              isMatched: Boolean(linkedMatch),
-              conversationId: linkedConversation?.id || linkedMatch?.conversationId || null,
-            }
-          })
-        : []
+        return {
+          id: like.liker_id,
+          likeId: like.id,
+          otherUser,
+          createdAt: like.created_at || null,
+          isViewed: Boolean(like.is_viewed),
+          isMatched: Boolean(linkedMatch),
+          conversationId: linkedConversation?.id || linkedMatch?.conversationId || null,
+        }
+      })
 
       conversationItems.sort((a, b) => {
         const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
@@ -652,7 +683,8 @@ export default function MatchesPage() {
       setConversations(conversationItems)
       setMatches(cleanMatchItems)
       setLikes(likeItems)
-    } catch {
+    } catch (error) {
+      console.error('[MATCHES] loadConversations catch', error)
       toast.error('Erreur chargement messages')
       setConversations([])
       setMatches([])
@@ -660,11 +692,17 @@ export default function MatchesPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentUserId, currentUserIsPaid, db, isBusinessPro])
+  }, [currentUserId, db, profile?.plan])
 
   useEffect(() => {
     loadConversations()
   }, [loadConversations])
+
+  useEffect(() => {
+    if (tab === 'likes') {
+      void markReceivedLikesViewed()
+    }
+  }, [markReceivedLikesViewed, tab])
 
   const openConversation = async (
     otherUserId: string,
@@ -674,29 +712,34 @@ export default function MatchesPage() {
   ) => {
     if (!currentUserId || !otherUserId) return
 
+    if (matchId) {
+      await markMatchViewed(matchId)
+    }
+
     if (locked) {
-      toast.error('Match verrouillé. Passe Business pour discuter.')
+      toast.error('Conversation verrouillée. Passe Business pour discuter.')
       return
     }
 
     setOpeningConversation(otherUserId)
 
     try {
-      if (matchId && !matchId.startsWith('conversation-match-')) {
-        await db.from('matches').update({ is_viewed: true }).eq('id', matchId)
-        setMatches((prev) =>
-          prev.map((item) => (item.id === matchId ? { ...item, isViewed: true } : item))
-        )
-      }
-
       if (existingConversationId) {
-        await db
+        const { error: readError } = await db
           .from('messages')
           .update({ is_read: true })
           .eq('conversation_id', existingConversationId)
           .neq('sender_id', currentUserId)
           .eq('is_read', false)
 
+        if (readError) {
+          console.error('[MATCHES] mark messages read error', {
+            conversationId: existingConversationId,
+            error: readError,
+          })
+        }
+
+        refreshNotifications()
         router.push(`/chat/${existingConversationId}?type=match&userId=${otherUserId}`)
         return
       }
@@ -706,17 +749,24 @@ export default function MatchesPage() {
       })
 
       if (error) {
+        console.error('[MATCHES] get_or_create_conversation error', error)
         toast.error(`Erreur conversation: ${error.message}`)
         return
       }
 
       if (!conversationId) {
+        console.error('[MATCHES] get_or_create_conversation returned null', {
+          currentUserId,
+          otherUserId,
+        })
         toast.error('Conversation introuvable')
         return
       }
 
+      refreshNotifications()
       router.push(`/chat/${conversationId}?type=match&userId=${otherUserId}`)
-    } catch {
+    } catch (error) {
+      console.error('[MATCHES] openConversation catch', error)
       toast.error('Erreur ouverture conversation')
     } finally {
       setOpeningConversation(null)
@@ -749,6 +799,11 @@ export default function MatchesPage() {
           >
             <Crown size={15} />
             Likes
+            {likes.length > 0 && (
+              <span className="ml-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {likes.length > 9 ? '9+' : likes.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -782,6 +837,7 @@ export default function MatchesPage() {
             <FreeMatchesView
               matches={matches}
               onUpgrade={() => handleCheckout('business')}
+              onMarkViewed={markMatchViewed}
             />
           ) : matches.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
@@ -802,7 +858,9 @@ export default function MatchesPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`rounded-2xl ${item.isLocked ? 'bg-dark-200/50 border border-gold/10 p-1' : ''}`}
+                    className={`rounded-2xl ${
+                      item.isLocked ? 'bg-dark-200/50 border border-gold/10 p-1' : ''
+                    }`}
                   >
                     <button
                       type="button"
@@ -837,7 +895,7 @@ export default function MatchesPage() {
                           {item.isLocked ? <Lock size={10} /> : '✓'}
                         </div>
 
-                        {!item.isViewed && !item.isLocked && (
+                        {!item.isViewed && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                         )}
                       </div>
@@ -861,8 +919,8 @@ export default function MatchesPage() {
                           {item.isLocked
                             ? 'Les deux membres doivent être Business'
                             : isOpening
-                            ? 'Ouverture...'
-                            : '🎉 Nouveau match ! Dis bonjour'}
+                              ? 'Ouverture...'
+                              : '🎉 Nouveau match ! Dis bonjour'}
                         </p>
                       </div>
                     </button>
@@ -875,9 +933,7 @@ export default function MatchesPage() {
           )
         ) : tab === 'likes' ? (
           !isBusinessPro ? (
-            <div className="pt-8">
-              <BusinessProLikesOverlay onUpgrade={() => handleCheckout('business_pro')} />
-            </div>
+            <FreeLikesView likes={likes} onUpgrade={() => handleCheckout('business_pro')} />
           ) : likes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
               <span className="text-5xl">👑</span>
@@ -894,7 +950,7 @@ export default function MatchesPage() {
 
                 return (
                   <motion.div
-                    key={item.id}
+                    key={item.likeId}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
@@ -942,8 +998,8 @@ export default function MatchesPage() {
                           {isOpening
                             ? 'Ouverture...'
                             : canOpen
-                            ? 'Cette personne t\'a liké'
-                            : 'Like reçu'}
+                              ? 'Cette personne t’a liké'
+                              : 'Like reçu'}
                         </p>
                       </div>
                     </button>
@@ -962,7 +1018,9 @@ export default function MatchesPage() {
             <span className="text-5xl">✉️</span>
             <div>
               <h3 className="font-semibold text-lg mb-1">Aucune conversation pour le moment</h3>
-              <p className="text-white/40 text-sm">Tu peux envoyer un message depuis le profil de quelqu&apos;un</p>
+              <p className="text-white/40 text-sm">
+                Tes conversations apparaîtront ici quand les deux membres pourront discuter.
+              </p>
             </div>
           </div>
         ) : (
@@ -977,11 +1035,12 @@ export default function MatchesPage() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
+                  className={item.isLocked ? 'rounded-2xl bg-dark-200/50 border border-gold/10 p-1' : ''}
                 >
                   <button
                     type="button"
                     disabled={isOpening}
-                    onClick={() => openConversation(item.otherUser.id, item.id, null, false)}
+                    onClick={() => openConversation(item.otherUser.id, item.id, null, item.isLocked)}
                     className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                   >
                     <div className="relative shrink-0">
@@ -990,7 +1049,9 @@ export default function MatchesPage() {
                           <img
                             src={(item.otherUser.photos as string[])[0]}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className={`w-full h-full object-cover ${
+                              item.isLocked ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
+                            }`}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
@@ -1001,7 +1062,9 @@ export default function MatchesPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className="font-semibold truncate">
-                          {item.otherUser.first_name || item.otherUser.email || 'Profil'}
+                          {item.isLocked
+                            ? 'Conversation verrouillée'
+                            : item.otherUser.first_name || item.otherUser.email || 'Profil'}
                         </p>
 
                         {item.lastMessageAt && (
@@ -1012,10 +1075,16 @@ export default function MatchesPage() {
                       </div>
 
                       <p className="text-white/40 text-sm truncate">
-                        {isOpening ? 'Ouverture...' : lastMessage}
+                        {item.isLocked
+                          ? 'Les deux membres doivent être Business'
+                          : isOpening
+                            ? 'Ouverture...'
+                            : lastMessage}
                       </p>
                     </div>
                   </button>
+
+                  {item.isLocked && <LockedMatchOverlay onUpgrade={() => handleCheckout('business')} />}
                 </motion.div>
               )
             })}

@@ -105,17 +105,20 @@ export interface Database {
           liker_id: string
           liked_id: string
           created_at: string
+          is_viewed: boolean
         }
         Insert: {
           id?: string
           liker_id: string
           liked_id: string
           created_at?: string
+          is_viewed?: boolean
         }
         Update: {
           id?: string
           liker_id?: string
           liked_id?: string
+          is_viewed?: boolean
         }
       }
       matches: {
@@ -134,6 +137,10 @@ export interface Database {
           is_viewed?: boolean
         }
         Update: {
+          id?: string
+          user1_id?: string
+          user2_id?: string
+          created_at?: string
           is_viewed?: boolean
         }
       }
@@ -161,6 +168,7 @@ export interface Database {
           created_at?: string
         }
         Update: {
+          id?: string
           user1_id?: string
           user2_id?: string
           match_id?: string | null
@@ -168,6 +176,7 @@ export interface Database {
           participant2_id?: string | null
           last_message?: string | null
           last_message_at?: string | null
+          created_at?: string
         }
       }
       messages: {
@@ -198,12 +207,29 @@ export interface Database {
           created_at?: string
         }
         Update: {
+          id?: string
+          conversation_id?: string
+          conversation_type?: 'match' | 'direct'
+          sender_id?: string
+          content?: string | null
+          message_type?: 'text' | 'image' | 'audio' | 'file'
+          file_url?: string | null
+          file_name?: string | null
+          file_size?: number | null
           is_read?: boolean
+          created_at?: string
         }
       }
     }
     Views: {}
-    Functions: {}
+    Functions: {
+      get_or_create_conversation: {
+        Args: {
+          other_user_id: string
+        }
+        Returns: string
+      }
+    }
     Enums: {}
   }
 }

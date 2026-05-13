@@ -40,6 +40,21 @@ type ProfileWithLocation = Profile & {
   } | null
 }
 
+type PersistMatchResponse = {
+  matched?: boolean
+  created?: boolean
+  match?: {
+    id: string
+    user1_id: string
+    user2_id: string
+    created_at?: string | null
+    is_viewed?: boolean | null
+  }
+  reason?: string
+  error?: string
+  details?: unknown
+}
+
 export default function SwipePage() {
   const [supabase] = useState(() => createClient())
   const db = supabase as any
@@ -109,6 +124,73 @@ export default function SwipePage() {
       }
     },
     [getOrCreateConversation]
+  )
+
+  const persistMatch = useCallback(
+    async (otherUserId: string) => {
+      const {
+        data: { session: currentSession },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        console.error('[SWIPE] persistMatch session error', sessionError)
+        throw sessionError
+      }
+
+      const token = currentSession?.access_token
+
+      if (!token) {
+        console.error('[SWIPE] persistMatch missing access token', {
+          sessionUserId,
+          otherUserId,
+        })
+        throw new Error('Token utilisateur manquant pour créer le match')
+      }
+
+      const response = await fetch('/api/matches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ otherUserId }),
+      })
+
+      const payload = (await response.json().catch((error) => {
+        console.error('[SWIPE] persistMatch invalid JSON response', error)
+        return null
+      })) as PersistMatchResponse | null
+
+      if (!response.ok) {
+        console.error('[SWIPE] persistMatch API error', {
+          status: response.status,
+          payload,
+          sessionUserId,
+          otherUserId,
+        })
+        throw new Error(payload?.error || 'Erreur API création match')
+      }
+
+      if (!payload?.matched || !payload.match?.id) {
+        console.error('[SWIPE] persistMatch did not create match', {
+          payload,
+          sessionUserId,
+          otherUserId,
+        })
+        return null
+      }
+
+      console.error('[SWIPE] persistMatch success', {
+        matchId: payload.match.id,
+        created: payload.created,
+        sessionUserId,
+        otherUserId,
+      })
+
+      return payload.match
+    },
+    [sessionUserId, supabase]
   )
 
   const recordProfileView = useCallback(
@@ -276,7 +358,6 @@ export default function SwipePage() {
     }
   }, [router, supabase])
 
-  // Auto-confirm email for Google users
   useEffect(() => {
     if (!sessionUserId) return
     if (sessionProvider !== 'google') return
@@ -344,11 +425,9 @@ export default function SwipePage() {
         return
       }
 
-      // Save for undo
       setLastSwipedProfile(swipedProfile)
       setLastSwipeDir(dir)
 
-      // Remove from stack
       setProfiles((prev) => {
         const next = prev.filter((item) => item.id !== swipedProfile.id)
         if (next[0]) void recordProfileView(next[0].id)
@@ -357,7 +436,6 @@ export default function SwipePage() {
 
       if (dir !== 'right') return
 
-      // Record like
       const { error: likeError } = await db.from('likes').upsert(
         {
           liker_id: sessionUserId,
@@ -365,7 +443,6 @@ export default function SwipePage() {
         },
         {
           onConflict: 'liker_id,liked_id',
-          ignoreDuplicates: true,
         }
       )
 
@@ -375,9 +452,6 @@ export default function SwipePage() {
         return
       }
 
-      // Check for mutual like (match)
-      // The DB trigger `check_and_create_match` auto-creates the match row
-      // on likes INSERT. We just need to detect if a match was formed.
       const { data: mutualLike, error: matchCheckError } = await db
         .from('likes')
         .select('id')
@@ -392,8 +466,13 @@ export default function SwipePage() {
       }
 
       if (mutualLike) {
-        // Match was auto-created by the DB trigger.
-        // Now handle conversation creation based on plan logic.
+        const persistedMatch = await persistMatch(swipedProfile.id)
+
+        if (!persistedMatch) {
+          toast.error('Match détecté, mais non enregistré')
+          return
+        }
+
         const myPlan = normalizePlan(profile.plan)
         const otherPlan = normalizePlan(swipedProfile.plan)
         const bothCanChat = isPaidPlan(myPlan) && isPaidPlan(otherPlan)
@@ -403,7 +482,15 @@ export default function SwipePage() {
           return
         }
 
-        await createConversationForMatch(swipedProfile.id)
+        const conversationId = await createConversationForMatch(swipedProfile.id)
+
+        if (!conversationId) {
+          console.error('[SWIPE] paid match persisted but conversation missing', {
+            matchId: persistedMatch.id,
+            sessionUserId,
+            otherUserId: swipedProfile.id,
+          })
+        }
 
         setMatchedProfile(swipedProfile)
         setShowMatch(true)
@@ -423,16 +510,13 @@ export default function SwipePage() {
     if (!sessionUserId || !lastSwipedProfile) return
 
     try {
-      // Delete the swipe record
       await db
         .from('swipes')
         .delete()
         .eq('swiper_id', sessionUserId)
         .eq('target_id', lastSwipedProfile.id)
 
-      // If it was a like, also remove the like and match
       if (lastSwipeDir === 'right') {
-        // Remove match first (created by trigger), then like
         const [user1_id, user2_id] = [sessionUserId, lastSwipedProfile.id].sort()
 
         const { error: matchDelErr } = await db
@@ -442,7 +526,7 @@ export default function SwipePage() {
           .eq('user2_id', user2_id)
 
         if (matchDelErr) {
-          console.warn('[SWIPE] undo match delete (may be RLS):', matchDelErr.message)
+          console.warn('[SWIPE] undo match delete may be blocked by RLS:', matchDelErr.message)
         }
 
         const { error: likeDelErr } = await db
@@ -452,18 +536,17 @@ export default function SwipePage() {
           .eq('liked_id', lastSwipedProfile.id)
 
         if (likeDelErr) {
-          console.warn('[SWIPE] undo like delete (may be RLS):', likeDelErr.message)
+          console.warn('[SWIPE] undo like delete may be blocked by RLS:', likeDelErr.message)
         }
       }
 
-      // Re-insert the profile at the front of the stack
       setProfiles((prev) => [lastSwipedProfile, ...prev])
       setLastSwipedProfile(null)
       setLastSwipeDir(null)
       toast.success('Swipe annulé !')
     } catch (error) {
       console.error('[SWIPE] undo error', error)
-      toast.error('Erreur lors de l\'annulation')
+      toast.error("Erreur lors de l'annulation")
     }
   }
 
@@ -522,7 +605,6 @@ export default function SwipePage() {
         onClose={() => setShowMatch(false)}
       />
 
-      {/* Undo paywall modal */}
       <AnimatePresence>
         {showUndoPaywall && (
           <>

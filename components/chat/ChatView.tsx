@@ -32,8 +32,6 @@ interface Props {
   otherUser: Profile
 }
 
-type ProfileWithLimits = Profile
-
 const MIN_AUDIO_SIZE_BYTES = 3000
 const MIN_RECORDING_MS = 900
 
@@ -109,7 +107,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [supabase] = useState(() => createClient())
   const db = supabase as any
   const router = useRouter()
-  const { profile, setProfile, refreshNotifications } = useAppStore()
+  const { profile, refreshNotifications } = useAppStore()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -141,52 +139,6 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const otherIsFree = otherPlan === 'free'
   const canEncourage = iAmPaid && otherIsFree
 
-  const sendEncouragement = async () => {
-    if (!currentUserId || !conversationId || encourageSending || encourageCooldown) return
-
-    setEncourageSending(true)
-
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
-      const token = currentSession?.access_token
-      if (!token) {
-        toast.error('Session manquante')
-        return
-      }
-
-      const res = await fetch('/api/encourage', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          conversationId,
-          otherUserId: otherUser.id,
-        }),
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        if (res.status === 429) {
-          setEncourageCooldown(true)
-          toast.error(data?.error || 'Encouragement déjà envoyé récemment')
-        } else {
-          toast.error(data?.error || 'Erreur envoi encouragement')
-        }
-        return
-      }
-
-      setEncourageCooldown(true)
-      toast.success('Encouragement envoyé !')
-    } catch {
-      toast.error('Erreur réseau')
-    } finally {
-      setEncourageSending(false)
-    }
-  }
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -211,8 +163,79 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       .neq('sender_id', currentUserId)
       .eq('is_read', false)
 
-    if (!error) refreshNotifications()
+    if (error) {
+      console.error('[CHAT_VIEW] markMessagesAsRead error', {
+        conversationId,
+        currentUserId,
+        error,
+      })
+      return
+    }
+
+    console.error('[CHAT_VIEW] messages marked as read', {
+      conversationId,
+      currentUserId,
+    })
+
+    refreshNotifications()
   }, [conversationId, currentUserId, db, refreshNotifications])
+
+  const sendEncouragement = async () => {
+    if (!currentUserId || !conversationId || encourageSending || encourageCooldown) return
+
+    setEncourageSending(true)
+
+    try {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession()
+
+      const token = currentSession?.access_token
+
+      if (!token) {
+        toast.error('Session manquante')
+        return
+      }
+
+      const res = await fetch('/api/encourage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          conversationId,
+          otherUserId: otherUser.id,
+        }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        console.error('[CHAT_VIEW] encourage API error', {
+          status: res.status,
+          data,
+        })
+
+        if (res.status === 429) {
+          setEncourageCooldown(true)
+          toast.error(data?.error || 'Encouragement déjà envoyé récemment')
+        } else {
+          toast.error(data?.error || 'Erreur envoi encouragement')
+        }
+
+        return
+      }
+
+      setEncourageCooldown(true)
+      toast.success('Encouragement envoyé !')
+    } catch (error) {
+      console.error('[CHAT_VIEW] encourage catch', error)
+      toast.error('Erreur réseau')
+    } finally {
+      setEncourageSending(false)
+    }
+  }
 
   useEffect(() => {
     if (!currentUserId || !otherUser?.id) return
@@ -220,12 +243,20 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     const loadMatchStatus = async () => {
       const [user1_id, user2_id] = [currentUserId, otherUser.id].sort()
 
-      const { data } = await db
+      const { data, error } = await db
         .from('matches')
         .select('id')
         .eq('user1_id', user1_id)
         .eq('user2_id', user2_id)
         .maybeSingle()
+
+      if (error) {
+        console.error('[CHAT_VIEW] match status error', {
+          user1_id,
+          user2_id,
+          error,
+        })
+      }
 
       setHasMatchWithOtherUser(Boolean(data))
     }
@@ -239,7 +270,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     }
 
     if (!isPaidPlan(otherPlan)) {
-      throw new Error('Ce membre est en plan Free. Envoie-lui un encouragement pour l\'inviter à passer Business.')
+      throw new Error("Ce membre est en plan Free. Envoie-lui un encouragement pour l'inviter à passer Business.")
     }
   }
 
@@ -259,6 +290,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           .limit(100)
 
         if (error) {
+          console.error('[CHAT_VIEW] messages select error', {
+            conversationId,
+            error,
+          })
           toast.error(`Erreur chargement messages: ${error.message}`)
           return
         }
@@ -266,7 +301,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         setMessages((data || []) as Message[])
         await markMessagesAsRead()
         setTimeout(scrollToBottom, 100)
-      } catch {
+      } catch (error) {
+        console.error('[CHAT_VIEW] loadMessages catch', error)
         toast.error('Erreur chargement messages')
       } finally {
         setLoading(false)
@@ -294,14 +330,27 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           })
 
           if (currentUserId && newMessage.sender_id !== currentUserId) {
-            const { error } = await db.from('messages').update({ is_read: true }).eq('id', newMessage.id)
-            if (!error) refreshNotifications()
+            const { error } = await db
+              .from('messages')
+              .update({ is_read: true })
+              .eq('id', newMessage.id)
+
+            if (error) {
+              console.error('[CHAT_VIEW] realtime mark message read error', {
+                messageId: newMessage.id,
+                error,
+              })
+            } else {
+              refreshNotifications()
+            }
           }
 
           setTimeout(scrollToBottom, 100)
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.error('[CHAT_VIEW] realtime status', status)
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -324,7 +373,10 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       upsert: false,
     })
 
-    if (error) throw error
+    if (error) {
+      console.error('[CHAT_VIEW] upload file error', error)
+      throw error
+    }
 
     return data.path
   }
@@ -389,6 +441,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         .single()
 
       if (insertError) {
+        console.error('[CHAT_VIEW] insert message error', insertError)
         toast.error(`Erreur envoi: ${insertError.message}`)
         return
       }
@@ -402,6 +455,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       setText('')
       setTimeout(scrollToBottom, 100)
     } catch (err) {
+      console.error('[CHAT_VIEW] sendMessage catch', err)
       toast.error(err instanceof Error ? err.message : 'Erreur envoi')
     } finally {
       setSending(false)
@@ -455,7 +509,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       }
 
       recorder.onerror = () => {
-        toast.error('Erreur pendant l\'enregistrement audio')
+        toast.error("Erreur pendant l'enregistrement audio")
         cleanupRecorder()
       }
 
@@ -491,7 +545,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       }
 
       recorder.start()
-    } catch {
+    } catch (error) {
+      console.error('[CHAT_VIEW] startRecording catch', error)
       cleanupRecorder()
       toast.error('Accès micro refusé ou micro indisponible')
     }
@@ -520,7 +575,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
             currentRecorder.stop()
           }
         }, 120)
-      } catch {
+      } catch (error) {
+        console.error('[CHAT_VIEW] stopRecording catch', error)
         cleanupRecorder()
         toast.error('Erreur arrêt enregistrement')
       }
@@ -638,8 +694,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
               {encourageCooldown
                 ? 'Encouragement envoyé !'
                 : encourageSending
-                ? 'Envoi en cours...'
-                : 'Encourager à passer Business'}
+                  ? 'Envoi en cours...'
+                  : 'Encourager à passer Business'}
             </button>
           </div>
         )}
@@ -811,7 +867,7 @@ function useMessageFileUrl(fileUrl: string | null) {
       if (!mounted) return
 
       if (error || !data?.signedUrl) {
-        console.error('file signed url error', error)
+        console.error('[CHAT_VIEW] file signed url error', error)
         setResolvedUrl(fileUrl)
         return
       }
@@ -854,7 +910,8 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
       }
 
       await audio.play()
-    } catch {
+    } catch (error) {
+      console.error('[CHAT_VIEW] audio play error', error)
       toast.error('Lecture audio impossible')
     }
   }
