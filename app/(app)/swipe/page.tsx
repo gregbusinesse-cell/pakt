@@ -376,9 +376,11 @@ export default function SwipePage() {
       }
 
       // Check for mutual like (match)
+      // The DB trigger `check_and_create_match` auto-creates the match row
+      // on likes INSERT. We just need to detect if a match was formed.
       const { data: mutualLike, error: matchCheckError } = await db
         .from('likes')
-        .select('*')
+        .select('id')
         .eq('liker_id', swipedProfile.id)
         .eq('liked_id', sessionUserId)
         .maybeSingle()
@@ -390,24 +392,8 @@ export default function SwipePage() {
       }
 
       if (mutualLike) {
-        const [user1_id, user2_id] = [sessionUserId, swipedProfile.id].sort()
-
-        const { error: matchInsertError } = await db.from('matches').upsert(
-          {
-            user1_id,
-            user2_id,
-          },
-          {
-            onConflict: 'user1_id,user2_id',
-          }
-        )
-
-        if (matchInsertError) {
-          console.error('[SWIPE] match insert error', matchInsertError)
-          toast.error(`Erreur match: ${matchInsertError.message}`)
-          return
-        }
-
+        // Match was auto-created by the DB trigger.
+        // Now handle conversation creation based on plan logic.
         const myPlan = normalizePlan(profile.plan)
         const otherPlan = normalizePlan(swipedProfile.plan)
         const bothCanChat = isPaidPlan(myPlan) && isPaidPlan(otherPlan)
@@ -444,21 +430,30 @@ export default function SwipePage() {
         .eq('swiper_id', sessionUserId)
         .eq('target_id', lastSwipedProfile.id)
 
-      // If it was a like, also remove the like
+      // If it was a like, also remove the like and match
       if (lastSwipeDir === 'right') {
-        await db
+        // Remove match first (created by trigger), then like
+        const [user1_id, user2_id] = [sessionUserId, lastSwipedProfile.id].sort()
+
+        const { error: matchDelErr } = await db
+          .from('matches')
+          .delete()
+          .eq('user1_id', user1_id)
+          .eq('user2_id', user2_id)
+
+        if (matchDelErr) {
+          console.warn('[SWIPE] undo match delete (may be RLS):', matchDelErr.message)
+        }
+
+        const { error: likeDelErr } = await db
           .from('likes')
           .delete()
           .eq('liker_id', sessionUserId)
           .eq('liked_id', lastSwipedProfile.id)
 
-        // Remove match if one was created
-        const [user1_id, user2_id] = [sessionUserId, lastSwipedProfile.id].sort()
-        await db
-          .from('matches')
-          .delete()
-          .eq('user1_id', user1_id)
-          .eq('user2_id', user2_id)
+        if (likeDelErr) {
+          console.warn('[SWIPE] undo like delete (may be RLS):', likeDelErr.message)
+        }
       }
 
       // Re-insert the profile at the front of the stack
