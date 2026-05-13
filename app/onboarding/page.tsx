@@ -517,18 +517,29 @@ export default function OnboardingPage() {
       const uploadedUrls: string[] = []
 
       for (const photo of data.photos) {
-        const fileName = `${session.user.id}/${Date.now()}-${photo.name}`
+        const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+        const fileName = `${session.user.id}/${Date.now()}-${safeName}`
+
+        console.log('[ONBOARDING] uploading photo:', fileName, 'size:', photo.size, 'type:', photo.type)
 
         const { data: uploadData, error } = await supabase.storage
           .from('avatars')
           .upload(fileName, photo, { upsert: true })
 
-        if (error) throw error
+        if (error) {
+          console.error('[ONBOARDING] photo upload error:', {
+            message: error.message,
+            name: error.name,
+            fileName,
+          })
+          throw new Error(`Upload photo: ${error.message}`)
+        }
 
         const {
           data: { publicUrl },
         } = supabase.storage.from('avatars').getPublicUrl(uploadData.path)
 
+        console.log('[ONBOARDING] photo uploaded:', publicUrl)
         uploadedUrls.push(publicUrl)
       }
 
@@ -536,9 +547,8 @@ export default function OnboardingPage() {
       const today = new Date().toISOString().split('T')[0]
 
       const referralCode = getStoredRef()
-      const myReferralCode = 'user_' + session.user.id.replace(/-/g, '').slice(0, 12)
 
-      const { error } = await supabase.from('profiles').upsert({
+      const profilePayload: Record<string, unknown> = {
         id: session.user.id,
         email: session.user.email!,
         first_name: data.firstName,
@@ -556,24 +566,46 @@ export default function OnboardingPage() {
         messages_today: 0,
         last_swipe_date: today,
         last_message_date: today,
-        referred_by_code: referralCode,
-        referral_code: myReferralCode,
-      } as never)
-
-      // Track referral signup after profile creation
-      if (!error && referralCode) {
-        await supabase.from('referrals').insert({
-          referred_id: session.user.id,
-          referral_code: referralCode,
-          status: isGoogle ? 'validated' : 'pending',
-        } as never).then(() => clearStoredRef())
       }
 
-      if (error) throw error
+      console.log('[ONBOARDING] profile payload:', profilePayload)
+
+      const { error, data: upsertResult } = await supabase
+        .from('profiles')
+        .upsert(profilePayload as never)
+        .select('id')
+        .single()
+
+      if (error) {
+        console.error('[ONBOARDING] profile upsert error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        })
+        throw new Error(`Profil: ${error.message}`)
+      }
+
+      console.log('[ONBOARDING] profile created:', upsertResult)
+
+      // Track referral (non-blocking — don't fail onboarding if referral fails)
+      if (referralCode) {
+        try {
+          await supabase.from('referrals').insert({
+            referred_id: session.user.id,
+            referrer_id: referralCode,
+          } as never)
+          clearStoredRef()
+        } catch (refErr) {
+          console.warn('[ONBOARDING] referral insert failed (non-blocking):', refErr)
+        }
+      }
 
       router.push('/loading')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de la création du profil')
+      console.error('[ONBOARDING] handleSubmit error:', err)
+      const message = err instanceof Error ? err.message : 'Erreur lors de la création du profil'
+      toast.error(message, { duration: 6000 })
     } finally {
       setLoading(false)
     }
