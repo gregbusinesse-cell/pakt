@@ -114,6 +114,26 @@ function EventsTab() {
 
 const CHANGELOG = [
   {
+    version: 'v1.2',
+    date: '15 mai 2025',
+    summary: 'Emails automatiques, auto-save profil, corrections swipe',
+    changes: [
+      'Système d\'emails automatiques (Brevo) : bienvenue, like, match, inactivité, profil incomplet',
+      'Système de désinscription emails avec lien sécurisé (HMAC)',
+      'Anti-spam : max 2 emails/jour, anti-doublon 23h',
+      'Auto-save profil avec debounce (plus de bouton sauvegarder)',
+      'Indicateur de sauvegarde dans le header profil',
+      'Lien "Modifier mes critères" depuis le swipe vide',
+      'Scroll automatique vers la section critères',
+      'Détection état vide : filtres pro vs. tous les profils vus',
+      'Tracking d\'activité pour les emails de relance',
+      'Page de prévisualisation des emails (/emails-preview)',
+      'Correction boucle infinie sur le swipe',
+      'Correction flash de profil après swipe',
+      'Tagline "Le Tinder du Business" sur la page d\'auth',
+    ],
+  },
+  {
     version: 'v1.1',
     date: '13 mai 2025',
     summary: 'Nouveaux plans, undo, messagerie repensée',
@@ -292,7 +312,7 @@ function ChangelogTab() {
                 ))}
 
                 <div className="text-center pt-4 pb-8">
-                  <span className="text-[11px] text-white/15">PAKT v1.1</span>
+                  <span className="text-[11px] text-white/15">PAKT v1.2</span>
                 </div>
               </div>
             </motion.div>
@@ -685,7 +705,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.1</div>
+      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.2</div>
     </div>
   )
 }
