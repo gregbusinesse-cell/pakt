@@ -65,6 +65,7 @@ export default function SwipePage() {
   const [session, setSession] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [filteredByProCriteria, setFilteredByProCriteria] = useState(false)
   const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
@@ -264,23 +265,12 @@ export default function SwipePage() {
         return
       }
 
-      const applyGeoAgeFilter = (candidate: ProfileWithLocation) => {
+      // Base filter: already swiped + geo + age (applies to everyone)
+      const applyBaseFilter = (candidate: ProfileWithLocation) => {
         if (swipedSet.has(candidate.id)) return false
         if (typeof candidate.age === 'number') {
           if (candidate.age < ageMin || candidate.age > ageMax) return false
         }
-
-        // Skill filters (Business Pro only)
-        if (skillFilters.length > 0) {
-          const candidateSkills = parseSkills((candidate as any).skills)
-          for (const filter of skillFilters) {
-            const match = candidateSkills.find(
-              (s) => s.name.toLowerCase() === filter.name.toLowerCase() && s.level >= filter.min_level
-            )
-            if (!match) return false
-          }
-        }
-
         if (!candidate.city_lat || !candidate.city_lng) return false
         if (!userLat || !userLng) return true
 
@@ -297,7 +287,24 @@ export default function SwipePage() {
         return radius * c <= maxDistance
       }
 
-      const eligible = ((profilesData || []) as ProfileWithLocation[]).filter(applyGeoAgeFilter)
+      // Pro skill filter: only for Business Pro with active filters
+      const applySkillFilter = (candidate: ProfileWithLocation) => {
+        if (skillFilters.length === 0) return true
+        const candidateSkills = parseSkills((candidate as any).skills)
+        for (const filter of skillFilters) {
+          const match = candidateSkills.find(
+            (s) => s.name.toLowerCase() === filter.name.toLowerCase() && s.level >= filter.min_level
+          )
+          if (!match) return false
+        }
+        return true
+      }
+
+      const baseEligible = ((profilesData || []) as ProfileWithLocation[]).filter(applyBaseFilter)
+      const eligible = baseEligible.filter(applySkillFilter)
+
+      // Detect: profiles exist but were all excluded by Pro skill filters
+      setFilteredByProCriteria(eligible.length === 0 && baseEligible.length > 0 && skillFilters.length > 0)
 
       const fresh = eligible.filter((p) => !recentlyViewedSet.has(p.id))
       const recycled = eligible.filter((p) => recentlyViewedSet.has(p.id))
@@ -582,7 +589,7 @@ export default function SwipePage() {
         ) : !isEmailVerified ? (
           <EmailLocked />
         ) : profiles.length === 0 ? (
-          <EmptyState onRefresh={loadProfiles} />
+          <EmptyState onRefresh={loadProfiles} filteredByProCriteria={filteredByProCriteria} onEditCriteria={() => router.push('/profile')} />
         ) : (
           <div className="relative h-full min-h-[calc(100dvh-185px)]">
             {stackForRender.map((item, index) => {
@@ -682,7 +689,7 @@ export default function SwipePage() {
   )
 }
 
-function EmptyState({ onRefresh }: { onRefresh: () => void }) {
+function EmptyState({ onRefresh, filteredByProCriteria, onEditCriteria }: { onRefresh: () => void; filteredByProCriteria: boolean; onEditCriteria: () => void }) {
   return (
     <div className="min-h-[calc(100dvh-185px)] flex flex-col items-center justify-center px-8 text-center">
       <motion.div
@@ -690,19 +697,41 @@ function EmptyState({ onRefresh }: { onRefresh: () => void }) {
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-col items-center gap-6"
       >
-        <span className="text-6xl">🌍</span>
+        <span className="text-6xl">{filteredByProCriteria ? '🔍' : '🌍'}</span>
 
-        <div>
-          <h2 className="text-2xl font-bold mb-2">C&apos;est calme par ici</h2>
-          <p className="text-white/50 text-sm">
-            Tu as vu tous les profils disponibles pour l&apos;instant.
-          </p>
+        {filteredByProCriteria ? (
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Trop peu de résultats</h2>
+            <p className="text-white/50 text-sm">
+              Aucun profil ne correspond à vos critères actuels.
+            </p>
+            <p className="text-white/40 text-xs mt-1">
+              Modifiez vos filtres de compétences pour voir plus de profils.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Tu es à jour</h2>
+            <p className="text-white/50 text-sm">
+              Tu as vu tous les profils disponibles pour l&apos;instant.
+            </p>
+            <p className="text-white/40 text-xs mt-1">
+              Reviens un peu plus tard pour découvrir de nouveaux profils.
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-col items-center gap-3">
+          {filteredByProCriteria && (
+            <button onClick={onEditCriteria} className="flex items-center gap-2 px-5 py-2.5 rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors">
+              Modifier mes critères
+            </button>
+          )}
+          <button onClick={onRefresh} className="flex items-center gap-2 btn-ghost">
+            <RefreshCw size={16} />
+            Actualiser
+          </button>
         </div>
-
-        <button onClick={onRefresh} className="flex items-center gap-2 btn-ghost">
-          <RefreshCw size={16} />
-          Actualiser
-        </button>
       </motion.div>
     </div>
   )
