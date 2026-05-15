@@ -2,7 +2,7 @@
 
 // app/(app)/swipe/page.tsx
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -88,7 +88,10 @@ export default function SwipePage() {
   const maxDistance = isPro ? profileWithLocation?.preferences?.distance_km ?? 50 : 50
   const ageMin = isPro ? profileWithLocation?.preferences?.age_min ?? 18 : 18
   const ageMax = isPro ? profileWithLocation?.preferences?.age_max ?? 99 : 99
-  const skillFilters: SkillFilter[] = isPro ? profileWithLocation?.preferences?.skill_filters ?? [] : []
+  const skillFilters = useMemo<SkillFilter[]>(
+    () => (isPro ? profileWithLocation?.preferences?.skill_filters ?? [] : []),
+    [isPro, profileWithLocation?.preferences?.skill_filters]
+  )
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
 
