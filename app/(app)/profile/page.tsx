@@ -932,7 +932,7 @@ export default function ProfilePage() {
   const cardBase = 'bg-dark-200 border border-dark-500 rounded-[12px] p-6'
 
   return (
-    <div className="h-full flex flex-col bg-dark overflow-y-auto">
+    <div className="min-h-full flex flex-col bg-dark">
       <header className="shrink-0 px-5 pt-5 pb-4 border-b border-dark-500">
         <div className="max-w-xl mx-auto flex justify-center">
           <div className="flex items-center bg-dark-200 border border-dark-500 rounded-[12px] p-1">

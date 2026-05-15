@@ -126,19 +126,28 @@ export default function SwipeCard({
 
   return (
     <div
-      className={`h-full overflow-y-auto overscroll-contain ${
-        isTop ? 'pointer-events-auto opacity-100 relative' : 'pointer-events-none opacity-0 absolute inset-0'
+      className={`${
+        isOwnProfile
+          ? 'relative'
+          : `h-full overflow-y-auto overscroll-contain ${
+              isTop ? 'pointer-events-auto opacity-100 relative' : 'pointer-events-none opacity-0 absolute inset-0'
+            }`
       }`}
-      style={{ touchAction: isTop ? 'pan-y' : 'none' }}
+      style={{ touchAction: isOwnProfile ? 'auto' : isTop ? 'pan-y' : 'none' }}
     >
       <motion.div
-        style={{ x, rotate, zIndex, touchAction: isTop ? 'pan-y' : 'none' }}
+        style={{
+          x: isOwnProfile ? undefined : x,
+          rotate: isOwnProfile ? undefined : rotate,
+          zIndex: isOwnProfile ? undefined : zIndex,
+          touchAction: isOwnProfile ? 'auto' : isTop ? 'pan-y' : 'none',
+        }}
         drag={isTop && !disabledActions && !isOwnProfile ? 'x' : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.25}
         onDragEnd={handleDragEnd}
-        animate={controls}
-        initial={{ scale: isTop ? 1 : 0.98, y: isTop ? 0 : 10 }}
+        animate={isOwnProfile ? undefined : controls}
+        initial={isOwnProfile ? undefined : { scale: isTop ? 1 : 0.98, y: isTop ? 0 : 10 }}
         className="w-full"
       >
         <div className={`flex flex-col items-center ${isOwnProfile ? 'pb-8' : 'pb-32'}`}>
