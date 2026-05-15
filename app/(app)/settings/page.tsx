@@ -116,23 +116,6 @@ const CHANGELOG = [
   {
     version: 'v1.2',
     date: '15 mai 2025',
-<<<<<<< HEAD
-    summary: 'Emails automatiques, auto-save profil, corrections swipe',
-    changes: [
-      'Système d\'emails automatiques (Brevo) : bienvenue, like, match, inactivité, profil incomplet',
-      'Système de désinscription emails avec lien sécurisé (HMAC)',
-      'Anti-spam : max 2 emails/jour, anti-doublon 23h',
-      'Auto-save profil avec debounce (plus de bouton sauvegarder)',
-      'Indicateur de sauvegarde dans le header profil',
-      'Lien "Modifier mes critères" depuis le swipe vide',
-      'Scroll automatique vers la section critères',
-      'Détection état vide : filtres pro vs. tous les profils vus',
-      'Tracking d\'activité pour les emails de relance',
-      'Page de prévisualisation des emails (/emails-preview)',
-      'Correction boucle infinie sur le swipe',
-      'Correction flash de profil après swipe',
-      'Tagline "Le Tinder du Business" sur la page d\'auth',
-=======
     summary: 'Notifications, sauvegarde auto, swipe plus fluide',
     changes: [
       'Notifications par email : like, match, relance et bienvenue',
@@ -142,7 +125,6 @@ const CHANGELOG = [
       'Possibilite de se desinscrire des notifications',
       'Meilleure detection des profils deja vus',
       'Corrections de bugs et optimisation des performances',
->>>>>>> dev
     ],
   },
   {
