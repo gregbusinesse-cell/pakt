@@ -118,6 +118,7 @@ function createFallbackProfile(userId: string): Profile {
     city_lng: null,
     interests: [],
     photos: [],
+    skills: null,
     preferences: {},
     plan: 'free',
     stripe_customer_id: null,

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion'
 import { Heart, Undo2, X } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
+import SkillDisplay from '@/components/skills/SkillDisplay'
 
 interface Props {
   profile: Profile
@@ -266,6 +267,13 @@ export default function SwipeCard({
                     {i}
                   </span>
                 ))}
+              </div>
+            )}
+
+            {(profile as any).skills && (
+              <div className="bg-dark-200 border border-dark-500 rounded-[12px] p-4">
+                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">Competences</p>
+                <SkillDisplay skills={(profile as any).skills} />
               </div>
             )}
 

@@ -147,4 +147,50 @@ export const INTERESTS = [
   'Autre',
 ]
 
+export const SKILLS_LIST = [
+  'Marketing',
+  'Vente / Closing',
+  'Copywriting',
+  'IA / Automation',
+  'Développement Web',
+  'Design',
+  'Réseaux sociaux',
+  'Montage vidéo',
+  'Ads / Acquisition',
+  'SEO / Growth',
+]
+
+export interface UserSkill {
+  name: string
+  level: number // 1-10
+  comment?: string
+}
+
+export function parseSkills(value: unknown): UserSkill[] {
+  try {
+    const arr = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? JSON.parse(value || '[]')
+        : []
+    if (!Array.isArray(arr)) return []
+    return arr.filter(
+      (s: any) =>
+        typeof s === 'object' &&
+        s !== null &&
+        typeof s.name === 'string' &&
+        s.name.trim().length > 0 &&
+        typeof s.level === 'number' &&
+        s.level >= 0 &&
+        s.level <= 10
+    ).map((s: any) => ({
+      name: s.name.trim(),
+      level: Math.round(s.level),
+      ...(typeof s.comment === 'string' && s.comment.trim() ? { comment: s.comment.trim() } : {}),
+    }))
+  } catch {
+    return []
+  }
+}
+
 export const MAX_PHOTOS = 6

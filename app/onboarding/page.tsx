@@ -9,11 +9,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { useSession } from '@supabase/auth-helpers-react'
-import { INTERESTS, MAX_PHOTOS, validatePhoto } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, validatePhoto, type UserSkill } from '@/lib/utils'
 import { X, Plus, ChevronRight, ChevronLeft, MapPin } from 'lucide-react'
 import { getStoredRef, clearStoredRef } from '@/components/providers/RefCaptureProvider'
+import SkillPicker from '@/components/skills/SkillPicker'
 
-const STEPS = 5
+const STEPS = 6
 const MAX_INTERESTS = 5
 
 type PhotoItem = { type: 'new'; url: string; file: File }
@@ -179,6 +180,7 @@ export default function OnboardingPage() {
 
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [otherInput, setOtherInput] = useState('')
+  const [selectedSkills, setSelectedSkills] = useState<UserSkill[]>([])
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -502,6 +504,9 @@ export default function OnboardingPage() {
       case 3:
         return citySelected
       case 4:
+        // Skills — optional, but if any selected they must all have levels set
+        return selectedSkills.length === 0 || selectedSkills.every((s) => s.level >= 1)
+      case 5:
         return data.photos.length >= 1
       default:
         return true
@@ -559,6 +564,7 @@ export default function OnboardingPage() {
         city_lat: data.lat,
         city_lng: data.lng,
         photos: uploadedUrls,
+        skills: selectedSkills.filter((s) => s.level >= 1),
         is_onboarded: true,
         email_confirmed: isGoogle,
         plan: 'free',
@@ -902,6 +908,18 @@ export default function OnboardingPage() {
             )}
 
             {step === 4 && (
+              <div className="flex flex-col gap-5 pt-4">
+                <div>
+                  <h2 className="text-3xl font-bold mb-1">Tes competences</h2>
+                  <p className="text-white/50">Selectionne uniquement les competences que tu maitrises vraiment.</p>
+                  <p className="text-white/30 text-xs mt-1">Chaque competence necessite un niveau honnete de 1 a 10.</p>
+                </div>
+
+                <SkillPicker skills={selectedSkills} onChange={setSelectedSkills} />
+              </div>
+            )}
+
+            {step === 5 && (
               <div className="flex flex-col gap-5 pt-4">
                 <div>
                   <h2 className="text-3xl font-bold mb-1">Tes photos 📸</h2>

@@ -9,11 +9,12 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
-import { INTERESTS, MAX_PHOTOS, validatePhoto } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, validatePhoto, parseSkills, type UserSkill } from '@/lib/utils'
 import { Check, X, Plus, LogOut, Crown } from 'lucide-react'
 
 import { useRouter } from 'next/navigation'
 import SwipeCard from '@/components/swipe/SwipeCard'
+import SkillPicker from '@/components/skills/SkillPicker'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Database, Profile } from '@/lib/supabase/types'
 
@@ -134,6 +135,7 @@ type ProfileForm = {
   bio: string
   city: string
   interests: string[]
+  skills: UserSkill[]
 }
 
 function cleanPhotoUrls(photos: unknown): string[] {
@@ -414,6 +416,7 @@ export default function ProfilePage() {
     bio: profile?.bio || '',
     city: profile?.city || '',
     interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
+    skills: parseSkills((profile as any)?.skills),
   })
 
   const [cityData, setCityData] = useState({
@@ -505,6 +508,7 @@ export default function ProfilePage() {
       bio: profile?.bio || '',
       city: profile?.city || '',
       interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
+      skills: parseSkills((profile as any)?.skills),
     })
 
     setCityData({
@@ -775,6 +779,7 @@ export default function ProfilePage() {
         city_lng: cityData.lng,
         interests: nextInterests,
         photos: allPhotos,
+        skills: form.skills.filter((s) => s.level >= 1),
         preferences: isBusinessPro ? preferences : LOCKED_PREFERENCES,
 
       } as any
@@ -1099,6 +1104,17 @@ export default function ProfilePage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className={cardBase}>
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-white">Competences</p>
+                  <p className="text-xs text-white/40 mt-1">Uniquement celles que tu maitrises vraiment</p>
+                </div>
+                <SkillPicker
+                  skills={form.skills}
+                  onChange={(skills) => setForm((prev) => ({ ...prev, skills }))}
+                />
               </div>
 
               <PhotoSection

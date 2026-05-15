@@ -23,6 +23,7 @@ export interface Database {
           city_lng: number | null
           interests: string[]
           photos: string[]
+          skills: Json | null
           preferences: Json | null
           plan: 'free' | 'business' | 'business_pro' | 'premium'
           stripe_customer_id: string | null
@@ -52,6 +53,7 @@ export interface Database {
           city_lng?: number | null
           interests?: string[]
           photos?: string[]
+          skills?: Json | null
           preferences?: Json | null
           plan?: 'free' | 'business' | 'business_pro' | 'premium'
           stripe_customer_id?: string | null
@@ -81,6 +83,7 @@ export interface Database {
           city_lng?: number | null
           interests?: string[]
           photos?: string[]
+          skills?: Json | null
           preferences?: Json | null
           plan?: 'free' | 'business' | 'business_pro' | 'premium'
           stripe_customer_id?: string | null
