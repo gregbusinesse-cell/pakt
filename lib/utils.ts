@@ -153,7 +153,7 @@ export const SKILLS_LIST = [
   'Copywriting',
   'IA / Automation',
   'Développement Web',
-  'Design',
+  'Stratégie digitale',
   'Réseaux sociaux',
   'Montage vidéo',
   'Ads / Acquisition',
@@ -164,6 +164,11 @@ export interface UserSkill {
   name: string
   level: number // 1-10
   comment?: string
+}
+
+export interface SkillFilter {
+  name: string
+  min_level: number // 1-10
 }
 
 export function parseSkills(value: unknown): UserSkill[] {

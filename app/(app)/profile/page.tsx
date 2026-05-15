@@ -9,7 +9,7 @@ import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
-import { INTERESTS, MAX_PHOTOS, validatePhoto, parseSkills, type UserSkill } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, SKILLS_LIST, validatePhoto, parseSkills, type UserSkill, type SkillFilter } from '@/lib/utils'
 import { Check, X, Plus, LogOut, Crown } from 'lucide-react'
 
 import { useRouter } from 'next/navigation'
@@ -114,12 +114,14 @@ type Preferences = {
   distance_km: number
   age_min: number
   age_max: number
+  skill_filters?: SkillFilter[]
 }
 
 const LOCKED_PREFERENCES: Preferences = {
   distance_km: 1000,
   age_min: 18,
   age_max: 99,
+  skill_filters: [],
 }
 
 function normalizePlan(plan: unknown) {
@@ -189,10 +191,22 @@ function getInitialPreferences(pref: unknown): Preferences {
       ? clampNumber(data.age_max, 18, 99)
       : base.age_max
 
+  const skillFilters: SkillFilter[] = (() => {
+    const raw = (pref as any)?.skill_filters
+    if (!Array.isArray(raw)) return []
+    return raw.filter(
+      (f: any) =>
+        typeof f === 'object' && f !== null &&
+        typeof f.name === 'string' && f.name.trim() &&
+        typeof f.min_level === 'number' && f.min_level >= 1 && f.min_level <= 10
+    ).map((f: any) => ({ name: f.name.trim(), min_level: Math.round(f.min_level) }))
+  })()
+
   return {
     distance_km: distanceKm,
     age_min: Math.min(ageMin, ageMax),
     age_max: Math.max(ageMin, ageMax),
+    skill_filters: skillFilters,
   }
 }
 
@@ -1211,6 +1225,77 @@ export default function ProfilePage() {
                         }}
                         className="w-full accent-gold disabled:cursor-not-allowed"
                       />
+                    </div>
+                  </div>
+
+                  {/* Skill filters */}
+                  <div>
+                    <p className="text-sm text-white/70 mb-3">Compétences recherchées</p>
+
+                    {(preferences.skill_filters || []).length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {(preferences.skill_filters || []).map((filter) => (
+                          <div
+                            key={filter.name}
+                            className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-dark-300 border border-gold/15"
+                          >
+                            <span className="flex-1 text-sm text-white/80 truncate">{filter.name}</span>
+                            <span className="text-xs text-white/40 mr-1">Min</span>
+                            <select
+                              value={filter.min_level}
+                              disabled={!isBusinessPro}
+                              onChange={(e) => {
+                                const newLevel = Number(e.target.value)
+                                setPreferences((prev) => ({
+                                  ...prev,
+                                  skill_filters: (prev.skill_filters || []).map((f) =>
+                                    f.name === filter.name ? { ...f, min_level: newLevel } : f
+                                  ),
+                                }))
+                              }}
+                              className="bg-dark-400 border border-dark-500 text-gold text-xs font-semibold rounded-lg px-2 py-1 outline-none"
+                            >
+                              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>{n}/10</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreferences((prev) => ({
+                                  ...prev,
+                                  skill_filters: (prev.skill_filters || []).filter((f) => f.name !== filter.name),
+                                }))
+                              }
+                              className="shrink-0 w-6 h-6 rounded-full bg-red-500/15 flex items-center justify-center hover:bg-red-500/30 transition-colors"
+                            >
+                              <X size={10} className="text-red-400" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add skill filter suggestions */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {SKILLS_LIST.filter(
+                        (s) => !(preferences.skill_filters || []).some((f) => f.name.toLowerCase() === s.toLowerCase())
+                      ).map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          disabled={!isBusinessPro}
+                          onClick={() =>
+                            setPreferences((prev) => ({
+                              ...prev,
+                              skill_filters: [...(prev.skill_filters || []), { name, min_level: 1 }],
+                            }))
+                          }
+                          className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-dark-300 text-white/50 border border-dark-500 hover:border-gold/30 hover:text-white/70 transition-all disabled:cursor-not-allowed"
+                        >
+                          + {name}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>

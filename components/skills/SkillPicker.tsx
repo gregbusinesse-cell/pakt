@@ -40,7 +40,7 @@ export default function SkillPicker({ skills, onChange }: Props) {
     onChange(
       skills.map((s) =>
         s.name === name
-          ? { ...s, ...(comment.trim() ? { comment: comment.trim() } : { comment: undefined }) }
+          ? { ...s, comment: comment || undefined }
           : s
       )
     )

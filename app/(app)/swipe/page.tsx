@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import MatchModal from '@/components/swipe/MatchModal'
 import type { Profile } from '@/lib/supabase/types'
-import { normalizePlan, isPaidPlan } from '@/lib/utils'
+import { normalizePlan, isPaidPlan, parseSkills, type SkillFilter } from '@/lib/utils'
 import { RefreshCw, Lock, Crown, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -37,6 +37,7 @@ type ProfileWithLocation = Profile & {
     distance_km?: number
     age_min?: number
     age_max?: number
+    skill_filters?: SkillFilter[]
   } | null
 }
 
@@ -86,6 +87,7 @@ export default function SwipePage() {
   const maxDistance = isPro ? profileWithLocation?.preferences?.distance_km ?? 50 : 50
   const ageMin = isPro ? profileWithLocation?.preferences?.age_min ?? 18 : 18
   const ageMax = isPro ? profileWithLocation?.preferences?.age_max ?? 99 : 99
+  const skillFilters: SkillFilter[] = isPro ? profileWithLocation?.preferences?.skill_filters ?? [] : []
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
 
@@ -267,6 +269,18 @@ export default function SwipePage() {
         if (typeof candidate.age === 'number') {
           if (candidate.age < ageMin || candidate.age > ageMax) return false
         }
+
+        // Skill filters (Business Pro only)
+        if (skillFilters.length > 0) {
+          const candidateSkills = parseSkills((candidate as any).skills)
+          for (const filter of skillFilters) {
+            const match = candidateSkills.find(
+              (s) => s.name.toLowerCase() === filter.name.toLowerCase() && s.level >= filter.min_level
+            )
+            if (!match) return false
+          }
+        }
+
         if (!candidate.city_lat || !candidate.city_lng) return false
         if (!userLat || !userLng) return true
 
@@ -320,6 +334,7 @@ export default function SwipePage() {
     profiles.length,
     recordProfileView,
     sessionUserId,
+    skillFilters,
     todayKey,
     userLat,
     userLng,
