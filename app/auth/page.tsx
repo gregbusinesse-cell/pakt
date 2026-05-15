@@ -97,7 +97,7 @@ export default function AuthPage() {
       >
         <div className="text-center mb-10">
           <h1 className="text-5xl font-black tracking-widest text-gold-gradient mb-2">PAKT</h1>
-          <p className="text-white/40 text-sm tracking-wider uppercase">Le Tinder du Business</p>
+          <p className="text-white/40 text-sm tracking-wider">Le Tinder du Business</p>
         </div>
 
         <div className="flex bg-dark-200 rounded-2xl p-1 mb-6">
