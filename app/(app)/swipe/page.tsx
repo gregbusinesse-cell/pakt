@@ -2,7 +2,7 @@
 
 // app/(app)/swipe/page.tsx
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -73,6 +73,7 @@ export default function SwipePage() {
   const [lastSwipedProfile, setLastSwipedProfile] = useState<Profile | null>(null)
   const [lastSwipeDir, setLastSwipeDir] = useState<'left' | 'right' | null>(null)
   const [showUndoPaywall, setShowUndoPaywall] = useState(false)
+  const hasProfilesRef = useRef(false)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -221,7 +222,7 @@ export default function SwipePage() {
       return
     }
 
-    setLoading((prev) => (profiles.length === 0 ? true : prev))
+    setLoading((prev) => (!hasProfilesRef.current ? true : prev))
 
     try {
       const cooldownDate = new Date()
@@ -336,12 +337,12 @@ export default function SwipePage() {
     } finally {
       setLoading(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     ageMax,
     ageMin,
     db,
     maxDistance,
-    profiles.length,
     recordProfileView,
     sessionUserId,
     skillFilters,
@@ -406,6 +407,11 @@ export default function SwipePage() {
       }
     })()
   }, [db, profile, sessionProvider, sessionUserId, setProfile])
+
+  // Keep ref in sync so loadProfiles can check without being a dependency
+  useEffect(() => {
+    hasProfilesRef.current = profiles.length > 0
+  }, [profiles.length])
 
   useEffect(() => {
     loadProfiles()
