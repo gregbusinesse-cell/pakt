@@ -1,9 +1,9 @@
 'use client'
 
 // app/(app)/profile/page.tsx
-// User profile page with edit capabilities
+// User profile page with auto-save editing
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
@@ -12,7 +12,7 @@ import toast from 'react-hot-toast'
 import { INTERESTS, MAX_PHOTOS, SKILLS_LIST, validatePhoto, parseSkills, type UserSkill, type SkillFilter } from '@/lib/utils'
 import { Check, X, Plus, LogOut, Crown } from 'lucide-react'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import SkillPicker from '@/components/skills/SkillPicker'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -39,7 +39,7 @@ function waitForGooglePlaces(timeoutMs = 10000): Promise<void> {
       }
 
       if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error('Google Places API non disponible après chargement'))
+        reject(new Error('Google Places API non disponible apres chargement'))
         return
       }
 
@@ -54,12 +54,10 @@ function loadGooglePlacesScript(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve()
 
   if (window.google?.maps?.places?.Autocomplete) {
-    console.log('[Google Places] API déjà disponible')
     return Promise.resolve()
   }
 
   if (googlePlacesPromise) {
-    console.log('[Google Places] Chargement déjà en cours')
     return googlePlacesPromise
   }
 
@@ -67,20 +65,16 @@ function loadGooglePlacesScript(): Promise<void> {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
     if (!apiKey) {
-      console.error('[Google Places] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY manquante')
-      reject(new Error('Clé Google Maps manquante'))
+      reject(new Error('Cle Google Maps manquante'))
       return
     }
 
     const existingScript = document.getElementById('google-places-script') as HTMLScriptElement | null
 
     if (existingScript) {
-      console.log('[Google Places] Script existant détecté, attente de window.google')
       waitForGooglePlaces().then(resolve).catch(reject)
       return
     }
-
-    console.log('[Google Places] Injection du script Google Maps JS API')
 
     const script = document.createElement('script')
     script.id = 'google-places-script'
@@ -91,12 +85,10 @@ function loadGooglePlacesScript(): Promise<void> {
     script.defer = true
 
     script.onload = () => {
-      console.log('[Google Places] Script chargé, vérification Places')
       waitForGooglePlaces().then(resolve).catch(reject)
     }
 
     script.onerror = () => {
-      console.error('[Google Places] Erreur chargement script')
       reject(new Error('Impossible de charger Google Maps'))
     }
 
@@ -129,7 +121,6 @@ function normalizePlan(plan: unknown) {
   if (plan === 'business' || plan === 'premium') return 'business'
   return 'free'
 }
-
 
 type ProfileForm = {
   first_name: string
@@ -276,7 +267,6 @@ function ConfirmModal(props: {
 }
 
 function PhotoSection(props: {
-  editing: boolean
   allDisplayPhotos: string[]
   visiblePhotoSlots: string[]
   getRootProps: ReturnType<typeof useDropzone>['getRootProps']
@@ -285,7 +275,6 @@ function PhotoSection(props: {
   removePhoto: (idx: number) => void
 }) {
   const {
-    editing,
     allDisplayPhotos,
     visiblePhotoSlots,
     getRootProps,
@@ -305,22 +294,18 @@ function PhotoSection(props: {
 
       <div className="grid grid-cols-3 gap-2">
         {visiblePhotoSlots.map((url, idx) => {
-          const rootProps = editing
-            ? getRootProps({
-                onClick: () => setSelectedPhotoIndex(idx),
-                onDragEnter: () => setSelectedPhotoIndex(idx),
-              })
-            : {}
+          const rootProps = getRootProps({
+            onClick: () => setSelectedPhotoIndex(idx),
+            onDragEnter: () => setSelectedPhotoIndex(idx),
+          })
 
           return (
             <div
               key={`${url || 'empty'}-${idx}`}
               {...rootProps}
-              className={`relative aspect-square rounded-[12px] overflow-hidden bg-[#1e1e1e] border border-dark-500 ${
-                editing ? 'cursor-pointer hover:border-gold/50 transition-colors' : ''
-              }`}
+              className="relative aspect-square rounded-[12px] overflow-hidden bg-[#1e1e1e] border border-dark-500 cursor-pointer hover:border-gold/50 transition-colors"
             >
-              {editing && <input {...getInputProps()} />}
+              <input {...getInputProps()} />
 
               {url ? (
                 <img src={url} alt="" className="w-full h-full object-cover" />
@@ -330,7 +315,7 @@ function PhotoSection(props: {
                 </div>
               )}
 
-              {editing && url && (
+              {url && (
                 <button
                   type="button"
                   onClick={(event) => {
@@ -350,22 +335,68 @@ function PhotoSection(props: {
   )
 }
 
-export default function ProfilePage() {
+// ─── Auto-save status indicator ────────────────────────────────────
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+function SaveIndicator({ status }: { status: SaveStatus }) {
+  if (status === 'idle') return null
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={status}
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 4 }}
+        transition={{ duration: 0.15 }}
+        className="flex items-center gap-1.5"
+      >
+        {status === 'saving' && (
+          <>
+            <div className="w-3 h-3 rounded-full border-[1.5px] border-gold/60 border-t-transparent animate-spin" />
+            <span className="text-xs text-white/40">Sauvegarde...</span>
+          </>
+        )}
+        {status === 'saved' && (
+          <>
+            <Check size={12} className="text-green-400/70" />
+            <span className="text-xs text-green-400/60">Sauvegarde</span>
+          </>
+        )}
+        {status === 'error' && (
+          <span className="text-xs text-red-400/70">Erreur de sauvegarde</span>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+export default function ProfilePageWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-full flex items-center justify-center bg-dark"><div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent animate-spin" /></div>}>
+      <ProfilePage />
+    </Suspense>
+  )
+}
+
+function ProfilePage() {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
   const { profile, setProfile } = useAppStore()
   const isSuspended = Boolean(profile?.is_suspended)
-    const router = useRouter()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const plan = normalizePlan((profile as any)?.plan)
   const isBusinessPro = plan === 'business_pro'
 
-  const [mode, setMode] = useState<'view' | 'edit'>('view')
+  // ─── Tab mode from URL params ──────────────────────────────────
+  const initialTab = searchParams.get('tab') === 'edit' ? 'edit' : 'view'
+  const scrollToSection = searchParams.get('section')
 
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [mode, setMode] = useState<'view' | 'edit'>(initialTab)
+
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [filtersShake, setFiltersShake] = useState(0)
-
 
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [resetPwdOpen, setResetPwdOpen] = useState(false)
@@ -376,8 +407,21 @@ export default function ProfilePage() {
   const cityInputRef = useRef<HTMLInputElement | null>(null)
   const autocompleteRef = useRef<any>(null)
   const autocompleteListenerRef = useRef<any>(null)
+  const criteriaRef = useRef<HTMLDivElement | null>(null)
 
-    const [preferences, setPreferences] = useState<Preferences>(() =>
+  // ─── Auto-save state ───────────────────────────────────────────
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveVersionRef = useRef(0)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
+
+  const [preferences, setPreferences] = useState<Preferences>(() =>
     isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES
   )
 
@@ -398,7 +442,7 @@ export default function ProfilePage() {
       const token = currentSession?.access_token
 
       if (!token) {
-        toast.error('Utilisateur non connecté')
+        toast.error('Utilisateur non connecte')
         return
       }
 
@@ -424,7 +468,6 @@ export default function ProfilePage() {
   }
 
   const [form, setForm] = useState<ProfileForm>({
-
     first_name: profile?.first_name || '',
     age: String(profile?.age || ''),
     bio: profile?.bio || '',
@@ -457,6 +500,198 @@ export default function ProfilePage() {
   }
 
   const [photoValidating, setPhotoValidating] = useState(false)
+
+  // ─── Core save function (called by debounce) ──────────────────
+  const doSave = useCallback(async (
+    currentForm: ProfileForm,
+    currentCityData: { city: string; lat: number | null; lng: number | null },
+    currentPreferences: Preferences,
+    currentPhotoItems: PhotoItem[],
+    currentNewPhotos: File[],
+    version: number,
+  ) => {
+    if (!session?.user) return
+
+    setSaveStatus('saving')
+
+    try {
+      const uploadedPhotoMap = new Map<File, string>()
+
+      for (const photo of currentNewPhotos) {
+        const path = `${session.user.id}/${Date.now()}-${photo.name}`
+
+        const { data, error } = await supabase.storage
+          .from('avatars')
+          .upload(path, photo, { upsert: true })
+
+        if (error) throw error
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('avatars').getPublicUrl(data.path)
+
+        uploadedPhotoMap.set(photo, publicUrl)
+      }
+
+      const allPhotosRaw = currentPhotoItems
+        .map((item) => {
+          if (item.type === 'existing') return item.url
+          return uploadedPhotoMap.get(item.file)
+        })
+        .slice(0, MAX_PHOTOS)
+
+      const allPhotos = cleanPhotoUrls(allPhotosRaw)
+      const nextInterests = currentForm.interests.slice(0, 5)
+
+      const rawAge = currentForm.age.trim()
+      const parsedAge = rawAge === '' ? null : Number(rawAge)
+      const normalizedAge = parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
+
+      const updates: ProfileUpdate = {
+        first_name: currentForm.first_name.trim() || null,
+        age: normalizedAge,
+        bio: currentForm.bio.trim() || null,
+        city: currentCityData.city || null,
+        city_lat: currentCityData.lat,
+        city_lng: currentCityData.lng,
+        interests: nextInterests,
+        photos: allPhotos,
+        skills: currentForm.skills.filter((s) => s.level >= 1),
+        preferences: isBusinessPro ? currentPreferences : LOCKED_PREFERENCES,
+      } as any
+
+      // Race condition guard: only apply if this is still the latest save
+      if (version !== saveVersionRef.current) return
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates as never)
+        .eq('id', session.user.id)
+
+      if (error) throw error
+
+      // Race condition guard again after async
+      if (version !== saveVersionRef.current) return
+
+      if (!isMountedRef.current) return
+
+      if (profile) {
+        const nextProfile: Profile = {
+          ...profile,
+          ...updates,
+          interests: nextInterests,
+          photos: allPhotos,
+        }
+
+        setProfile(nextProfile)
+      }
+
+      // If new photos were uploaded, convert them to existing
+      if (currentNewPhotos.length > 0) {
+        setNewPhotos([])
+        setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
+      }
+
+      setSaveStatus('saved')
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current) setSaveStatus('idle')
+      }, 2000)
+    } catch (err) {
+      if (!isMountedRef.current) return
+      setSaveStatus('error')
+      console.error('[PROFILE] auto-save error', err)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current) setSaveStatus('idle')
+      }, 3000)
+    }
+  }, [session?.user, supabase, isBusinessPro, profile, setProfile])
+
+  // ─── Debounced trigger ─────────────────────────────────────────
+  const scheduleSave = useCallback((delay = 800) => {
+    if (mode !== 'edit') return
+
+    saveVersionRef.current += 1
+    const version = saveVersionRef.current
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+
+    saveTimerRef.current = setTimeout(() => {
+      // Read latest state via refs won't work for state, so we use a callback pattern
+      // We'll call doSave with current state captured at schedule time — but we need latest.
+      // Solution: we store pending data in a ref updated by the effect.
+    }, delay)
+  }, [mode])
+
+  // Pending save data ref — always reflects latest state
+  const pendingRef = useRef({ form, cityData, preferences, photoItems, newPhotos })
+  useEffect(() => {
+    pendingRef.current = { form, cityData, preferences, photoItems, newPhotos }
+  }, [form, cityData, preferences, photoItems, newPhotos])
+
+  const triggerSave = useCallback((delay = 800) => {
+    if (mode !== 'edit') return
+
+    saveVersionRef.current += 1
+    const version = saveVersionRef.current
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+
+    saveTimerRef.current = setTimeout(() => {
+      const { form: f, cityData: c, preferences: p, photoItems: pi, newPhotos: np } = pendingRef.current
+      doSave(f, c, p, pi, np, version)
+    }, delay)
+  }, [mode, doSave])
+
+  // Cleanup timers
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    }
+  }, [])
+
+  // ─── Auto-save triggers ────────────────────────────────────────
+  const isInitialMount = useRef(true)
+
+  // Text fields: debounce 800ms
+  useEffect(() => {
+    if (isInitialMount.current) return
+    if (mode !== 'edit') return
+    triggerSave(800)
+  }, [form.first_name, form.age, form.bio])
+
+  // Interests, skills, preferences: debounce 500ms (user clicks)
+  useEffect(() => {
+    if (isInitialMount.current) return
+    if (mode !== 'edit') return
+    triggerSave(500)
+  }, [form.interests, form.skills, preferences])
+
+  // City (from Google Places selection): immediate-ish
+  useEffect(() => {
+    if (isInitialMount.current) return
+    if (mode !== 'edit') return
+    if (!cityData.lat) return // only save when Google Places sets lat/lng
+    triggerSave(300)
+  }, [cityData])
+
+  // Photos: save after change
+  useEffect(() => {
+    if (isInitialMount.current) return
+    if (mode !== 'edit') return
+    triggerSave(500)
+  }, [photoItems])
+
+  // Mark initial mount done after first render in edit mode
+  useEffect(() => {
+    if (mode === 'edit' && isInitialMount.current) {
+      // Small delay to let all initial state settle
+      const t = setTimeout(() => { isInitialMount.current = false }, 100)
+      return () => clearTimeout(t)
+    }
+  }, [mode])
 
   const onDrop = useCallback(
     async (files: File[]) => {
@@ -510,49 +745,51 @@ export default function ProfilePage() {
     onDrop,
     accept: { 'image/*': [] },
     multiple: false,
-    disabled: !editing,
   })
 
-  const startEdit = () => {
-    const photos = normalizePhotos(profile?.photos)
-
-    setForm({
-      first_name: profile?.first_name || '',
-      age: String(profile?.age || ''),
-      bio: profile?.bio || '',
-      city: profile?.city || '',
-      interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
-      skills: parseSkills((profile as any)?.skills),
-    })
-
-    setCityData({
-      city: profile?.city || '',
-      lat: (profile as any)?.city_lat || null,
-      lng: (profile as any)?.city_lng || null,
-    })
-
-    setPreferences(isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES)
-
-    setNewPhotos([])
-    setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
-    setEditing(true)
-  }
-
-  const cancelEdit = () => {
-    const photos = normalizePhotos(profile?.photos)
-
-    setEditing(false)
-    setSelectedPhotoIndex(null)
-    setNewPhotos([])
-    setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
-  }
-
+  // ─── Mode switching ────────────────────────────────────────────
   useEffect(() => {
-    if (mode === 'edit') startEdit()
-    if (mode === 'view') cancelEdit()
+    if (mode === 'edit') {
+      // Reset form from profile
+      const photos = normalizePhotos(profile?.photos)
+
+      setForm({
+        first_name: profile?.first_name || '',
+        age: String(profile?.age || ''),
+        bio: profile?.bio || '',
+        city: profile?.city || '',
+        interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
+        skills: parseSkills((profile as any)?.skills),
+      })
+
+      setCityData({
+        city: profile?.city || '',
+        lat: (profile as any)?.city_lat || null,
+        lng: (profile as any)?.city_lng || null,
+      })
+
+      setPreferences(isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES)
+
+      setNewPhotos([])
+      setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
+
+      // Mark as initial mount to avoid triggering saves
+      isInitialMount.current = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
+  // ─── Scroll to criteria section on URL param ──────────────────
+  useEffect(() => {
+    if (mode === 'edit' && scrollToSection === 'criteria') {
+      const t = setTimeout(() => {
+        criteriaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 400)
+      return () => clearTimeout(t)
+    }
+  }, [mode, scrollToSection])
+
+  // ─── Google Places ─────────────────────────────────────────────
   useEffect(() => {
     const styleId = 'google-places-pac-style'
 
@@ -600,8 +837,6 @@ export default function ProfilePage() {
 
   const cleanupAutocomplete = () => {
     if (autocompleteListenerRef.current) {
-      console.log('[Google Places] Nettoyage listener place_changed')
-
       if (typeof autocompleteListenerRef.current.remove === 'function') {
         autocompleteListenerRef.current.remove()
       } else if (window.google?.maps?.event?.removeListener) {
@@ -612,8 +847,6 @@ export default function ProfilePage() {
     }
 
     if (autocompleteRef.current) {
-      console.log('[Google Places] Nettoyage instance Autocomplete')
-
       if (typeof autocompleteRef.current.unbindAll === 'function') {
         autocompleteRef.current.unbindAll()
       }
@@ -632,10 +865,6 @@ export default function ProfilePage() {
       retryCount += 1
 
       if (retryCount >= maxRetries) {
-        console.warn('[Google Places] Init abandonnée', {
-          hasInput: Boolean(input),
-          hasAutocomplete: Boolean(Autocomplete),
-        })
         return true
       }
 
@@ -643,11 +872,8 @@ export default function ProfilePage() {
     }
 
     if (autocompleteRef.current) {
-      console.log('[Google Places] Autocomplete déjà attaché')
       return true
     }
-
-    console.log('[Google Places] Attachement Autocomplete sur input ville')
 
     const autocomplete = new Autocomplete(input, {
       types: ['(cities)'],
@@ -660,12 +886,7 @@ export default function ProfilePage() {
       const place = autocomplete.getPlace()
       const location = place.geometry?.location
 
-      console.log('[Google Places] place_changed', place)
-
-      if (!location) {
-        console.warn('[Google Places] Aucun lat/lng pour cette sélection')
-        return
-      }
+      if (!location) return
 
       const cityName =
         place.address_components?.find((component: any) =>
@@ -685,12 +906,6 @@ export default function ProfilePage() {
       const nextLat = location.lat()
       const nextLng = location.lng()
 
-      console.log('[Google Places] Ville sélectionnée', {
-        city: nextCity,
-        lat: nextLat,
-        lng: nextLng,
-      })
-
       setCityData({
         city: nextCity,
         lat: nextLat,
@@ -703,15 +918,12 @@ export default function ProfilePage() {
       }))
     })
 
-    console.log('[Google Places] Autocomplete prêt')
     return true
   }
 
   cleanupAutocomplete()
 
-  loadGooglePlacesScript().catch((err) => {
-    console.error('[Google Places] Erreur chargement script', err)
-  })
+  loadGooglePlacesScript().catch(() => {})
 
   const intervalId = window.setInterval(() => {
     const done = attachAutocomplete()
@@ -746,88 +958,7 @@ export default function ProfilePage() {
     syncPhotoState(nextItems)
   }
 
-  const saveProfile = async () => {
-    if (!session?.user) return
-
-    setSaving(true)
-
-    try {
-      const uploadedPhotoMap = new Map<File, string>()
-
-      for (const photo of newPhotos) {
-        const path = `${session.user.id}/${Date.now()}-${photo.name}`
-
-        const { data, error } = await supabase.storage
-          .from('avatars')
-          .upload(path, photo, { upsert: true })
-
-        if (error) throw error
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('avatars').getPublicUrl(data.path)
-
-        uploadedPhotoMap.set(photo, publicUrl)
-      }
-
-      const allPhotosRaw = photoItems
-        .map((item) => {
-          if (item.type === 'existing') return item.url
-          return uploadedPhotoMap.get(item.file)
-        })
-        .slice(0, MAX_PHOTOS)
-
-      const allPhotos = cleanPhotoUrls(allPhotosRaw)
-      const nextInterests = form.interests.slice(0, 5)
-
-      const rawAge = form.age.trim()
-      const parsedAge = rawAge === '' ? null : Number(rawAge)
-      const normalizedAge = parsedAge !== null && Number.isFinite(parsedAge) ? parsedAge : null
-
-      const updates: ProfileUpdate = {
-        first_name: form.first_name.trim() || null,
-        age: normalizedAge,
-        bio: form.bio.trim() || null,
-        city: cityData.city || null,
-        city_lat: cityData.lat,
-        city_lng: cityData.lng,
-        interests: nextInterests,
-        photos: allPhotos,
-        skills: form.skills.filter((s) => s.level >= 1),
-        preferences: isBusinessPro ? preferences : LOCKED_PREFERENCES,
-
-      } as any
-
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates as never)
-        .eq('id', session.user.id)
-
-      if (error) throw error
-
-      if (profile) {
-        const nextProfile: Profile = {
-          ...profile,
-          ...updates,
-          interests: nextInterests,
-          photos: allPhotos,
-        }
-
-        setProfile(nextProfile)
-      }
-
-      setNewPhotos([])
-      setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
-      setEditing(false)
-      setMode('view')
-      toast.success('Profil mis à jour !')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur inconnue')
-    } finally {
-      setSaving(false)
-    }
-  }
-
+  // ─── Account actions ───────────────────────────────────────────
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/auth')
@@ -874,7 +1005,7 @@ export default function ProfilePage() {
       if (error) throw error
 
       if (profile) setProfile({ ...profile, is_suspended: false })
-      toast.success('Profil réactivé')
+      toast.success('Profil reactive')
     } catch {
       toast.error('Erreur')
     } finally {
@@ -895,7 +1026,7 @@ export default function ProfilePage() {
 
       if (error) throw error
 
-      toast.success('Email de réinitialisation envoyé')
+      toast.success('Email de reinitialisation envoye')
       setResetPwdOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erreur')
@@ -928,7 +1059,7 @@ export default function ProfilePage() {
         throw new Error(result.error || 'Erreur lors de la demande')
       }
 
-      toast.success('Email de confirmation envoyé')
+      toast.success('Email de confirmation envoye')
       setDeleteOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erreur')
@@ -937,13 +1068,9 @@ export default function ProfilePage() {
     }
   }
 
-  const allDisplayPhotos = editing
-    ? photoItems.map((item) => item.url).slice(0, MAX_PHOTOS)
-    : normalizePhotos(profile?.photos).slice(0, MAX_PHOTOS)
+  const allDisplayPhotos = photoItems.map((item) => item.url).slice(0, MAX_PHOTOS)
 
-  const visiblePhotoSlots = editing
-    ? Array.from({ length: MAX_PHOTOS }, (_, index) => allDisplayPhotos[index] || '')
-    : allDisplayPhotos
+  const visiblePhotoSlots = Array.from({ length: MAX_PHOTOS }, (_, index) => allDisplayPhotos[index] || '')
 
   const inputBase =
     'w-full bg-[#1e1e1e] border border-dark-500 text-white placeholder:text-white/30 rounded-[12px] p-4 outline-none focus:border-gold/60 transition-colors'
@@ -953,7 +1080,8 @@ export default function ProfilePage() {
   return (
     <div className="min-h-full flex flex-col bg-dark">
       <header className="shrink-0 px-5 pt-5 pb-4 border-b border-dark-500">
-        <div className="max-w-xl mx-auto flex justify-center">
+        <div className="max-w-xl mx-auto flex items-center justify-between">
+          <div className="w-20" />
           <div className="flex items-center bg-dark-200 border border-dark-500 rounded-[12px] p-1">
             <button
               type="button"
@@ -974,6 +1102,9 @@ export default function ProfilePage() {
             >
               Modifier
             </button>
+          </div>
+          <div className="w-20 flex justify-end">
+            <SaveIndicator status={saveStatus} />
           </div>
         </div>
       </header>
@@ -1000,7 +1131,7 @@ export default function ProfilePage() {
                       className="w-full flex items-center justify-center gap-2 rounded-[12px] border border-dark-500 bg-dark-200 px-4 py-4 text-sm text-white/70 hover:text-white hover:border-red-500/50 transition-colors"
                     >
                       <LogOut size={16} />
-                      Se déconnecter
+                      Se deconnecter
                     </button>
                   </div>
                 </div>
@@ -1015,46 +1146,23 @@ export default function ProfilePage() {
               transition={{ duration: 0.18 }}
               className="max-w-xl mx-auto space-y-6"
             >
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMode('view')}
-                  className="p-2.5 rounded-full bg-dark-200/80 backdrop-blur-sm border border-dark-500 hover:border-red-500/50 transition-colors"
-                >
-                  <X size={18} className="text-white/70" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={saveProfile}
-                  disabled={saving}
-                  className="p-2.5 rounded-full bg-gold text-dark hover:bg-gold-light transition-colors disabled:opacity-60"
-                >
-                  {saving ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-dark border-t-transparent animate-spin" />
-                  ) : (
-                    <Check size={18} />
-                  )}
-                </button>
-              </div>
-
               <div className={cardBase}>
-                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">PRÉNOM</p>
+                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">PRENOM</p>
                 <input
                   value={form.first_name}
                   onChange={(event) => setForm((prev) => ({ ...prev, first_name: event.target.value }))}
-                  placeholder="Prénom"
+                  placeholder="Prenom"
                   className={inputBase}
                 />
               </div>
 
               <div className={cardBase}>
-                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">ÂGE</p>
+                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">AGE</p>
                 <input
                   type="number"
                   value={form.age}
                   onChange={(event) => setForm((prev) => ({ ...prev, age: event.target.value }))}
-                  placeholder="Âge"
+                  placeholder="Age"
                   className={inputBase}
                   min="18"
                 />
@@ -1063,26 +1171,25 @@ export default function ProfilePage() {
               <div className={cardBase}>
                 <p className="text-xs uppercase tracking-widest text-white/40 mb-3">VILLE</p>
                 <input
-  ref={cityInputRef}
-  value={cityData.city}
-  onChange={(event) => {
-    setCityData((prev) => ({
-      ...prev,
-      city: event.target.value,
-      lat: null,
-      lng: null,
-    }))
+                  ref={cityInputRef}
+                  value={cityData.city}
+                  onChange={(event) => {
+                    setCityData((prev) => ({
+                      ...prev,
+                      city: event.target.value,
+                      lat: null,
+                      lng: null,
+                    }))
 
-    setForm((prev) => ({
-      ...prev,
-      city: event.target.value,
-    }))
-  }}
-  placeholder="Paris, Lyon..."
-  autoComplete="off"
-  className={inputBase}
-/>
-
+                    setForm((prev) => ({
+                      ...prev,
+                      city: event.target.value,
+                    }))
+                  }}
+                  placeholder="Paris, Lyon..."
+                  autoComplete="off"
+                  className={inputBase}
+                />
               </div>
 
               <div className={cardBase}>
@@ -1098,7 +1205,7 @@ export default function ProfilePage() {
 
               <div className={cardBase}>
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-semibold text-white">Intérêts</p>
+                  <p className="text-sm font-semibold text-white">Interets</p>
                   <span className="text-xs text-white/40">5 max</span>
                 </div>
 
@@ -1132,7 +1239,6 @@ export default function ProfilePage() {
               </div>
 
               <PhotoSection
-                editing={editing}
                 allDisplayPhotos={allDisplayPhotos}
                 visiblePhotoSlots={visiblePhotoSlots}
                 getRootProps={getRootProps}
@@ -1141,12 +1247,13 @@ export default function ProfilePage() {
                 removePhoto={removePhoto}
               />
 
-                            <motion.div
+              <motion.div
+                ref={criteriaRef}
                 className={`${cardBase} relative overflow-hidden`}
                 animate={filtersShake ? { x: [0, -4, 4, -3, 3, 0] } : { x: 0 }}
                 transition={{ duration: 0.32 }}
               >
-                <p className="text-sm font-semibold text-white mb-4">Mes critères</p>
+                <p className="text-sm font-semibold text-white mb-4">Mes criteres</p>
 
                 <div
                   className={`space-y-5 ${
@@ -1182,7 +1289,7 @@ export default function ProfilePage() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-sm text-white/70">
-                        Âge : {displayedPreferences.age_min} - {displayedPreferences.age_max} ans
+                        Age : {displayedPreferences.age_min} - {displayedPreferences.age_max} ans
                       </p>
                       <span className="text-xs text-white/40">18 - 99</span>
                     </div>
@@ -1230,7 +1337,7 @@ export default function ProfilePage() {
 
                   {/* Skill filters */}
                   <div>
-                    <p className="text-sm text-white/70 mb-3">Compétences recherchées</p>
+                    <p className="text-sm text-white/70 mb-3">Competences recherchees</p>
 
                     {(preferences.skill_filters || []).length > 0 && (
                       <div className="space-y-2 mb-3">
@@ -1312,12 +1419,12 @@ export default function ProfilePage() {
                       </div>
 
                       <h3 className="text-white font-semibold text-sm">
-                        Filtres avancés réservés aux membres Business Pro
+                        Filtres avances reserves aux membres Business Pro
                       </h3>
 
                       <p className="mt-2 text-xs leading-relaxed text-white/55">
-                        Affinez vos recherches avec des critères personnalisés : distance, tranche
-                        d’âge et plus encore.
+                        Affinez vos recherches avec des criteres personnalises : distance, tranche
+                        d&apos;age et plus encore.
                       </p>
 
                       <span
@@ -1332,7 +1439,7 @@ export default function ProfilePage() {
                     </div>
                   </button>
                 )}
-                            </motion.div>
+              </motion.div>
 
               <button
                 type="button"
@@ -1340,9 +1447,8 @@ export default function ProfilePage() {
                 className="w-full flex items-center justify-center gap-2 rounded-[12px] border border-dark-500 bg-[#1e1e1e] px-4 py-4 text-sm text-white/70 hover:text-white hover:border-red-500/50 transition-colors"
               >
                 <LogOut size={16} />
-                Se déconnecter
+                Se deconnecter
               </button>
-
 
               <button
                 type="button"
@@ -1366,7 +1472,7 @@ export default function ProfilePage() {
                   onClick={handleReactivate}
                   className="w-full rounded-[12px] border border-gold/40 bg-gold/10 px-4 py-4 text-sm font-semibold text-gold hover:bg-gold/20 transition-colors"
                 >
-                  Réactiver mon profil
+                  Reactiver mon profil
                 </button>
               ) : (
                 <button
@@ -1381,8 +1487,8 @@ export default function ProfilePage() {
               <ConfirmModal
                 open={deleteOpen}
                 title="Supprimer votre compte ?"
-                body="Cette action est définitive. Toutes vos données seront supprimées et ne pourront pas être récupérées."
-                question="Êtes-vous sûr de vouloir supprimer votre compte ?"
+                body="Cette action est definitive. Toutes vos donnees seront supprimees et ne pourront pas etre recuperees."
+                question="Etes-vous sur de vouloir supprimer votre compte ?"
                 confirmText="Supprimer"
                 confirmVariant="danger"
                 loading={dangerLoading}
@@ -1393,8 +1499,8 @@ export default function ProfilePage() {
               <ConfirmModal
                 open={resetPwdOpen}
                 title="Modifier votre mot de passe ?"
-                body="Un email va vous être envoyé pour réinitialiser votre mot de passe."
-                question="Êtes-vous sûr de vouloir réinitialiser votre mot de passe ?"
+                body="Un email va vous etre envoye pour reinitialiser votre mot de passe."
+                question="Etes-vous sur de vouloir reinitialiser votre mot de passe ?"
                 confirmText="Oui"
                 confirmVariant="neutral"
                 onCancel={() => setResetPwdOpen(false)}
@@ -1404,7 +1510,7 @@ export default function ProfilePage() {
               <ConfirmModal
                 open={suspendOpen}
                 title="Suspendre votre profil ?"
-                body="Votre profil ne sera plus visible par les autres utilisateurs. Vous pourrez le réactiver à tout moment."
+                body="Votre profil ne sera plus visible par les autres utilisateurs. Vous pourrez le reactiver a tout moment."
                 question="Confirmer la suspension de votre profil ?"
                 confirmText="Suspendre"
                 confirmVariant="neutral"
@@ -1419,10 +1525,10 @@ export default function ProfilePage() {
 
       <ConfirmModal
         open={logoutOpen}
-        title="Se déconnecter ?"
-        body="Vous allez être déconnecté de votre compte."
-        question="Confirmer la déconnexion ?"
-        confirmText="Oui, se déconnecter"
+        title="Se deconnecter ?"
+        body="Vous allez etre deconnecte de votre compte."
+        question="Confirmer la deconnexion ?"
+        confirmText="Oui, se deconnecter"
         confirmVariant="neutral"
         onCancel={() => setLogoutOpen(false)}
         onConfirm={() => {

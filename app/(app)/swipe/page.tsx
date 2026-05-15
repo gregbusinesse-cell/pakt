@@ -589,7 +589,7 @@ export default function SwipePage() {
         ) : !isEmailVerified ? (
           <EmailLocked />
         ) : profiles.length === 0 ? (
-          <EmptyState onRefresh={loadProfiles} filteredByProCriteria={filteredByProCriteria} onEditCriteria={() => router.push('/profile')} />
+          <EmptyState onRefresh={loadProfiles} filteredByProCriteria={filteredByProCriteria} onEditCriteria={() => router.push('/profile?tab=edit&section=criteria')} />
         ) : (
           <div className="relative h-full min-h-[calc(100dvh-185px)]">
             {stackForRender.map((item, index) => {
