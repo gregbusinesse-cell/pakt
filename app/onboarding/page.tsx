@@ -594,6 +594,19 @@ export default function OnboardingPage() {
 
       console.log('[ONBOARDING] profile created:', upsertResult)
 
+      // Send welcome email (non-blocking)
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession()
+        if (currentSession?.access_token) {
+          fetch('/api/emails/welcome', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${currentSession.access_token}` },
+          }).catch(() => {})
+        }
+      } catch {
+        // Silent — welcome email is not critical
+      }
+
       // Track referral (non-blocking — don't fail onboarding if referral fails)
       if (referralCode) {
         try {

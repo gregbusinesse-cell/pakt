@@ -3,6 +3,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { sendEmail, shouldSendEmail, likeEmail, matchEmail } from '@/lib/emails'
 
 type SwipeAction = 'like' | 'dislike'
 
@@ -248,6 +249,65 @@ export async function POST(request: Request) {
     } catch (error) {
       return jsonError('Erreur persistance match', 500, error)
     }
+  }
+
+  // ── Fire-and-forget email notifications ────────────────────────
+  // Non-blocking: don't delay the swipe response
+  if (action === 'like') {
+    const triggerEmails = async () => {
+      try {
+        if (match) {
+          // Match email to BOTH users
+          for (const recipientId of [user.id, targetId]) {
+            const check = await shouldSendEmail(recipientId, 'match')
+            if (!check.allowed) continue
+
+            const { data: recipient } = await supabaseAdmin
+              .from('profiles')
+              .select('email, first_name')
+              .eq('id', recipientId)
+              .single()
+
+            if (!recipient?.email) continue
+
+            const tpl = matchEmail(recipient.first_name || 'Membre')
+            await sendEmail({
+              userId: recipientId,
+              to: recipient.email,
+              subject: tpl.subject,
+              htmlContent: tpl.html,
+              type: 'match',
+            })
+          }
+        } else {
+          // Like email to the liked user
+          const check = await shouldSendEmail(targetId, 'like')
+          if (check.allowed) {
+            const { data: liked } = await supabaseAdmin
+              .from('profiles')
+              .select('email, first_name')
+              .eq('id', targetId)
+              .single()
+
+            if (liked?.email) {
+              const tpl = likeEmail(liked.first_name || 'Membre')
+              await sendEmail({
+                userId: targetId,
+                to: liked.email,
+                subject: tpl.subject,
+                htmlContent: tpl.html,
+                type: 'like',
+              })
+            }
+          }
+        }
+      } catch (emailErr) {
+        console.error('[API_SWIPE] email notification error (non-blocking)', emailErr)
+      }
+    }
+
+    // Fire and forget — don't await
+    triggerEmails()
   }
 
   return NextResponse.json({

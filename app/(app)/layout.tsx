@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -208,6 +208,38 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       subscription.unsubscribe()
     }
   }, [router, setProfile, supabase])
+
+  // ─── Activity tracking (debounced, max 1 update per 30 min) ──
+  const lastActivityUpdateRef = useRef(0)
+
+  useEffect(() => {
+    if (!userId) return
+
+    const updateActivity = () => {
+      const now = Date.now()
+      if (now - lastActivityUpdateRef.current < 30 * 60 * 1000) return // 30 min debounce
+      lastActivityUpdateRef.current = now
+
+      supabase
+        .from('profiles')
+        .update({ last_active_at: new Date().toISOString() } as never)
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) console.error('[ACTIVITY] update error', error)
+        })
+    }
+
+    // Update on mount (page load / navigation)
+    updateActivity()
+
+    // Update on user interaction (visibility change)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') updateActivity()
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [userId, supabase])
 
   useEffect(() => {
     if (!authLoading) refreshNotificationCount()
