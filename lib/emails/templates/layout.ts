@@ -1,7 +1,10 @@
 // lib/emails/templates/layout.ts
 // Shared dark/gold email wrapper
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://paktapp.fr'
+// Production domain — used in all real emails
+const APP_URL = 'https://paktapp.fr'
+
+export { APP_URL }
 
 export function emailLayout(body: string): string {
   return `<!DOCTYPE html>
@@ -45,7 +48,7 @@ export function emailLayout(body: string): string {
 </html>`
 }
 
-export function ctaButton(text: string, href: string = APP_URL): string {
+export function ctaButton(text: string, href: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;">
   <tr>
     <td align="center">
