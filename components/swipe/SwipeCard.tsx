@@ -133,7 +133,7 @@ export default function SwipeCard({
     >
       <motion.div
         style={{ x, rotate, zIndex, touchAction: isTop ? 'pan-y' : 'none' }}
-        drag={isTop && !disabledActions ? 'x' : false}
+        drag={isTop && !disabledActions && !isOwnProfile ? 'x' : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.25}
         onDragEnd={handleDragEnd}
@@ -141,7 +141,7 @@ export default function SwipeCard({
         initial={{ scale: isTop ? 1 : 0.98, y: isTop ? 0 : 10 }}
         className="w-full"
       >
-        <div className="flex flex-col items-center pb-32">
+        <div className={`flex flex-col items-center ${isOwnProfile ? 'pb-8' : 'pb-32'}`}>
           <div className="max-w-md mx-auto px-4 py-6 space-y-6 w-full">
             <div className="relative z-0">
               {hasLikedYou && (
