@@ -1,6 +1,6 @@
 import { emailLayout, ctaButton, heading, paragraph, APP_URL } from './layout'
 
-export function inactiveDay2Email(firstName: string): { subject: string; html: string } {
+export function inactiveDay2Email(firstName: string, unsubscribeUrl?: string): { subject: string; html: string } {
   const name = firstName?.trim() || ''
 
   return {
@@ -10,6 +10,6 @@ export function inactiveDay2Email(firstName: string): { subject: string; html: s
       ${paragraph("Ca fait 2 jours que tu n'es pas passe sur PAKT. Pendant ce temps, d'autres professionnels cherchent des profils comme le tien.")}
       ${paragraph("Un seul swipe peut changer la donne.")}
       ${ctaButton('Revenir sur PAKT', `${APP_URL}/swipe`)}
-    `),
+    `, unsubscribeUrl),
   }
 }

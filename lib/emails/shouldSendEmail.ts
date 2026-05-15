@@ -26,11 +26,14 @@ export async function shouldSendEmail(
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('emails_sent_today, last_email_sent_at, last_active_at, is_suspended')
+    .select('emails_sent_today, last_email_sent_at, last_active_at, is_suspended, email_unsubscribed')
     .eq('id', userId)
     .single()
 
   if (!profile) return { allowed: false, reason: 'profile_not_found' }
+
+  // Unsubscribed users get no emails
+  if (profile.email_unsubscribed) return { allowed: false, reason: 'unsubscribed' }
 
   // Suspended users get no emails
   if (profile.is_suspended) return { allowed: false, reason: 'suspended' }

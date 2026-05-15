@@ -1,7 +1,7 @@
 // lib/emails/index.ts
 // Barrel export for email system
 
-export { sendEmail, type EmailType } from './sendEmail'
+export { sendEmail, getUnsubscribeUrl, type EmailType } from './sendEmail'
 export { shouldSendEmail, isProfileIncomplete } from './shouldSendEmail'
 
 export { welcomeEmail } from './templates/welcomeEmail'

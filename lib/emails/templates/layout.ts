@@ -6,7 +6,11 @@ const APP_URL = 'https://paktapp.fr'
 
 export { APP_URL }
 
-export function emailLayout(body: string): string {
+export function emailLayout(body: string, unsubscribeUrl?: string): string {
+  const unsubscribeHtml = unsubscribeUrl
+    ? `<br/><a href="${unsubscribeUrl}" style="color:rgba(255,255,255,0.2);text-decoration:underline;font-size:10px;">Se desinscrire des emails</a>`
+    : ''
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -37,6 +41,7 @@ export function emailLayout(body: string): string {
               <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.25);line-height:1.6;">
                 Tu recois cet email car tu as un compte PAKT.<br/>
                 <a href="${APP_URL}" style="color:rgba(212,168,83,0.5);text-decoration:none;">paktapp.fr</a>
+                ${unsubscribeHtml}
               </p>
             </td>
           </tr>

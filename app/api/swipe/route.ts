@@ -3,7 +3,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { sendEmail, shouldSendEmail, likeEmail, matchEmail } from '@/lib/emails'
+import { sendEmail, getUnsubscribeUrl, shouldSendEmail, likeEmail, matchEmail } from '@/lib/emails'
 
 type SwipeAction = 'like' | 'dislike'
 
@@ -270,7 +270,7 @@ export async function POST(request: Request) {
 
             if (!recipient?.email) continue
 
-            const tpl = matchEmail(recipient.first_name || 'Membre')
+            const tpl = matchEmail(recipient.first_name || 'Membre', getUnsubscribeUrl(recipientId))
             await sendEmail({
               userId: recipientId,
               to: recipient.email,
@@ -290,7 +290,7 @@ export async function POST(request: Request) {
               .single()
 
             if (liked?.email) {
-              const tpl = likeEmail(liked.first_name || 'Membre')
+              const tpl = likeEmail(liked.first_name || 'Membre', getUnsubscribeUrl(targetId))
               await sendEmail({
                 userId: targetId,
                 to: liked.email,

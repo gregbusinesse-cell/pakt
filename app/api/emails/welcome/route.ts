@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendEmail, welcomeEmail } from '@/lib/emails'
+import { sendEmail, getUnsubscribeUrl, welcomeEmail } from '@/lib/emails'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sent: false, reason: 'no_email' })
     }
 
-    const tpl = welcomeEmail(profile.first_name || 'Membre')
+    const tpl = welcomeEmail(profile.first_name || 'Membre', getUnsubscribeUrl(user.id))
 
     const result = await sendEmail({
       userId: user.id,

@@ -2,7 +2,8 @@ import { emailLayout, ctaButton, heading, paragraph, APP_URL } from './layout'
 
 export function incompleteProfileEmail(
   firstName: string,
-  reasons: string[]
+  reasons: string[],
+  unsubscribeUrl?: string
 ): { subject: string; html: string } {
   const name = firstName?.trim() || ''
 
@@ -21,6 +22,6 @@ export function incompleteProfileEmail(
       <ul style="margin:0 0 16px;padding-left:20px;">${tipsList}</ul>
       ${paragraph("Quelques minutes suffisent pour faire la difference.")}
       ${ctaButton('Completer mon profil', `${APP_URL}/profile?tab=edit`)}
-    `),
+    `, unsubscribeUrl),
   }
 }

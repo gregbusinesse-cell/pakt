@@ -11,14 +11,16 @@ import { inactiveDay2Email } from '@/lib/emails/templates/inactiveDay2Email'
 import { inactiveDay3Email } from '@/lib/emails/templates/inactiveDay3Email'
 import { incompleteProfileEmail } from '@/lib/emails/templates/incompleteProfileEmail'
 
+const FAKE_UNSUB = 'https://paktapp.fr/unsubscribe?status=success'
+
 const TEMPLATES: Record<string, () => { subject: string; html: string }> = {
-  welcome: () => welcomeEmail('Lucas'),
-  like: () => likeEmail('Lucas'),
-  match: () => matchEmail('Lucas'),
-  'inactive-day-1': () => inactiveDay1Email('Lucas'),
-  'inactive-day-2': () => inactiveDay2Email('Lucas'),
-  'inactive-day-3': () => inactiveDay3Email('Lucas'),
-  'incomplete-profile': () => incompleteProfileEmail('Lucas', ['photos', 'bio', 'skills']),
+  welcome: () => welcomeEmail('Lucas', FAKE_UNSUB),
+  like: () => likeEmail('Lucas', FAKE_UNSUB),
+  match: () => matchEmail('Lucas', FAKE_UNSUB),
+  'inactive-day-1': () => inactiveDay1Email('Lucas', FAKE_UNSUB),
+  'inactive-day-2': () => inactiveDay2Email('Lucas', FAKE_UNSUB),
+  'inactive-day-3': () => inactiveDay3Email('Lucas', FAKE_UNSUB),
+  'incomplete-profile': () => incompleteProfileEmail('Lucas', ['photos', 'bio', 'skills'], FAKE_UNSUB),
 }
 
 export async function GET(req: NextRequest) {

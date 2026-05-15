@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import {
   sendEmail,
+  getUnsubscribeUrl,
   shouldSendEmail,
   isProfileIncomplete,
   inactiveDay1Email,
@@ -66,6 +67,7 @@ export async function GET(req: NextRequest) {
       if (!profile.email) continue
 
       const firstName = profile.first_name || 'Membre'
+      const unsub = getUnsubscribeUrl(profile.id)
       const lastActive = profile.last_active_at ? new Date(profile.last_active_at) : null
       const hoursSinceActive = lastActive ? (now - lastActive.getTime()) / (1000 * 60 * 60) : null
 
@@ -76,13 +78,13 @@ export async function GET(req: NextRequest) {
 
         if (hoursSinceActive >= 60 && hoursSinceActive < 84) {
           inactiveType = 'inactive_day_3'
-          template = inactiveDay3Email(firstName)
+          template = inactiveDay3Email(firstName, unsub)
         } else if (hoursSinceActive >= 36 && hoursSinceActive < 60) {
           inactiveType = 'inactive_day_2'
-          template = inactiveDay2Email(firstName)
+          template = inactiveDay2Email(firstName, unsub)
         } else if (hoursSinceActive >= 20 && hoursSinceActive < 36) {
           inactiveType = 'inactive_day_1'
-          template = inactiveDay1Email(firstName)
+          template = inactiveDay1Email(firstName, unsub)
         }
 
         if (inactiveType && template) {
@@ -111,7 +113,7 @@ export async function GET(req: NextRequest) {
         if (incomplete) {
           const check = await shouldSendEmail(profile.id, 'incomplete_profile')
           if (check.allowed) {
-            const template = incompleteProfileEmail(firstName, reasons)
+            const template = incompleteProfileEmail(firstName, reasons, unsub)
             const result = await sendEmail({
               userId: profile.id,
               to: profile.email,

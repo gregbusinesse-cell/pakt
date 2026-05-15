@@ -2,10 +2,12 @@
 // Core email service — Brevo API + anti-spam + logging
 
 import { createClient } from '@supabase/supabase-js'
+import { generateUnsubscribeToken } from './unsubscribeToken'
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY!
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const APP_URL = 'https://paktapp.fr'
 
 const MAX_EMAILS_PER_DAY = 2
 
@@ -33,14 +35,21 @@ interface SendEmailResult {
 }
 
 /**
+ * Generate unsubscribe URL for a given user.
+ */
+export function getUnsubscribeUrl(userId: string): string {
+  const token = generateUnsubscribeToken(userId)
+  return `${APP_URL}/api/emails/unsubscribe?token=${token}`
+}
+
+/**
  * Send an email via Brevo with built-in anti-spam:
- * 1. Check daily limit (max 2/day)
- * 2. Check duplicate (same type within 23h)
- * 3. Send via Brevo API
- * 4. Log to email_events
- * 5. Increment emails_sent_today + update last_email_sent_at
- *
- * Uses service role key — call from API routes / cron only.
+ * 1. Check unsubscribed
+ * 2. Check daily limit (max 2/day)
+ * 3. Check duplicate (same type within 23h)
+ * 4. Send via Brevo API
+ * 5. Log to email_events
+ * 6. Increment emails_sent_today + update last_email_sent_at
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const { userId, to, subject, htmlContent, type } = params
@@ -52,10 +61,10 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-  // ── 1. Check daily limit ─────────────────────────────────────
+  // ── 1. Check unsubscribed ────────────────────────────────────
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('emails_sent_today, last_email_sent_at')
+    .select('emails_sent_today, last_email_sent_at, email_unsubscribed')
     .eq('id', userId)
     .single()
 
@@ -64,7 +73,12 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { sent: false, reason: 'profile_not_found' }
   }
 
-  // Reset counter if last email was yesterday or earlier
+  if (profile.email_unsubscribed) {
+    console.log(`[EMAIL] user ${userId} is unsubscribed`)
+    return { sent: false, reason: 'unsubscribed' }
+  }
+
+  // ── 2. Check daily limit ─────────────────────────────────────
   let currentCount = profile.emails_sent_today ?? 0
   if (profile.last_email_sent_at) {
     const lastSent = new Date(profile.last_email_sent_at)
@@ -79,7 +93,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { sent: false, reason: 'daily_limit' }
   }
 
-  // ── 2. Check duplicate (same type within 23h) ────────────────
+  // ── 3. Check duplicate (same type within 23h) ────────────────
   const twentyThreeHoursAgo = new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString()
 
   const { data: recentEvents } = await supabase
@@ -95,7 +109,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { sent: false, reason: 'duplicate' }
   }
 
-  // ── 3. Send via Brevo ────────────────────────────────────────
+  // ── 4. Send via Brevo ────────────────────────────────────────
   try {
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -122,13 +136,13 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { sent: false, reason: 'network_error' }
   }
 
-  // ── 4. Log event ─────────────────────────────────────────────
+  // ── 5. Log event ─────────────────────────────────────────────
   await supabase.from('email_events').insert({
     user_id: userId,
     type,
   })
 
-  // ── 5. Update counter ────────────────────────────────────────
+  // ── 6. Update counter ────────────────────────────────────────
   const newCount = currentCount + 1
 
   await supabase
