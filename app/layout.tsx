@@ -16,7 +16,7 @@ const sora = Sora({
 })
 
 export const metadata: Metadata = {
-  title: 'PAKT – Connecte les ambitieux',
+  title: 'PAKT – Le Tinder du Business',
   description: 'La plateforme de mise en relation entre personnes ambitieuses.',
   manifest: '/manifest.json',
 
