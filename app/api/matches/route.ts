@@ -156,6 +156,44 @@ export async function POST(req: NextRequest) {
     user2_id,
   })
 
+  // ── Fire-and-forget: send match emails to both users ──────
+  // Completely isolated — never blocks or affects the match response
+  try {
+    const { sendEmail, getUnsubscribeUrl, shouldSendEmail, matchEmail } = await import('@/lib/emails')
+
+    const sendMatchEmail = async (recipientId: string) => {
+      try {
+        const check = await shouldSendEmail(recipientId, 'match')
+        if (!check.allowed) return
+
+        const { data: recipient } = await supabaseAdmin
+          .from('profiles')
+          .select('email, first_name')
+          .eq('id', recipientId)
+          .single()
+
+        if (!recipient?.email) return
+
+        const tpl = matchEmail(recipient.first_name || 'Membre', getUnsubscribeUrl(recipientId))
+        await sendEmail({
+          userId: recipientId,
+          to: recipient.email,
+          subject: tpl.subject,
+          htmlContent: tpl.html,
+          type: 'match',
+        })
+        console.log(`[API_MATCHES] match email sent to ${recipientId}`)
+      } catch (e) {
+        console.error(`[API_MATCHES] match email failed for ${recipientId}`, e)
+      }
+    }
+
+    // Don't await — fire and forget
+    Promise.all([sendMatchEmail(user.id), sendMatchEmail(otherUserId)]).catch(() => {})
+  } catch (emailImportErr) {
+    console.error('[API_MATCHES] email import failed (non-blocking)', emailImportErr)
+  }
+
   return NextResponse.json({
     matched: true,
     match: insertedMatch,

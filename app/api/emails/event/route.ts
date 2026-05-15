@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendEmail, shouldSendEmail, likeEmail, matchEmail } from '@/lib/emails'
+import { sendEmail, getUnsubscribeUrl, shouldSendEmail, likeEmail, matchEmail } from '@/lib/emails'
 import type { EmailType } from '@/lib/emails'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -55,15 +55,16 @@ export async function POST(req: NextRequest) {
     }
 
     const firstName = profile.first_name || 'Membre'
+    const unsubscribeUrl = getUnsubscribeUrl(userId)
 
     let template: { subject: string; html: string }
 
     switch (type) {
       case 'like':
-        template = likeEmail(firstName)
+        template = likeEmail(firstName, unsubscribeUrl)
         break
       case 'match':
-        template = matchEmail(firstName)
+        template = matchEmail(firstName, unsubscribeUrl)
         break
       default:
         return NextResponse.json({ sent: false, reason: 'unsupported_type' })

@@ -487,6 +487,15 @@ export default function SwipePage() {
         return
       }
 
+      if (!mutualLike) {
+        // No match — fire-and-forget like email to liked user
+        fetch('/api/emails/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: swipedProfile.id, type: 'like' }),
+        }).catch(() => {}) // Silent — never affects swipe UX
+      }
+
       if (mutualLike) {
         const persistedMatch = await persistMatch(swipedProfile.id)
 
