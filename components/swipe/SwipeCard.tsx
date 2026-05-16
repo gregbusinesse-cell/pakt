@@ -148,11 +148,11 @@ export default function SwipeCard({
           touchAction: isOwnProfile || readonlyMatchView ? 'auto' : isTop ? 'pan-y' : 'none',
         }}
         drag={isTop && !disabledActions && !isOwnProfile && !readonlyMatchView ? 'x' : false}
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.25}
-        onDragEnd={handleDragEnd}
-        animate={isOwnProfile ? undefined : controls}
-        initial={isOwnProfile ? undefined : { scale: isTop ? 1 : 0.98, y: isTop ? 0 : 10 }}
+        dragConstraints={readonlyMatchView ? undefined : { left: 0, right: 0 }}
+        dragElastic={readonlyMatchView ? undefined : 0.25}
+        onDragEnd={readonlyMatchView ? undefined : handleDragEnd}
+        animate={isOwnProfile || readonlyMatchView ? undefined : controls}
+        initial={isOwnProfile || readonlyMatchView ? undefined : { scale: isTop ? 1 : 0.98, y: isTop ? 0 : 10 }}
         className="w-full"
       >
         <div className={`flex flex-col items-center ${isOwnProfile ? 'pb-8' : 'pb-32'}`}>
