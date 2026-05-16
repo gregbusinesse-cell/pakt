@@ -132,20 +132,22 @@ export default function SwipeCard({
       className={`${
         isOwnProfile
           ? 'relative'
-          : `h-full overflow-y-auto overscroll-contain ${
-              isTop ? 'pointer-events-auto opacity-100 relative' : 'pointer-events-none opacity-0 absolute inset-0'
-            }`
+          : readonlyMatchView
+            ? 'w-full overflow-y-auto overscroll-contain relative'
+            : `h-full overflow-y-auto overscroll-contain ${
+                isTop ? 'pointer-events-auto opacity-100 relative' : 'pointer-events-none opacity-0 absolute inset-0'
+              }`
       }`}
-      style={{ touchAction: isOwnProfile ? 'auto' : isTop ? 'pan-y' : 'none' }}
+      style={{ touchAction: isOwnProfile || readonlyMatchView ? 'auto' : isTop ? 'pan-y' : 'none' }}
     >
       <motion.div
         style={{
-          x: isOwnProfile ? undefined : x,
-          rotate: isOwnProfile ? undefined : rotate,
-          zIndex: isOwnProfile ? undefined : zIndex,
-          touchAction: isOwnProfile ? 'auto' : isTop ? 'pan-y' : 'none',
+          x: isOwnProfile || readonlyMatchView ? undefined : x,
+          rotate: isOwnProfile || readonlyMatchView ? undefined : rotate,
+          zIndex: isOwnProfile || readonlyMatchView ? undefined : zIndex,
+          touchAction: isOwnProfile || readonlyMatchView ? 'auto' : isTop ? 'pan-y' : 'none',
         }}
-        drag={isTop && !disabledActions && !isOwnProfile ? 'x' : false}
+        drag={isTop && !disabledActions && !isOwnProfile && !readonlyMatchView ? 'x' : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.25}
         onDragEnd={handleDragEnd}
@@ -167,11 +169,12 @@ export default function SwipeCard({
               {photosArray.length > 0 ? (
                 <img
                   src={photosArray[safePhotoIndex]}
-                  className="w-full aspect-[3/4] object-cover rounded-2xl cursor-pointer select-none"
-                  style={{ touchAction: 'pan-y' }}
+                  className={`w-full aspect-[3/4] object-cover rounded-2xl select-none ${!readonlyMatchView ? 'cursor-pointer' : ''}`}
+                  style={{ touchAction: readonlyMatchView ? 'auto' : 'pan-y' }}
                   alt={profile.first_name || ''}
                   draggable={false}
                   onClick={() => {
+                    if (readonlyMatchView) return
                     if (photosArray.length <= 1) return
                     setPhotoIndex((prev) => (prev + 1) % photosArray.length)
                   }}
@@ -179,7 +182,7 @@ export default function SwipeCard({
               ) : (
                 <div
                   className="w-full aspect-[3/4] rounded-2xl bg-dark-300 flex items-center justify-center"
-                  style={{ touchAction: 'pan-y' }}
+                  style={{ touchAction: readonlyMatchView ? 'auto' : 'pan-y' }}
                 >
                   <span className="text-8xl">👤</span>
                 </div>

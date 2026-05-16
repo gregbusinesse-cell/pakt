@@ -1399,7 +1399,7 @@ export default function MatchesPage() {
               className="fixed inset-0 z-[111] flex items-center justify-center p-4"
               onClick={() => setShowProfileModal(false)}
             >
-              <div className="w-full max-w-md bg-dark rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full max-w-md bg-dark rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <SwipeCard
                   profile={profileViewerUser as any}
                   onSwipe={() => {}}
