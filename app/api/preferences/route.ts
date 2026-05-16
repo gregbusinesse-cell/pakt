@@ -20,10 +20,7 @@ export async function POST(req: NextRequest) {
     const { data: { user }, error: userError } = await authClient.auth.getUser(token)
     if (userError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
-    const body = await req.json()
-    const { preferences } = body
-
-    console.log('[PREFERENCES] Received request body:', { body, preferences })
+    const { preferences } = await req.json()
 
     if (!preferences || typeof preferences !== 'object') {
       return NextResponse.json({ error: 'Invalid preferences object' }, { status: 400 })
@@ -33,7 +30,6 @@ export async function POST(req: NextRequest) {
 
     // Validate preferences structure
     const { distance_km, age_min, age_max, skill_filters } = preferences
-    console.log('[PREFERENCES] Extracted values:', { distance_km, age_min, age_max, skill_filters, types: { distance_km: typeof distance_km, age_min: typeof age_min, age_max: typeof age_max } })
 
     if (typeof distance_km !== 'number' || distance_km < 0 || distance_km > 1000) {
       return NextResponse.json({ error: 'Invalid distance_km' }, { status: 400 })
