@@ -131,6 +131,8 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [checkingBlockStatus, setCheckingBlockStatus] = useState(true)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -212,6 +214,26 @@ export default function ChatView({ conversationId, conversationType, otherUser }
       if (!res.ok) { toast.error('Erreur suppression'); return }
       toast.success('Conversation supprimée')
       router.replace('/matches')
+    } catch { toast.error('Erreur réseau') }
+    finally { setActionLoading(false) }
+  }
+
+  const handleUnblock = async () => {
+    setActionLoading(true)
+    try {
+      const token = await getAccessToken()
+      if (!token) { toast.error('Session manquante'); return }
+
+      const res = await fetch('/api/unblock-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUserId: otherUser.id }),
+      })
+
+      if (!res.ok) { toast.error('Erreur déblocage'); return }
+      toast.success('Utilisateur débloqué')
+      setIsBlocked(false)
+      refreshNotifications()
     } catch { toast.error('Erreur réseau') }
     finally { setActionLoading(false) }
   }
@@ -349,7 +371,43 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     if (!isPaidPlan(otherPlan)) {
       throw new Error("Ce membre doit passer Business pour débloquer la conversation.")
     }
+
+    if (isBlocked) {
+      throw new Error('Vous ne pouvez plus envoyer de messages dans cette conversation.')
+    }
   }
+
+  // Check if we're blocked by the other user on mount
+  useEffect(() => {
+    const checkBlockStatus = async () => {
+      if (!currentUserId || !otherUser?.id) {
+        setCheckingBlockStatus(false)
+        return
+      }
+
+      try {
+        // Query blocked_users to see if otherUser blocked us
+        const { data, error } = await db
+          .from('blocked_users')
+          .select('id')
+          .eq('blocker_id', otherUser.id)
+          .eq('blocked_id', currentUserId)
+          .maybeSingle()
+
+        if (error) {
+          console.error('[CHAT_VIEW] block status check error', error)
+        }
+
+        setIsBlocked(!!data)
+      } catch (error) {
+        console.error('[CHAT_VIEW] checkBlockStatus catch', error)
+      } finally {
+        setCheckingBlockStatus(false)
+      }
+    }
+
+    checkBlockStatus()
+  }, [currentUserId, otherUser?.id, db])
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -684,7 +742,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setShowAttachMenu(false)
   }
 
-  const inputLocked = !bothCanChat
+  const inputLocked = !bothCanChat || isBlocked
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-dark">
@@ -776,11 +834,12 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         ) : (
           messages.map((msg, idx) => {
             const isMine = msg.sender_id === session?.user?.id
+            const isSystemMessage = msg.message_type === 'system'
             const showTime =
-              idx === 0 ||
+              !isSystemMessage && (idx === 0 ||
               new Date(msg.created_at).getTime() -
                 new Date(messages[idx - 1].created_at).getTime() >
-                300000
+                300000)
 
             return (
               <div key={msg.id}>
@@ -793,7 +852,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${isSystemMessage ? 'justify-center' : isMine ? 'justify-end' : 'justify-start'}`}
                 >
                   <MessageBubble msg={msg} isMine={isMine} />
                 </motion.div>
@@ -831,7 +890,23 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           </div>
         )}
 
-        {inputLocked && !canEncourage && (
+        {isBlocked && (
+          <div className="mb-3 rounded-[14px] border border-red-500/20 bg-red-500/[0.08] p-3">
+            <p className="text-xs text-white/50 text-center mb-2">
+              Vous ne pouvez plus envoyer de messages dans cette conversation.
+            </p>
+            <button
+              type="button"
+              onClick={handleUnblock}
+              disabled={actionLoading}
+              className="w-full flex items-center justify-center gap-2 h-9 rounded-[10px] text-xs font-semibold bg-red-500/30 text-red-200 hover:bg-red-500/40 transition-all disabled:opacity-50"
+            >
+              {actionLoading ? 'Déblocage...' : 'Débloquer cette personne'}
+            </button>
+          </div>
+        )}
+
+        {inputLocked && !canEncourage && !isBlocked && (
           <p className="mb-2 text-center text-xs text-white/45">
             {!iAmPaid
               ? 'Passe à PAKT Business pour débloquer les conversations.'
@@ -1031,7 +1106,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
                 </div>
                 <h3 className="text-lg font-bold text-white mb-2">Bloquer {otherUser.first_name} ?</h3>
                 <p className="text-sm text-white/50 mb-5">
-                  Vous ne pourrez plus vous voir, vous écrire ni vous retrouver dans les swipes. Cette action est définitive.
+                  Vous ne pourrez plus vous écrire. La conversation, les messages et le match restent visibles. Vous pouvez débloquer à tout moment.
                 </p>
                 <div className="flex gap-3">
                   <button onClick={() => setShowBlockConfirm(false)} className="flex-1 h-11 rounded-[12px] border border-dark-500 text-white/60 text-sm font-semibold hover:bg-dark-300 transition-colors">
@@ -1063,9 +1138,9 @@ export default function ChatView({ conversationId, conversationType, otherUser }
                 <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
                   <Trash2 size={24} className="text-red-400" />
                 </div>
-                <h3 className="text-lg font-bold text-white mb-2">Supprimer la conversation ?</h3>
+                <h3 className="text-lg font-bold text-white mb-2">Supprimer définitivement ?</h3>
                 <p className="text-sm text-white/50 mb-5">
-                  La conversation, le match et tous les messages seront supprimés. Vous ne vous reverrez plus dans les swipes.
+                  La conversation, le match et tous les messages seront supprimés définitivement. Vous ne reverrez plus cette personne dans les swipes.
                 </p>
                 <div className="flex gap-3">
                   <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 h-11 rounded-[12px] border border-dark-500 text-white/60 text-sm font-semibold hover:bg-dark-300 transition-colors">
@@ -1352,6 +1427,16 @@ function FileBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
 }
 
 function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
+  if (msg.message_type === 'system') {
+    return (
+      <div className="flex justify-center w-full">
+        <p className="text-center text-white/40 text-xs px-4 py-1.5 bg-dark-300/50 rounded-full">
+          {msg.content}
+        </p>
+      </div>
+    )
+  }
+
   if (msg.message_type === 'text') {
     return (
       <div className={`max-w-[75%] px-4 py-2.5 text-sm leading-relaxed ${isMine ? 'bubble-sent' : 'bubble-received'}`}>

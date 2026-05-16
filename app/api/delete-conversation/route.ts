@@ -1,5 +1,5 @@
 // app/api/delete-conversation/route.ts
-// Deletes a conversation, match, and adds mutual block to prevent re-matching
+// PERMANENT deletion: removes conversation, match, messages, and prevents re-matching
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'

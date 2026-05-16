@@ -1,5 +1,5 @@
-// app/api/block-user/route.ts
-// Blocks a user temporarily: prevents messaging but keeps conversation/messages/match intact
+// app/api/unblock-user/route.ts
+// Unblocks a user temporarily: restores messaging ability
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -22,7 +22,6 @@ export async function POST(req: NextRequest) {
 
     const { targetUserId } = await req.json()
     if (!targetUserId) return NextResponse.json({ error: 'Missing targetUserId' }, { status: 400 })
-    if (targetUserId === user.id) return NextResponse.json({ error: 'Cannot block yourself' }, { status: 400 })
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -37,17 +36,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Target user not found' }, { status: 404 })
     }
 
-    // 1. Insert block record (temporary block, conversation stays)
-    const { error: blockError } = await supabase
+    // 1. Remove block record
+    const { error: unblockError } = await supabase
       .from('blocked_users')
-      .upsert(
-        { blocker_id: user.id, blocked_id: targetUserId },
-        { onConflict: 'blocker_id,blocked_id' }
-      )
+      .delete()
+      .eq('blocker_id', user.id)
+      .eq('blocked_id', targetUserId)
 
-    if (blockError) {
-      console.error('[BLOCK] insert error', blockError)
-      return NextResponse.json({ error: 'Block failed' }, { status: 500 })
+    if (unblockError) {
+      console.error('[UNBLOCK] delete error', unblockError)
+      return NextResponse.json({ error: 'Unblock failed' }, { status: 500 })
     }
 
     // 2. Add system message to conversation
@@ -61,16 +59,16 @@ export async function POST(req: NextRequest) {
       await supabase.from('messages').insert({
         conversation_id: conversation.id,
         sender_id: user.id,
-        content: `${targetUser.first_name || 'Cette personne'} vous a bloqué.`,
+        content: `${targetUser.first_name || 'Cette personne'} vous a débloqué.`,
         message_type: 'system',
         is_read: true,
       })
     }
 
-    console.log(`[BLOCK] user ${user.id} blocked ${targetUserId}`)
-    return NextResponse.json({ blocked: true })
+    console.log(`[UNBLOCK] user ${user.id} unblocked ${targetUserId}`)
+    return NextResponse.json({ unblocked: true })
   } catch (err) {
-    console.error('[BLOCK] error', err)
+    console.error('[UNBLOCK] error', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
