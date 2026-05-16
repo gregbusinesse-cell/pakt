@@ -229,13 +229,15 @@ export default function SwipePage() {
       cooldownDate.setDate(cooldownDate.getDate() - VIEW_COOLDOWN_DAYS)
       const cooldownISO = cooldownDate.toISOString()
 
-      const [swipedResult, viewsResult] = await Promise.all([
+      const [swipedResult, viewsResult, blockedByMeResult, blockedMeResult] = await Promise.all([
         db.from('swipes').select('target_id').eq('swiper_id', sessionUserId),
         db
           .from('profile_views')
           .select('viewed_id')
           .eq('viewer_id', sessionUserId)
           .gte('last_viewed_at', cooldownISO),
+        db.from('blocked_users').select('blocked_id').eq('blocker_id', sessionUserId),
+        db.from('blocked_users').select('blocker_id').eq('blocked_id', sessionUserId),
       ])
 
       if (swipedResult.error) {
@@ -245,9 +247,15 @@ export default function SwipePage() {
         console.error('[SWIPE] views select error', viewsResult.error)
       }
 
+      const blockedIds = new Set<string>([
+        ...((blockedByMeResult.data || []).map((b: { blocked_id: string }) => b.blocked_id)),
+        ...((blockedMeResult.data || []).map((b: { blocker_id: string }) => b.blocker_id)),
+      ])
+
       const swipedSet = new Set<string>([
         sessionUserId,
         ...((swipedResult.data || []).map((s: { target_id: string }) => s.target_id)),
+        ...blockedIds,
       ])
 
       const recentlyViewedSet = new Set<string>(

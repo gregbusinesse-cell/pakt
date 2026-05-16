@@ -21,6 +21,10 @@ import {
   Square,
   ChevronLeft,
   Sparkles,
+  MoreVertical,
+  Flag,
+  Ban,
+  Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -118,6 +122,13 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [hasMatchWithOtherUser, setHasMatchWithOtherUser] = useState(false)
   const [encourageSending, setEncourageSending] = useState(false)
   const [encourageCooldown, setEncourageCooldown] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [reportSending, setReportSending] = useState(false)
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -138,6 +149,70 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const iAmPaid = isPaidPlan(myPlan)
   const otherIsFree = otherPlan === 'free'
   const canEncourage = iAmPaid && otherIsFree
+
+  const getAccessToken = async () => {
+    const { data: { session: s } } = await supabase.auth.getSession()
+    return s?.access_token ?? null
+  }
+
+  const handleReport = async () => {
+    if (!reportReason.trim()) return
+    setReportSending(true)
+    try {
+      const token = await getAccessToken()
+      if (!token) { toast.error('Session manquante'); return }
+
+      const res = await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUserId: otherUser.id, conversationId, reason: reportReason.trim() }),
+      })
+
+      if (!res.ok) { toast.error('Erreur envoi signalement'); return }
+      toast.success('Signalement envoyé')
+      setShowReportModal(false)
+      setReportReason('')
+    } catch { toast.error('Erreur réseau') }
+    finally { setReportSending(false) }
+  }
+
+  const handleBlock = async () => {
+    setActionLoading(true)
+    try {
+      const token = await getAccessToken()
+      if (!token) { toast.error('Session manquante'); return }
+
+      const res = await fetch('/api/block-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUserId: otherUser.id }),
+      })
+
+      if (!res.ok) { toast.error('Erreur blocage'); return }
+      toast.success('Utilisateur bloqué')
+      router.replace('/matches')
+    } catch { toast.error('Erreur réseau') }
+    finally { setActionLoading(false) }
+  }
+
+  const handleDeleteConversation = async () => {
+    setActionLoading(true)
+    try {
+      const token = await getAccessToken()
+      if (!token) { toast.error('Session manquante'); return }
+
+      const res = await fetch('/api/delete-conversation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ conversationId, otherUserId: otherUser.id }),
+      })
+
+      if (!res.ok) { toast.error('Erreur suppression'); return }
+      toast.success('Conversation supprimée')
+      router.replace('/matches')
+    } catch { toast.error('Erreur réseau') }
+    finally { setActionLoading(false) }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -628,6 +703,58 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           <p className="font-semibold truncate">{otherUser.first_name}</p>
           {otherUser.city && <p className="text-xs text-white/40 truncate">{otherUser.city}</p>}
         </div>
+
+        <div className="relative">
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-2 rounded-xl hover:bg-dark-300 transition-colors"
+          >
+            <MoreVertical size={20} className="text-white/50" />
+          </button>
+
+          <AnimatePresence>
+            {showMenu && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[80]"
+                  onClick={() => setShowMenu(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-1 z-[81] w-52 bg-dark-200 border border-dark-500 rounded-[14px] shadow-[0_10px_40px_rgba(0,0,0,0.5)] overflow-hidden"
+                >
+                  <button
+                    onClick={() => { setShowMenu(false); setShowReportModal(true) }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:bg-dark-300 transition-colors"
+                  >
+                    <Flag size={16} className="text-white/40" />
+                    Signaler
+                  </button>
+                  <button
+                    onClick={() => { setShowMenu(false); setShowBlockConfirm(true) }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-300 hover:bg-dark-300 transition-colors"
+                  >
+                    <Ban size={16} className="text-red-400/60" />
+                    Bloquer
+                  </button>
+                  <button
+                    onClick={() => { setShowMenu(false); setShowDeleteConfirm(true) }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-300 hover:bg-dark-300 transition-colors border-t border-dark-500"
+                  >
+                    <Trash2 size={16} className="text-red-400/60" />
+                    Supprimer la conversation
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 pb-3">
@@ -836,6 +963,119 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         className="hidden"
         onChange={(event) => handleFileSelect(event, 'file')}
       />
+
+      {/* ── Report Modal ── */}
+      <AnimatePresence>
+        {showReportModal && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" onClick={() => setShowReportModal(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[101] max-w-sm mx-auto"
+            >
+              <div className="bg-dark-200 border border-dark-500 rounded-[20px] p-6">
+                <h3 className="text-lg font-bold text-white mb-1">Signaler {otherUser.first_name}</h3>
+                <p className="text-xs text-white/40 mb-4">Décris le problème rencontré. Notre équipe examinera ton signalement.</p>
+
+                <textarea
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  placeholder="Décris le motif du signalement..."
+                  rows={4}
+                  className="w-full bg-dark-300 rounded-[12px] px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-gold/30"
+                />
+
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => { setShowReportModal(false); setReportReason('') }}
+                    className="flex-1 h-11 rounded-[12px] border border-dark-500 text-white/60 text-sm font-semibold hover:bg-dark-300 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleReport}
+                    disabled={!reportReason.trim() || reportSending}
+                    className="flex-1 h-11 rounded-[12px] bg-red-500/80 text-white text-sm font-bold hover:bg-red-500 transition-colors disabled:opacity-50"
+                  >
+                    {reportSending ? 'Envoi...' : 'Envoyer'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Block Confirm Modal ── */}
+      <AnimatePresence>
+        {showBlockConfirm && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" onClick={() => setShowBlockConfirm(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[101] max-w-sm mx-auto"
+            >
+              <div className="bg-dark-200 border border-dark-500 rounded-[20px] p-6 text-center">
+                <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+                  <Ban size={24} className="text-red-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">Bloquer {otherUser.first_name} ?</h3>
+                <p className="text-sm text-white/50 mb-5">
+                  Vous ne pourrez plus vous voir, vous écrire ni vous retrouver dans les swipes. Cette action est définitive.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowBlockConfirm(false)} className="flex-1 h-11 rounded-[12px] border border-dark-500 text-white/60 text-sm font-semibold hover:bg-dark-300 transition-colors">
+                    Annuler
+                  </button>
+                  <button onClick={handleBlock} disabled={actionLoading} className="flex-1 h-11 rounded-[12px] bg-red-500/80 text-white text-sm font-bold hover:bg-red-500 transition-colors disabled:opacity-50">
+                    {actionLoading ? 'Blocage...' : 'Bloquer'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Delete Confirm Modal ── */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[101] max-w-sm mx-auto"
+            >
+              <div className="bg-dark-200 border border-dark-500 rounded-[20px] p-6 text-center">
+                <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+                  <Trash2 size={24} className="text-red-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">Supprimer la conversation ?</h3>
+                <p className="text-sm text-white/50 mb-5">
+                  La conversation, le match et tous les messages seront supprimés. Vous ne vous reverrez plus dans les swipes.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 h-11 rounded-[12px] border border-dark-500 text-white/60 text-sm font-semibold hover:bg-dark-300 transition-colors">
+                    Annuler
+                  </button>
+                  <button onClick={handleDeleteConversation} disabled={actionLoading} className="flex-1 h-11 rounded-[12px] bg-red-500/80 text-white text-sm font-bold hover:bg-red-500 transition-colors disabled:opacity-50">
+                    {actionLoading ? 'Suppression...' : 'Supprimer'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -746,12 +746,6 @@ export default function MatchesPage() {
     // Mark match as viewed regardless of plan
     if (matchId) await markMatchViewed(matchId)
 
-    // PAYWALL: block messaging for non-paid users
-    if (!userCanChat) {
-      setShowChatPaywall(true)
-      return
-    }
-
     setOpeningConversation(otherUserId)
 
     try {
