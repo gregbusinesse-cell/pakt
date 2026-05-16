@@ -8,8 +8,9 @@ import { useAppStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import MatchModal from '@/components/swipe/MatchModal'
+import CriteriaPanel from '@/components/criteria/CriteriaPanel'
 import type { Profile } from '@/lib/supabase/types'
-import { normalizePlan, isPaidPlan, parseSkills, DEFAULT_PREFERENCES, type SkillFilter } from '@/lib/utils'
+import { normalizePlan, isPaidPlan, parseSkills, DEFAULT_PREFERENCES, type SkillFilter, type Preferences } from '@/lib/utils'
 import { RefreshCw, Lock, Crown, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -65,7 +66,6 @@ export default function SwipePage() {
   const [session, setSession] = useState<any>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [filteredByProCriteria, setFilteredByProCriteria] = useState(false)
   const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
@@ -73,7 +73,14 @@ export default function SwipePage() {
   const [lastSwipedProfile, setLastSwipedProfile] = useState<Profile | null>(null)
   const [lastSwipeDir, setLastSwipeDir] = useState<'left' | 'right' | null>(null)
   const [showUndoPaywall, setShowUndoPaywall] = useState(false)
+  const [showCriteriaPanel, setShowCriteriaPanel] = useState(false)
+  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES)
+
+  // Empty state detection
+  const [emptyStateType, setEmptyStateType] = useState<'no-profiles' | 'filtered-criteria' | 'all-viewed' | null>(null)
+
   const hasProfilesRef = useRef(false)
+  const prefLoadedRef = useRef(false)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -86,14 +93,16 @@ export default function SwipePage() {
 
   const userLat = profileWithLocation?.city_lat ?? null
   const userLng = profileWithLocation?.city_lng ?? null
-  // All users get preferences; FREE/BUSINESS can't modify but get maximally open defaults
-  const maxDistance = profileWithLocation?.preferences?.distance_km ?? DEFAULT_PREFERENCES.distance_km
-  const ageMin = profileWithLocation?.preferences?.age_min ?? DEFAULT_PREFERENCES.age_min
-  const ageMax = profileWithLocation?.preferences?.age_max ?? DEFAULT_PREFERENCES.age_max
+
+  // Use local preferences state (loaded from DB)
+  const maxDistance = preferences?.distance_km ?? DEFAULT_PREFERENCES.distance_km
+  const ageMin = preferences?.age_min ?? DEFAULT_PREFERENCES.age_min
+  const ageMax = preferences?.age_max ?? DEFAULT_PREFERENCES.age_max
+
   // Only Pro users can apply skill filters; others get empty array
   const skillFilters = useMemo<SkillFilter[]>(
-    () => (isPro ? profileWithLocation?.preferences?.skill_filters ?? [] : []),
-    [isPro, profileWithLocation?.preferences?.skill_filters]
+    () => (isPro ? preferences?.skill_filters ?? [] : []),
+    [isPro, preferences?.skill_filters]
   )
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
@@ -121,6 +130,8 @@ export default function SwipePage() {
     },
     [db, sessionUserId]
   )
+
+  const loadProfilesRef = useRef<() => void>(() => {})
 
   const createConversationForMatch = useCallback(
     async (otherUserId: string) => {
@@ -317,11 +328,23 @@ export default function SwipePage() {
       const baseEligible = ((profilesData || []) as ProfileWithLocation[]).filter(applyBaseFilter)
       const eligible = baseEligible.filter(applySkillFilter)
 
-      // Detect: profiles exist but were all excluded by Pro skill filters
-      setFilteredByProCriteria(eligible.length === 0 && baseEligible.length > 0 && skillFilters.length > 0)
-
       const fresh = eligible.filter((p) => !recentlyViewedSet.has(p.id))
       const recycled = eligible.filter((p) => recentlyViewedSet.has(p.id))
+
+      // Detect empty state type
+      let newEmptyStateType: typeof emptyStateType = null
+      if ((profilesData || []).length === 0) {
+        // Case 1: No profiles in the database at all
+        newEmptyStateType = 'no-profiles'
+      } else if (eligible.length === 0 && baseEligible.length > 0) {
+        // Case 2: Profiles exist but filtered out by Pro criteria (distance/age/skills)
+        newEmptyStateType = 'filtered-criteria'
+      } else if (eligible.length > 0 && fresh.length === 0) {
+        // Case 3: Profiles exist and match criteria, but all have been viewed recently
+        newEmptyStateType = 'all-viewed'
+      }
+
+      setEmptyStateType(newEmptyStateType)
 
       const shuffleSeed = sessionUserId + todayKey
       const shuffledFresh = deterministicShuffle(fresh as Profile[], shuffleSeed)
@@ -359,6 +382,7 @@ export default function SwipePage() {
     todayKey,
     userLat,
     userLng,
+    preferences,
   ])
 
   useEffect(() => {
@@ -422,6 +446,83 @@ export default function SwipePage() {
   useEffect(() => {
     hasProfilesRef.current = profiles.length > 0
   }, [profiles.length])
+
+  // Load preferences from DB on mount (Pro users only)
+  useEffect(() => {
+    if (!sessionUserId || !isPro || prefLoadedRef.current) return
+
+    ;(async () => {
+      try {
+        const { data, error } = await db
+          .from('profiles')
+          .select('preferences')
+          .eq('id', sessionUserId)
+          .single()
+
+        if (error) {
+          console.error('[SWIPE] preferences load error', error)
+          return
+        }
+
+        if (data?.preferences) {
+          setPreferences({
+            distance_km: data.preferences.distance_km ?? DEFAULT_PREFERENCES.distance_km,
+            age_min: data.preferences.age_min ?? DEFAULT_PREFERENCES.age_min,
+            age_max: data.preferences.age_max ?? DEFAULT_PREFERENCES.age_max,
+            skill_filters: data.preferences.skill_filters ?? [],
+          })
+        }
+      } catch (error) {
+        console.error('[SWIPE] preferences load catch', error)
+      } finally {
+        prefLoadedRef.current = true
+      }
+    })()
+  }, [sessionUserId, isPro, db])
+
+  // Sync loadProfiles ref for use in handleSavePreferences
+  useEffect(() => {
+    loadProfilesRef.current = loadProfiles
+  }, [loadProfiles])
+
+  const handleSavePreferences = useCallback(async (newPrefs: Preferences) => {
+    if (!isPro || !sessionUserId) {
+      throw new Error('Non autorisé')
+    }
+
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      const token = currentSession?.access_token
+
+      if (!token) {
+        throw new Error('Token manquant')
+      }
+
+      const response = await fetch('/api/preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ preferences: newPrefs }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || 'Erreur sauvegarde')
+      }
+
+      // Update local state
+      setPreferences(newPrefs)
+      toast.success('Critères mis à jour')
+
+      // Reload profiles with new criteria (using ref to avoid circular dependency)
+      loadProfilesRef.current()
+    } catch (error) {
+      console.error('[SWIPE] handleSavePreferences error', error)
+      throw error
+    }
+  }, [isPro, sessionUserId, supabase])
 
   useEffect(() => {
     loadProfiles()
@@ -617,7 +718,12 @@ export default function SwipePage() {
         ) : !isEmailVerified ? (
           <EmailLocked />
         ) : profiles.length === 0 ? (
-          <EmptyState onRefresh={loadProfiles} filteredByProCriteria={filteredByProCriteria} onEditCriteria={() => router.push('/profile?tab=edit&section=criteria')} />
+          <EmptyState
+            type={emptyStateType}
+            onRefresh={loadProfiles}
+            onEditCriteria={() => setShowCriteriaPanel(true)}
+            isPro={isPro}
+          />
         ) : (
           <div className="relative h-full min-h-[calc(100dvh-185px)]">
             {stackForRender.map((item, index) => {
@@ -654,6 +760,18 @@ export default function SwipePage() {
         matchedProfile={matchedProfile}
         onClose={() => setShowMatch(false)}
       />
+
+      <AnimatePresence>
+        {showCriteriaPanel && (
+          <CriteriaPanel
+            isOpen={showCriteriaPanel}
+            preferences={preferences}
+            isPro={isPro}
+            onClose={() => setShowCriteriaPanel(false)}
+            onSave={handleSavePreferences}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showUndoPaywall && (
@@ -717,48 +835,109 @@ export default function SwipePage() {
   )
 }
 
-function EmptyState({ onRefresh, filteredByProCriteria, onEditCriteria }: { onRefresh: () => void; filteredByProCriteria: boolean; onEditCriteria: () => void }) {
+function EmptyState({
+  type,
+  onRefresh,
+  onEditCriteria,
+  isPro,
+}: {
+  type: 'no-profiles' | 'filtered-criteria' | 'all-viewed' | null
+  onRefresh: () => void
+  onEditCriteria: () => void
+  isPro: boolean
+}) {
+  const getEmptyStateContent = () => {
+    switch (type) {
+      case 'no-profiles':
+        return {
+          icon: '🌍',
+          title: "Pas encore de profils",
+          description: "Il n'y a pas encore assez de profils sur PAKT.",
+          hint: "Reviens plus tard pour découvrir de nouvelles personnes.",
+          showEditButton: false,
+        }
+
+      case 'filtered-criteria':
+        return {
+          icon: '🔍',
+          title: 'Critères trop restrictifs',
+          description: 'Toutes les personnes correspondant à tes critères ont déjà été vues.',
+          hint: isPro
+            ? "Essaie d'élargir tes critères de distance, d'âge ou de compétences."
+            : 'Passe Business Pro pour personnaliser tes critères.',
+          showEditButton: isPro,
+        }
+
+      case 'all-viewed':
+        return {
+          icon: '👀',
+          title: 'Tu as vu tous les profils',
+          description: "Tu as déjà vu tous les profils correspondant à tes critères récemment.",
+          hint: "Reviens dans quelques jours pour découvrir de nouveaux profils.",
+          showEditButton: false,
+        }
+
+      default:
+        return {
+          icon: '🌍',
+          title: 'Aucun profil disponible',
+          description: 'Aucun profil ne correspond à ta recherche pour le moment.',
+          hint: "Essaie d'élargir tes critères.",
+          showEditButton: false,
+        }
+    }
+  }
+
+  const content = getEmptyStateContent()
+
   return (
     <div className="min-h-[calc(100dvh-185px)] flex flex-col items-center justify-center px-8 text-center">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
         className="flex flex-col items-center gap-6"
       >
-        <span className="text-6xl">{filteredByProCriteria ? '🔍' : '🌍'}</span>
+        <motion.span
+          initial={{ scale: 0.8 }}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+          className="text-6xl"
+        >
+          {content.icon}
+        </motion.span>
 
-        {filteredByProCriteria ? (
-          <div>
-            <h2 className="text-2xl font-bold mb-2">Trop peu de résultats</h2>
-            <p className="text-white/50 text-sm">
-              Aucun profil ne correspond à vos critères actuels.
-            </p>
-            <p className="text-white/40 text-xs mt-1">
-              Modifiez vos filtres de compétences pour voir plus de profils.
-            </p>
-          </div>
-        ) : (
-          <div>
-            <h2 className="text-2xl font-bold mb-2">Tu es à jour</h2>
-            <p className="text-white/50 text-sm">
-              Tu as vu tous les profils disponibles pour l&apos;instant.
-            </p>
-            <p className="text-white/40 text-xs mt-1">
-              Reviens un peu plus tard pour découvrir de nouveaux profils.
-            </p>
-          </div>
-        )}
+        <div>
+          <h2 className="text-2xl font-bold mb-2 text-white">{content.title}</h2>
+          <p className="text-white/60 text-sm mb-1 leading-relaxed max-w-[300px] mx-auto">
+            {content.description}
+          </p>
+          <p className="text-white/40 text-xs max-w-[300px] mx-auto">{content.hint}</p>
+        </div>
 
-        <div className="flex flex-col items-center gap-3">
-          {filteredByProCriteria && (
-            <button onClick={onEditCriteria} className="flex items-center gap-2 px-5 py-2.5 rounded-[12px] bg-gold text-dark text-sm font-bold hover:bg-gold-light transition-colors">
+        <div className="flex flex-col items-center gap-3 pt-4">
+          {content.showEditButton && (
+            <motion.button
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              onClick={onEditCriteria}
+              className="px-6 py-3 rounded-[13px] bg-gradient-to-r from-gold to-[#e2c06d] text-dark text-sm font-bold shadow-[0_4px_20px_rgba(212,168,83,0.25)] hover:shadow-[0_6px_30px_rgba(212,168,83,0.4)] active:scale-[0.98] transition-all"
+            >
               Modifier mes critères
-            </button>
+            </motion.button>
           )}
-          <button onClick={onRefresh} className="flex items-center gap-2 btn-ghost">
+
+          <motion.button
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: content.showEditButton ? 0.15 : 0.1 }}
+            onClick={onRefresh}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-[12px] border border-white/10 bg-white/[0.04] text-white/60 text-sm font-medium hover:bg-white/[0.08] hover:text-white/80 transition-all"
+          >
             <RefreshCw size={16} />
             Actualiser
-          </button>
+          </motion.button>
         </div>
       </motion.div>
     </div>
