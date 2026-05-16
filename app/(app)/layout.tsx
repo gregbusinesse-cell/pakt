@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
-import { Flame, MessageCircle, User } from 'lucide-react'
+import { Flame, MessageCircle, User, X } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
 
 const NAV_ITEMS = [
@@ -20,7 +20,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const db = supabase as any
   const router = useRouter()
   const pathname = usePathname()
-  const { setProfile, notificationsVersion } = useAppStore()
+  const { setProfile, notificationsVersion, isSaveInProgress } = useAppStore()
+
+  const [showSaveBlockModal, setShowSaveBlockModal] = useState(false)
 
   const [authLoading, setAuthLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
@@ -282,6 +284,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     )
   }
 
+  // Close save block modal when save finishes
+  useEffect(() => {
+    if (!isSaveInProgress && showSaveBlockModal) {
+      setShowSaveBlockModal(false)
+    }
+  }, [isSaveInProgress, showSaveBlockModal])
+
   if (!userId) return null
 
   return (
@@ -302,10 +311,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           const showBadge = href === '/matches' && totalNotifications > 0
 
           return (
-            <Link
+            <button
               key={href}
-              href={href}
+              type="button"
               aria-label={label}
+              onClick={(e) => {
+                if (isSaveInProgress) {
+                  e.preventDefault()
+                  setShowSaveBlockModal(true)
+                  return
+                }
+                router.push(href)
+              }}
               className={`flex flex-col items-center gap-1 px-5 py-1 rounded-xl ${
                 isActive ? 'text-gold' : 'text-white/40'
               }`}
@@ -324,10 +341,34 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <div className="text-[10px] font-bold text-gold">PAKT</div>
                 )}
               </div>
-            </Link>
+            </button>
           )
         })}
       </nav>
+
+      {/* Save in progress modal — only when user tries to navigate */}
+      {showSaveBlockModal && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center pb-[calc(env(safe-area-inset-bottom)+100px)] px-4">
+          <div className="bg-dark-200 border border-dark-500 rounded-[14px] px-6 py-5 max-w-sm w-full shadow-xl flex items-start gap-4">
+            <div className="mt-0.5 shrink-0">
+              <div className="w-4 h-4 rounded-full border-[1.5px] border-gold/70 border-t-transparent animate-spin" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white/90 text-sm font-medium">Sauvegarde en cours</p>
+              <p className="text-white/50 text-xs mt-1 leading-relaxed">
+                Veuillez patienter, votre profil est en cours de mise à jour.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSaveBlockModal(false)}
+              className="shrink-0 text-white/30 hover:text-white/60 transition-colors mt-0.5"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

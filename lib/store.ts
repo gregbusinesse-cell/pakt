@@ -17,6 +17,10 @@ interface AppState {
 
   notificationsVersion: number
   refreshNotifications: () => void
+
+  // Profile auto-save — shared between profile page and layout
+  isSaveInProgress: boolean
+  setSaveInProgress: (v: boolean) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -34,4 +38,7 @@ export const useAppStore = create<AppState>((set) => ({
   notificationsVersion: 0,
   refreshNotifications: () =>
     set((state) => ({ notificationsVersion: state.notificationsVersion + 1 })),
+
+  isSaveInProgress: false,
+  setSaveInProgress: (v) => set({ isSaveInProgress: v }),
 }))

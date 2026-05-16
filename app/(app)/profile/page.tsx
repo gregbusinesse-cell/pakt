@@ -382,7 +382,7 @@ export default function ProfilePageWrapper() {
 function ProfilePage() {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
-  const { profile, setProfile } = useAppStore()
+  const { profile, setProfile, isSaveInProgress, setSaveInProgress } = useAppStore()
   const isSuspended = Boolean(profile?.is_suspended)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -411,11 +411,9 @@ function ProfilePage() {
 
   // ─── Auto-save state ───────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
-  const [isSavingCritical, setIsSavingCritical] = useState(false)
-  const [showSavingMessage, setShowSavingMessage] = useState(false)
+  const [showSaveBlockModal, setShowSaveBlockModal] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savingMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveVersionRef = useRef(0)
   const isMountedRef = useRef(true)
 
@@ -577,12 +575,8 @@ function ProfilePage() {
   ) => {
     if (!session?.user) return
 
-    // Detect if this is a heavy save (photos, many changes, etc.)
-    const heavy = isHeavySave(currentNewPhotos, currentPhotoItems, currentForm, currentPreferences)
-    if (heavy) {
-      setIsSavingCritical(true)
-    }
-
+    // Mark save as in progress — blocks all navigation via the store
+    setSaveInProgress(true)
     setSaveStatus('saving')
 
     try {
@@ -675,25 +669,25 @@ function ProfilePage() {
         setPhotoItems(finalPhotoItems)
       }
 
+      // Save done — unblock navigation immediately
+      setSaveInProgress(false)
       setSaveStatus('saved')
-      setIsSavingCritical(false)
 
-      // Brief indicator that save happened, then return to idle
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setSaveStatus('idle')
       }, 800)
     } catch (err) {
       if (!isMountedRef.current) return
+      setSaveInProgress(false)
       setSaveStatus('error')
-      setIsSavingCritical(false)
       console.error('[PROFILE] auto-save error', err)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setSaveStatus('idle')
       }, 3000)
     }
-  }, [session?.user, supabase, isBusinessPro, setProfile, isHeavySave])
+  }, [session?.user, supabase, isBusinessPro, setProfile, setSaveInProgress])
   // NOTE: profile is intentionally NOT in deps — we use profileRef instead
   // to prevent doSave from being recreated on every profile change (causes infinite loops)
 
@@ -760,38 +754,24 @@ function ProfilePage() {
     }
   }, [])
 
-  // Block page unload when saving critical data
+  // Block browser-level navigation (close tab, refresh) when save is in progress
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isSavingCritical) {
+      if (isSaveInProgress) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
-
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isSavingCritical])
+  }, [isSaveInProgress])
 
-  // Show saving message after 1.5 seconds if save is still critical
+  // Close local modal when save finishes
   useEffect(() => {
-    if (isSavingCritical) {
-      if (savingMessageTimerRef.current) clearTimeout(savingMessageTimerRef.current)
-      savingMessageTimerRef.current = setTimeout(() => {
-        if (isMountedRef.current && isSavingCritical) {
-          setShowSavingMessage(true)
-        }
-      }, 1500)
-    } else {
-      // Clear timer and hide message when save finishes
-      if (savingMessageTimerRef.current) clearTimeout(savingMessageTimerRef.current)
-      setShowSavingMessage(false)
+    if (!isSaveInProgress && showSaveBlockModal) {
+      setShowSaveBlockModal(false)
     }
-
-    return () => {
-      if (savingMessageTimerRef.current) clearTimeout(savingMessageTimerRef.current)
-    }
-  }, [isSavingCritical])
+  }, [isSaveInProgress, showSaveBlockModal])
 
   // ─── Auto-save triggers ────────────────────────────────────────
   // IMPORTANT: triggerSave is intentionally NOT in these dependency arrays.
@@ -1244,9 +1224,11 @@ function ProfilePage() {
           <div className="flex items-center bg-dark-200 border border-dark-500 rounded-[12px] p-1">
             <button
               type="button"
-              disabled={isSavingCritical}
-              onClick={() => setMode('view')}
-              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              onClick={() => {
+                if (isSaveInProgress) { setShowSaveBlockModal(true); return }
+                setMode('view')
+              }}
+              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
                 mode === 'view' ? 'bg-[#d4a853] text-dark' : 'text-white/70 hover:text-white'
               }`}
             >
@@ -1255,9 +1237,11 @@ function ProfilePage() {
 
             <button
               type="button"
-              disabled={isSavingCritical}
-              onClick={() => setMode('edit')}
-              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              onClick={() => {
+                if (isSaveInProgress) { setShowSaveBlockModal(true); return }
+                setMode('edit')
+              }}
+              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
                 mode === 'edit' ? 'bg-[#d4a853] text-dark' : 'text-white/70 hover:text-white'
               }`}
             >
@@ -1272,12 +1256,19 @@ function ProfilePage() {
         </div>
       </header>
 
-      {/* Saving message - appears after 1.5s if save is still in progress */}
-      {showSavingMessage && (
-        <div className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 px-4 pointer-events-none">
-          <div className="bg-dark-200 border border-dark-500 rounded-[12px] px-6 py-4 max-w-sm flex items-center gap-3 shadow-lg">
-            <div className="w-3.5 h-3.5 rounded-full border-[1.5px] border-gold/60 border-t-transparent animate-spin shrink-0" />
-            <p className="text-white/80 text-sm">Veuillez patienter, votre profil est en train de se mettre à jour.</p>
+      {/* Save block modal — only appears when user tries to navigate during save */}
+      {showSaveBlockModal && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center pb-[calc(env(safe-area-inset-bottom)+100px)] px-4">
+          <div className="bg-dark-200 border border-dark-500 rounded-[14px] px-6 py-5 max-w-sm w-full shadow-xl flex items-start gap-4">
+            <div className="mt-0.5 shrink-0">
+              <div className="w-4 h-4 rounded-full border-[1.5px] border-gold/70 border-t-transparent animate-spin" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white/90 text-sm font-medium">Sauvegarde en cours</p>
+              <p className="text-white/50 text-xs mt-1 leading-relaxed">
+                Veuillez patienter, votre profil est en cours de mise à jour.
+              </p>
+            </div>
           </div>
         </div>
       )}
