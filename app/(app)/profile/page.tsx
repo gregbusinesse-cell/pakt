@@ -425,11 +425,12 @@ function ProfilePage() {
   const saveVersionRef = useRef(0)
   const isMountedRef = useRef(true)
 
-  // Track last successfully saved state to prevent spam indicator
+  // Track last successfully saved state to detect actual unsaved changes
   const lastSavedStateRef = useRef<{
     form: ProfileForm
     cityData: { city: string; lat: number | null; lng: number | null }
     photoItems: PhotoItem[]
+    preferences: Preferences
   } | null>(null)
 
   useEffect(() => {
@@ -531,9 +532,10 @@ function ProfilePage() {
       cityData.city !== last.cityData.city ||
       cityData.lat !== last.cityData.lat ||
       cityData.lng !== last.cityData.lng ||
-      JSON.stringify(photoItems) !== JSON.stringify(last.photoItems)
+      JSON.stringify(photoItems.map((p) => p.url)) !== JSON.stringify(last.photoItems.map((p) => p.url)) ||
+      JSON.stringify(preferences) !== JSON.stringify(last.preferences)
     )
-  }, [form, cityData, photoItems])
+  }, [form, cityData, photoItems, preferences])
 
   // Detect if a save is "heavy" (photos, many skills, etc.)
   const isHeavySave = useCallback((
@@ -670,6 +672,7 @@ function ProfilePage() {
         form: { ...currentForm },
         cityData: { ...currentCityData },
         photoItems: finalPhotoItems,
+        preferences: { ...(isBusinessPro ? currentPreferences : LOCKED_PREFERENCES) },
       }
 
       if (currentNewPhotos.length > 0) {
@@ -745,6 +748,7 @@ function ProfilePage() {
           pending.cityData.lat === last.cityData.lat &&
           pending.cityData.lng === last.cityData.lng &&
           photoUrlsMatch &&
+          JSON.stringify(pending.preferences) === JSON.stringify(last.preferences) &&
           pending.newPhotos.length === 0
 
         if (noRealChanges) {
@@ -786,13 +790,15 @@ function ProfilePage() {
   const [pendingViewMode, setPendingViewMode] = useState<'view' | 'edit' | null>(null)
 
   // Sync isDirty flag with actual unsaved changes (covers debounce window)
+  // IMPORTANT: must include ALL editable fields in deps so isDirty updates immediately
+  // when user modifies skills, preferences, criteria, etc.
   useEffect(() => {
     if (mode !== 'edit') {
       setDirty(false)
       return
     }
     setDirty(hasUnsavedChanges())
-  }, [form, cityData, photoItems, mode, hasUnsavedChanges, setDirty])
+  }, [form, cityData, photoItems, preferences, mode, hasUnsavedChanges, setDirty])
 
   // Reset dirty state when leaving the page
   useEffect(() => {
@@ -835,6 +841,7 @@ function ProfilePage() {
         pending.cityData.lat === last.cityData.lat &&
         pending.cityData.lng === last.cityData.lng &&
         photoUrlsMatch &&
+        JSON.stringify(pending.preferences) === JSON.stringify(last.preferences) &&
         pending.newPhotos.length === 0
       )
     }
@@ -1004,9 +1011,11 @@ function ProfilePage() {
 
       const newPhotoItems: PhotoItem[] = photos.map((url) => ({ type: 'existing' as const, url }))
 
+      const newPreferences = isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES
+
       setForm(newForm)
       setCityData(newCityData)
-      setPreferences(isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES)
+      setPreferences(newPreferences)
       setNewPhotos([])
       setPhotoItems(newPhotoItems)
 
@@ -1015,6 +1024,7 @@ function ProfilePage() {
         form: newForm,
         cityData: newCityData,
         photoItems: newPhotoItems,
+        preferences: newPreferences,
       }
 
       // Mark as initial mount to avoid triggering saves
@@ -1427,17 +1437,17 @@ function ProfilePage() {
               className="max-w-xl mx-auto space-y-6"
             >
               <div className={cardBase}>
-                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">PRENOM</p>
+                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">PRÉNOM</p>
                 <input
                   value={form.first_name}
                   onChange={(event) => setForm((prev) => ({ ...prev, first_name: event.target.value }))}
-                  placeholder="Prenom"
+                  placeholder="Prénom"
                   className={inputBase}
                 />
               </div>
 
               <div className={cardBase}>
-                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">AGE</p>
+                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">ÂGE</p>
                 <input
                   type="number"
                   value={form.age}
@@ -1488,7 +1498,7 @@ function ProfilePage() {
 
               <div className={cardBase}>
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-semibold text-white">Interets</p>
+                  <p className="text-sm font-semibold text-white">Intérêts</p>
                   <span className="text-xs text-white/40">5 max</span>
                 </div>
 
@@ -1512,8 +1522,8 @@ function ProfilePage() {
 
               <div className={cardBase}>
                 <div className="mb-4">
-                  <p className="text-sm font-semibold text-white">Competences</p>
-                  <p className="text-xs text-white/40 mt-1">Uniquement celles que tu maitrises vraiment</p>
+                  <p className="text-sm font-semibold text-white">Compétences</p>
+                  <p className="text-xs text-white/40 mt-1">Uniquement celles que tu maîtrises vraiment</p>
                 </div>
                 <SkillPicker
                   skills={form.skills}
@@ -1536,7 +1546,7 @@ function ProfilePage() {
                 animate={filtersShake ? { x: [0, -4, 4, -3, 3, 0] } : { x: 0 }}
                 transition={{ duration: 0.32 }}
               >
-                <p className="text-sm font-semibold text-white mb-4">Mes criteres</p>
+                <p className="text-sm font-semibold text-white mb-4">Mes critères</p>
 
                 <div
                   className={`space-y-5 ${
@@ -1572,7 +1582,7 @@ function ProfilePage() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-sm text-white/70">
-                        Age : {displayedPreferences.age_min} - {displayedPreferences.age_max} ans
+                        Âge : {displayedPreferences.age_min} - {displayedPreferences.age_max} ans
                       </p>
                       <span className="text-xs text-white/40">18 - 99</span>
                     </div>
@@ -1620,7 +1630,7 @@ function ProfilePage() {
 
                   {/* Skill filters */}
                   <div>
-                    <p className="text-sm text-white/70 mb-3">Competences recherchees</p>
+                    <p className="text-sm text-white/70 mb-3">Compétences recherchées</p>
 
                     {(preferences.skill_filters || []).length > 0 && (
                       <div className="space-y-2 mb-3">
