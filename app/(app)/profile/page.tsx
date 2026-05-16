@@ -10,7 +10,7 @@ import { useAppStore } from '@/lib/store'
 import { registerFlushHandler } from '@/lib/saveHandle'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
-import { INTERESTS, MAX_PHOTOS, SKILLS_LIST, validatePhoto, parseSkills, type UserSkill, type SkillFilter } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, SKILLS_LIST, validatePhoto, parseSkills, DEFAULT_PREFERENCES, type UserSkill, type SkillFilter, type Preferences } from '@/lib/utils'
 import { Check, X, Plus, LogOut, Crown } from 'lucide-react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -103,19 +103,9 @@ type PhotoItem =
   | { type: 'existing'; url: string }
   | { type: 'new'; url: string; file: File }
 
-type Preferences = {
-  distance_km: number
-  age_min: number
-  age_max: number
-  skill_filters?: SkillFilter[]
-}
-
-const LOCKED_PREFERENCES: Preferences = {
-  distance_km: 1000,
-  age_min: 18,
-  age_max: 99,
-  skill_filters: [],
-}
+// LOCKED_PREFERENCES is the same as DEFAULT_PREFERENCES for non-Pro users
+// Pro users can customize, but both start with the same maximally open defaults
+const LOCKED_PREFERENCES: Preferences = DEFAULT_PREFERENCES
 
 function normalizePlan(plan: unknown) {
   if (plan === 'business_pro' || plan === 'pro') return 'business_pro'
@@ -162,7 +152,7 @@ function clampNumber(value: number, min: number, max: number) {
 }
 
 function getInitialPreferences(pref: unknown): Preferences {
-  const base: Preferences = { distance_km: 50, age_min: 18, age_max: 30 }
+  const base: Preferences = DEFAULT_PREFERENCES
 
   if (!pref || typeof pref !== 'object') return base
 

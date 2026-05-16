@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { useSession } from '@supabase/auth-helpers-react'
-import { INTERESTS, MAX_PHOTOS, validatePhoto, type UserSkill } from '@/lib/utils'
+import { INTERESTS, MAX_PHOTOS, validatePhoto, DEFAULT_PREFERENCES, type UserSkill } from '@/lib/utils'
 import { X, Plus, ChevronRight, ChevronLeft, MapPin } from 'lucide-react'
 import { getStoredRef, clearStoredRef } from '@/components/providers/RefCaptureProvider'
 import SkillPicker from '@/components/skills/SkillPicker'
@@ -572,6 +572,7 @@ export default function OnboardingPage() {
         messages_today: 0,
         last_swipe_date: today,
         last_message_date: today,
+        preferences: DEFAULT_PREFERENCES,
       }
 
       console.log('[ONBOARDING] profile payload:', profilePayload)

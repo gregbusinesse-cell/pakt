@@ -171,6 +171,21 @@ export interface SkillFilter {
   min_level: number // 1-10
 }
 
+/** Default preferences: maximally open to see all profiles */
+export interface Preferences {
+  distance_km: number
+  age_min: number
+  age_max: number
+  skill_filters?: SkillFilter[]
+}
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  distance_km: 1000,
+  age_min: 18,
+  age_max: 99,
+  skill_filters: [],
+}
+
 export function parseSkills(value: unknown): UserSkill[] {
   try {
     const arr = Array.isArray(value)

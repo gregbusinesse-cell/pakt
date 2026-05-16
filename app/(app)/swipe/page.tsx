@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import MatchModal from '@/components/swipe/MatchModal'
 import type { Profile } from '@/lib/supabase/types'
-import { normalizePlan, isPaidPlan, parseSkills, type SkillFilter } from '@/lib/utils'
+import { normalizePlan, isPaidPlan, parseSkills, DEFAULT_PREFERENCES, type SkillFilter } from '@/lib/utils'
 import { RefreshCw, Lock, Crown, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -86,9 +86,11 @@ export default function SwipePage() {
 
   const userLat = profileWithLocation?.city_lat ?? null
   const userLng = profileWithLocation?.city_lng ?? null
-  const maxDistance = isPro ? profileWithLocation?.preferences?.distance_km ?? 50 : 50
-  const ageMin = isPro ? profileWithLocation?.preferences?.age_min ?? 18 : 18
-  const ageMax = isPro ? profileWithLocation?.preferences?.age_max ?? 99 : 99
+  // All users get preferences; FREE/BUSINESS can't modify but get maximally open defaults
+  const maxDistance = profileWithLocation?.preferences?.distance_km ?? DEFAULT_PREFERENCES.distance_km
+  const ageMin = profileWithLocation?.preferences?.age_min ?? DEFAULT_PREFERENCES.age_min
+  const ageMax = profileWithLocation?.preferences?.age_max ?? DEFAULT_PREFERENCES.age_max
+  // Only Pro users can apply skill filters; others get empty array
   const skillFilters = useMemo<SkillFilter[]>(
     () => (isPro ? profileWithLocation?.preferences?.skill_filters ?? [] : []),
     [isPro, profileWithLocation?.preferences?.skill_filters]
