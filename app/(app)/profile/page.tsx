@@ -429,57 +429,6 @@ function ProfilePage() {
     return () => { isMountedRef.current = false }
   }, [])
 
-  // Check if there are actual unsaved changes
-  const hasUnsavedChanges = useCallback(() => {
-    if (!lastSavedStateRef.current) return false // Nothing saved yet
-    const last = lastSavedStateRef.current
-    return (
-      form.first_name !== last.form.first_name ||
-      form.age !== last.form.age ||
-      form.bio !== last.form.bio ||
-      form.city !== last.form.city ||
-      JSON.stringify(form.interests) !== JSON.stringify(last.form.interests) ||
-      JSON.stringify(form.skills) !== JSON.stringify(last.form.skills) ||
-      cityData.city !== last.cityData.city ||
-      cityData.lat !== last.cityData.lat ||
-      cityData.lng !== last.cityData.lng ||
-      JSON.stringify(photoItems) !== JSON.stringify(last.photoItems)
-    )
-  }, [form, cityData, photoItems])
-
-  // Detect if a save is "heavy" (photos, many skills, etc.)
-  const isHeavySave = useCallback((
-    currentNewPhotos: File[],
-    currentPhotoItems: PhotoItem[],
-    currentForm: ProfileForm,
-    currentPreferences: Preferences
-  ) => {
-    // Heavy if uploading photos
-    if (currentNewPhotos.length > 0) return true
-
-    // Heavy if photo count changed significantly
-    const lastPhotoCount = lastSavedStateRef.current?.photoItems.length || 0
-    if (Math.abs(currentPhotoItems.length - lastPhotoCount) > 0) return true
-
-    // Heavy if preferences changed (only for pro users)
-    if (isBusinessPro && lastSavedStateRef.current) {
-      // Preferences change is considered heavy
-      const lastPrefs = lastSavedStateRef.current as any
-      if (JSON.stringify(currentPreferences) !== JSON.stringify(lastPrefs.preferences)) {
-        return true
-      }
-    }
-
-    // Heavy if many skills changed
-    if (currentForm.skills.length > 2 && lastSavedStateRef.current) {
-      if (JSON.stringify(currentForm.skills) !== JSON.stringify(lastSavedStateRef.current.form.skills)) {
-        return true
-      }
-    }
-
-    return false
-  }, [isBusinessPro])
-
   const [preferences, setPreferences] = useState<Preferences>(() =>
     isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES
   )
@@ -559,6 +508,57 @@ function ProfilePage() {
   }
 
   const [photoValidating, setPhotoValidating] = useState(false)
+
+  // Check if there are actual unsaved changes
+  const hasUnsavedChanges = useCallback(() => {
+    if (!lastSavedStateRef.current) return false // Nothing saved yet
+    const last = lastSavedStateRef.current
+    return (
+      form.first_name !== last.form.first_name ||
+      form.age !== last.form.age ||
+      form.bio !== last.form.bio ||
+      form.city !== last.form.city ||
+      JSON.stringify(form.interests) !== JSON.stringify(last.form.interests) ||
+      JSON.stringify(form.skills) !== JSON.stringify(last.form.skills) ||
+      cityData.city !== last.cityData.city ||
+      cityData.lat !== last.cityData.lat ||
+      cityData.lng !== last.cityData.lng ||
+      JSON.stringify(photoItems) !== JSON.stringify(last.photoItems)
+    )
+  }, [form, cityData, photoItems])
+
+  // Detect if a save is "heavy" (photos, many skills, etc.)
+  const isHeavySave = useCallback((
+    currentNewPhotos: File[],
+    currentPhotoItems: PhotoItem[],
+    currentForm: ProfileForm,
+    currentPreferences: Preferences
+  ) => {
+    // Heavy if uploading photos
+    if (currentNewPhotos.length > 0) return true
+
+    // Heavy if photo count changed significantly
+    const lastPhotoCount = lastSavedStateRef.current?.photoItems.length || 0
+    if (Math.abs(currentPhotoItems.length - lastPhotoCount) > 0) return true
+
+    // Heavy if preferences changed (only for pro users)
+    if (isBusinessPro && lastSavedStateRef.current) {
+      // Preferences change is considered heavy
+      const lastPrefs = lastSavedStateRef.current as any
+      if (JSON.stringify(currentPreferences) !== JSON.stringify(lastPrefs.preferences)) {
+        return true
+      }
+    }
+
+    // Heavy if many skills changed
+    if (currentForm.skills.length > 2 && lastSavedStateRef.current) {
+      if (JSON.stringify(currentForm.skills) !== JSON.stringify(lastSavedStateRef.current.form.skills)) {
+        return true
+      }
+    }
+
+    return false
+  }, [isBusinessPro])
 
   // ─── Core save function (called by debounce) ──────────────────
   const doSave = useCallback(async (
@@ -865,7 +865,7 @@ function ProfilePage() {
         lng: (profile as any)?.city_lng || null,
       }
 
-      const newPhotoItems = photos.map((url) => ({ type: 'existing', url }))
+      const newPhotoItems: PhotoItem[] = photos.map((url) => ({ type: 'existing' as const, url }))
 
       setForm(newForm)
       setCityData(newCityData)
