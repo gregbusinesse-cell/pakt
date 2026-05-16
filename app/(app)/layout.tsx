@@ -276,6 +276,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [refreshNotificationCount, supabase, userId])
 
+  // Close save block modal when save finishes
+  useEffect(() => {
+    if (!isSaveInProgress && showSaveBlockModal) {
+      setShowSaveBlockModal(false)
+    }
+  }, [isSaveInProgress, showSaveBlockModal])
+
   if (authLoading) {
     return (
       <div className="h-[100dvh] flex items-center justify-center bg-dark text-white">
@@ -283,13 +290,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </div>
     )
   }
-
-  // Close save block modal when save finishes
-  useEffect(() => {
-    if (!isSaveInProgress && showSaveBlockModal) {
-      setShowSaveBlockModal(false)
-    }
-  }, [isSaveInProgress, showSaveBlockModal])
 
   if (!userId) return null
 
