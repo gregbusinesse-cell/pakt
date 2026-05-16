@@ -946,7 +946,6 @@ export default function MatchesPage() {
                         {!item.isViewed && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                         )}
-                        </div>
                       </button>
 
                       {/* Info — real name, real time, always visible */}
