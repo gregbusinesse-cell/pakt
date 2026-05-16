@@ -655,34 +655,34 @@ function ProfilePage() {
   // ─── Auto-save triggers ────────────────────────────────────────
   const isInitialMount = useRef(true)
 
-  // Text fields: debounce 800ms
+  // Text fields: debounce 500ms
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
-    triggerSave(800)
-  }, [form.first_name, form.age, form.bio])
+    triggerSave(500)
+  }, [form.first_name, form.age, form.bio, triggerSave])
 
   // Interests, skills, preferences: debounce 500ms (user clicks)
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
     triggerSave(500)
-  }, [form.interests, form.skills, preferences])
+  }, [form.interests, form.skills, preferences, triggerSave])
 
-  // City (from Google Places selection): immediate-ish
+  // City (from Google Places selection): save promptly
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
     if (!cityData.lat) return // only save when Google Places sets lat/lng
-    triggerSave(300)
-  }, [cityData])
+    triggerSave(500)
+  }, [cityData, triggerSave])
 
   // Photos: save after change
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
     triggerSave(500)
-  }, [photoItems])
+  }, [photoItems, triggerSave])
 
   // Mark initial mount done after first render in edit mode
   useEffect(() => {
@@ -1193,13 +1193,16 @@ function ProfilePage() {
               </div>
 
               <div className={cardBase}>
-                <p className="text-xs uppercase tracking-widest text-white/40 mb-3">BIO</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs uppercase tracking-widest text-white/40">BIO</p>
+                  <span className="text-xs text-white/40">{form.bio.length}/1000</span>
+                </div>
                 <textarea
                   value={form.bio}
                   onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))}
                   placeholder="Bio"
                   className={`${inputBase} resize-none h-32`}
-                  maxLength={500}
+                  maxLength={1000}
                 />
               </div>
 
