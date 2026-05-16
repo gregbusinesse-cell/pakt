@@ -27,6 +27,7 @@ export default function CriteriaPanel({
   const [localPrefs, setLocalPrefs] = useState<Preferences>(preferences)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingPrefsRef = useRef<Preferences>(localPrefs)
 
   // Update pending ref whenever localPrefs changes
@@ -34,18 +35,20 @@ export default function CriteriaPanel({
     pendingPrefsRef.current = localPrefs
   }, [localPrefs])
 
-  // Sync localPrefs when preferences prop changes (panel opened)
+  // Sync localPrefs when panel OPENS - do NOT sync on every preference change
+  // Syncing on every change causes race condition with setTimeout callbacks
   useEffect(() => {
     if (isOpen) {
       setLocalPrefs(preferences)
       setSaveStatus('idle')
     }
-  }, [isOpen, preferences])
+  }, [isOpen])
 
   const triggerSave = useCallback((delay = 800) => {
-    if (!isPro) return // Non-Pro users can't save
+    if (!isPro) return
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current)
 
     setSaveStatus('saving')
 
@@ -54,23 +57,17 @@ export default function CriteriaPanel({
         await onSave(pendingPrefsRef.current)
         setSaveStatus('saved')
 
-        // Clear saved status after delay
-        const clearTimer = setTimeout(() => {
+        clearStatusTimerRef.current = setTimeout(() => {
           setSaveStatus('idle')
         }, 2000)
-
-        return () => clearTimeout(clearTimer)
       } catch (error) {
         console.error('[CRITERIA] save error', error)
         setSaveStatus('error')
         toast.error('Erreur lors de la sauvegarde des critères')
 
-        // Clear error status after delay
-        const clearTimer = setTimeout(() => {
+        clearStatusTimerRef.current = setTimeout(() => {
           setSaveStatus('idle')
         }, 3000)
-
-        return () => clearTimeout(clearTimer)
       }
     }, delay)
   }, [isPro, onSave])

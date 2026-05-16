@@ -294,13 +294,12 @@ export default function SwipePage() {
       const applyBaseFilter = (candidate: ProfileWithLocation) => {
         if (swipedSet.has(candidate.id)) return false
 
-        // Age filter
-        if (typeof candidate.age === 'number') {
-          if (candidate.age < ageMin || candidate.age > ageMax) return false
-        }
+        // Age filter - coerce to number to handle string ages from database
+        const candidateAge = typeof candidate.age === 'number' ? candidate.age : parseInt(String(candidate.age), 10)
+        if (Number.isNaN(candidateAge) || candidateAge < ageMin || candidateAge > ageMax) return false
 
-        if (!candidate.city_lat || !candidate.city_lng) return false
-        if (!userLat || !userLng) return true
+        if (candidate.city_lat === null || candidate.city_lat === undefined || candidate.city_lng === null || candidate.city_lng === undefined) return false
+        if (userLat === null || userLat === undefined || userLng === null || userLng === undefined) return true
 
         const radius = 6371
         const dLat = ((candidate.city_lat - userLat) * Math.PI) / 180
@@ -469,9 +468,9 @@ export default function SwipePage() {
 
         if (data?.preferences) {
           setPreferences({
-            distance_km: data.preferences.distance_km ?? DEFAULT_PREFERENCES.distance_km,
-            age_min: data.preferences.age_min ?? DEFAULT_PREFERENCES.age_min,
-            age_max: data.preferences.age_max ?? DEFAULT_PREFERENCES.age_max,
+            distance_km: Number(data.preferences.distance_km ?? DEFAULT_PREFERENCES.distance_km),
+            age_min: Number(data.preferences.age_min ?? DEFAULT_PREFERENCES.age_min),
+            age_max: Number(data.preferences.age_max ?? DEFAULT_PREFERENCES.age_max),
             skill_filters: data.preferences.skill_filters ?? [],
           })
         }
