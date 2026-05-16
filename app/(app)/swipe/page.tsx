@@ -91,6 +91,15 @@ export default function SwipePage() {
   const plan = normalizePlan(profile?.plan)
   const isPro = plan === 'business_pro'
 
+  // DEBUG: Log user plan
+  useEffect(() => {
+    console.log('[SWIPE] User plan info:', {
+      profile_plan: profile?.plan,
+      normalizedPlan: plan,
+      isPro: isPro,
+    })
+  }, [profile?.plan, plan, isPro])
+
   const userLat = profileWithLocation?.city_lat ?? null
   const userLng = profileWithLocation?.city_lng ?? null
 
@@ -238,6 +247,16 @@ export default function SwipePage() {
     setLoading((prev) => (!hasProfilesRef.current ? true : prev))
 
     try {
+      // DEBUG: Log filter values
+      console.log('[SWIPE] loadProfiles - Filter values:', {
+        ageMin: { value: ageMin, type: typeof ageMin },
+        ageMax: { value: ageMax, type: typeof ageMax },
+        maxDistance: { value: maxDistance, type: typeof maxDistance },
+        skillFilters: skillFilters,
+        preferences: preferences,
+        isPro: isPro,
+      })
+
       const cooldownDate = new Date()
       cooldownDate.setDate(cooldownDate.getDate() - VIEW_COOLDOWN_DAYS)
       const cooldownISO = cooldownDate.toISOString()
@@ -290,12 +309,28 @@ export default function SwipePage() {
         return
       }
 
+      // DEBUG: Log raw profiles from DB
+      console.log('[SWIPE] Raw profiles from DB:', (profilesData || []).map((p: any) => ({
+        id: p.id,
+        name: p.first_name,
+        age: p.age,
+        ageType: typeof p.age,
+        city: p.city,
+      })).slice(0, 15))
+
       // Base filter: already swiped + geo + age (applies to everyone)
       const applyBaseFilter = (candidate: ProfileWithLocation) => {
         if (swipedSet.has(candidate.id)) return false
+
+        // Age filter with debug logging
         if (typeof candidate.age === 'number') {
-          if (candidate.age < ageMin || candidate.age > ageMax) return false
+          const ageCheck = candidate.age >= ageMin && candidate.age <= ageMax
+          if (!ageCheck) {
+            console.log(`[SWIPE] Age filter FAILED: ${candidate.first_name} age=${candidate.age} (range: ${ageMin}-${ageMax})`)
+            return false
+          }
         }
+
         if (!candidate.city_lat || !candidate.city_lng) return false
         if (!userLat || !userLng) return true
 
@@ -309,7 +344,14 @@ export default function SwipePage() {
             Math.sin(dLng / 2) *
             Math.sin(dLng / 2)
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        return radius * c <= maxDistance
+        const distance = radius * c
+        const distanceCheck = distance <= maxDistance
+
+        if (!distanceCheck) {
+          console.log(`[SWIPE] Distance filter FAILED: ${candidate.first_name} distance=${distance.toFixed(0)}km (max: ${maxDistance}km)`)
+        }
+
+        return distanceCheck
       }
 
       // Pro skill filter: only for Business Pro with active filters
@@ -327,6 +369,15 @@ export default function SwipePage() {
 
       const baseEligible = ((profilesData || []) as ProfileWithLocation[]).filter(applyBaseFilter)
       const eligible = baseEligible.filter(applySkillFilter)
+
+      // DEBUG: Log filtering results
+      console.log('[SWIPE] Filtering results:', {
+        totalProfiles: (profilesData || []).length,
+        baseEligible: baseEligible.length,
+        eligible: eligible.length,
+        baseEligibleNames: baseEligible.slice(0, 5).map((p) => `${p.first_name}(${p.age})`),
+        eligibleNames: eligible.slice(0, 5).map((p) => `${p.first_name}(${p.age})`),
+      })
 
       const fresh = eligible.filter((p) => !recentlyViewedSet.has(p.id))
       const recycled = eligible.filter((p) => recentlyViewedSet.has(p.id))
@@ -465,12 +516,24 @@ export default function SwipePage() {
         }
 
         if (data?.preferences) {
-          setPreferences({
+          const newPrefs = {
             distance_km: data.preferences.distance_km ?? DEFAULT_PREFERENCES.distance_km,
             age_min: data.preferences.age_min ?? DEFAULT_PREFERENCES.age_min,
             age_max: data.preferences.age_max ?? DEFAULT_PREFERENCES.age_max,
             skill_filters: data.preferences.skill_filters ?? [],
+          }
+          console.log('[SWIPE] Preferences loaded from DB:', {
+            rawData: data.preferences,
+            normalized: newPrefs,
+            types: {
+              distance_km: typeof newPrefs.distance_km,
+              age_min: typeof newPrefs.age_min,
+              age_max: typeof newPrefs.age_max,
+            },
           })
+          setPreferences(newPrefs)
+        } else {
+          console.log('[SWIPE] No preferences data returned, using defaults:', DEFAULT_PREFERENCES)
         }
       } catch (error) {
         console.error('[SWIPE] preferences load catch', error)
@@ -484,6 +547,11 @@ export default function SwipePage() {
   useEffect(() => {
     loadProfilesRef.current = loadProfiles
   }, [loadProfiles])
+
+  // DEBUG: Log when preferences change
+  useEffect(() => {
+    console.log('[SWIPE] Preferences state changed:', preferences)
+  }, [preferences])
 
   const handleSavePreferences = useCallback(async (newPrefs: Preferences) => {
     if (!isPro || !sessionUserId) {

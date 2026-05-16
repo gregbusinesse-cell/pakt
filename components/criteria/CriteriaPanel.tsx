@@ -51,6 +51,7 @@ export default function CriteriaPanel({
 
     saveTimerRef.current = setTimeout(async () => {
       try {
+        console.log('[CRITERIA] Saving preferences:', pendingPrefsRef.current)
         await onSave(pendingPrefsRef.current)
         setSaveStatus('saved')
 
@@ -76,22 +77,28 @@ export default function CriteriaPanel({
   }, [isPro, onSave])
 
   const handleDistanceChange = (value: number) => {
-    setLocalPrefs((prev) => ({ ...prev, distance_km: value }))
+    const numValue = Number(value)
+    console.log('[CRITERIA] Distance changed:', { value, numValue, type: typeof numValue })
+    setLocalPrefs((prev) => ({ ...prev, distance_km: numValue }))
     triggerSave()
   }
 
   const handleAgeMinChange = (value: number) => {
+    const numValue = Number(value)
+    console.log('[CRITERIA] Age min changed:', { value, numValue, type: typeof numValue })
     setLocalPrefs((prev) => ({
       ...prev,
-      age_min: Math.min(value, prev.age_max),
+      age_min: Math.min(numValue, prev.age_max),
     }))
     triggerSave()
   }
 
   const handleAgeMaxChange = (value: number) => {
+    const numValue = Number(value)
+    console.log('[CRITERIA] Age max changed:', { value, numValue, type: typeof numValue })
     setLocalPrefs((prev) => ({
       ...prev,
-      age_max: Math.max(value, prev.age_min),
+      age_max: Math.max(numValue, prev.age_min),
     }))
     triggerSave()
   }
