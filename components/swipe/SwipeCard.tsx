@@ -133,7 +133,7 @@ export default function SwipeCard({
         isOwnProfile
           ? 'relative'
           : readonlyMatchView
-            ? 'w-full overflow-y-auto overscroll-contain relative'
+            ? 'w-full relative'
             : `h-full overflow-y-auto overscroll-contain ${
                 isTop ? 'pointer-events-auto opacity-100 relative' : 'pointer-events-none opacity-0 absolute inset-0'
               }`
@@ -146,6 +146,7 @@ export default function SwipeCard({
           rotate: isOwnProfile || readonlyMatchView ? undefined : rotate,
           zIndex: isOwnProfile || readonlyMatchView ? undefined : zIndex,
           touchAction: isOwnProfile || readonlyMatchView ? 'auto' : isTop ? 'pan-y' : 'none',
+          pointerEvents: readonlyMatchView ? 'auto' : undefined,
         }}
         drag={isTop && !disabledActions && !isOwnProfile && !readonlyMatchView ? 'x' : false}
         dragConstraints={readonlyMatchView ? undefined : { left: 0, right: 0 }}
@@ -169,12 +170,11 @@ export default function SwipeCard({
               {photosArray.length > 0 ? (
                 <img
                   src={photosArray[safePhotoIndex]}
-                  className={`w-full aspect-[3/4] object-cover rounded-2xl select-none ${!readonlyMatchView ? 'cursor-pointer' : ''}`}
-                  style={{ touchAction: readonlyMatchView ? 'auto' : 'pan-y' }}
+                  className={`w-full aspect-[3/4] object-cover rounded-2xl select-none cursor-pointer`}
+                  style={{ touchAction: 'auto' }}
                   alt={profile.first_name || ''}
                   draggable={false}
                   onClick={() => {
-                    if (readonlyMatchView) return
                     if (photosArray.length <= 1) return
                     setPhotoIndex((prev) => (prev + 1) % photosArray.length)
                   }}
