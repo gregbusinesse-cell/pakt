@@ -563,6 +563,10 @@ function ProfilePage() {
   }, [isBusinessPro])
 
   // ─── Core save function (called by debounce) ──────────────────
+  // NOTE: profile is accessed via ref to avoid recreating this function on every profile change
+  const profileRef = useRef(profile)
+  useEffect(() => { profileRef.current = profile }, [profile])
+
   const doSave = useCallback(async (
     currentForm: ProfileForm,
     currentCityData: { city: string; lat: number | null; lng: number | null },
@@ -642,42 +646,43 @@ function ProfilePage() {
 
       if (!isMountedRef.current) return
 
-      if (profile) {
+      // Use profileRef to avoid this function recreating on every profile change
+      const currentProfile = profileRef.current
+      if (currentProfile) {
         const nextProfile: Profile = {
-          ...profile,
+          ...currentProfile,
           ...updates,
           interests: nextInterests,
           photos: allPhotos,
         }
-
         setProfile(nextProfile)
       }
 
-      // If new photos were uploaded, convert them to existing
-      if (currentNewPhotos.length > 0) {
-        setNewPhotos([])
-        setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
-      }
+      // Convert uploaded photos to existing items
+      // IMPORTANT: update lastSavedStateRef BEFORE calling setPhotoItems
+      // so the photo useEffect doesn't trigger a re-save
+      const finalPhotoItems: PhotoItem[] = allPhotos.map((url) => ({ type: 'existing' as const, url }))
 
-      // Track this as last successful save state
+      // Track this as last successful save state (using final URLs, not file refs)
       lastSavedStateRef.current = {
         form: { ...currentForm },
         cityData: { ...currentCityData },
-        photoItems: currentPhotoItems.slice(),
+        photoItems: finalPhotoItems,
+      }
+
+      if (currentNewPhotos.length > 0) {
+        setNewPhotos([])
+        setPhotoItems(finalPhotoItems)
       }
 
       setSaveStatus('saved')
-
-      if (heavy) {
-        // For heavy saves, turn off critical flag immediately
-        setIsSavingCritical(false)
-      }
+      setIsSavingCritical(false)
 
       // Brief indicator that save happened, then return to idle
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setSaveStatus('idle')
-      }, 600) // Brief flash to show completion
+      }, 800)
     } catch (err) {
       if (!isMountedRef.current) return
       setSaveStatus('error')
@@ -688,23 +693,9 @@ function ProfilePage() {
         if (isMountedRef.current) setSaveStatus('idle')
       }, 3000)
     }
-  }, [session?.user, supabase, isBusinessPro, profile, setProfile, isHeavySave])
-
-  // ─── Debounced trigger ─────────────────────────────────────────
-  const scheduleSave = useCallback((delay = 800) => {
-    if (mode !== 'edit') return
-
-    saveVersionRef.current += 1
-    const version = saveVersionRef.current
-
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-
-    saveTimerRef.current = setTimeout(() => {
-      // Read latest state via refs won't work for state, so we use a callback pattern
-      // We'll call doSave with current state captured at schedule time — but we need latest.
-      // Solution: we store pending data in a ref updated by the effect.
-    }, delay)
-  }, [mode])
+  }, [session?.user, supabase, isBusinessPro, setProfile, isHeavySave])
+  // NOTE: profile is intentionally NOT in deps — we use profileRef instead
+  // to prevent doSave from being recreated on every profile change (causes infinite loops)
 
   // Pending save data ref — always reflects latest state
   const pendingRef = useRef({ form, cityData, preferences, photoItems, newPhotos })
@@ -712,7 +703,12 @@ function ProfilePage() {
     pendingRef.current = { form, cityData, preferences, photoItems, newPhotos }
   }, [form, cityData, preferences, photoItems, newPhotos])
 
-  const triggerSave = useCallback((delay = 800) => {
+  // Stable ref for doSave — updated on every render but never causes re-renders itself
+  // This BREAKS the doSave → triggerSave → useEffect → doSave infinite loop
+  const doSaveRef = useRef(doSave)
+  useEffect(() => { doSaveRef.current = doSave }, [doSave])
+
+  const triggerSave = useCallback((delay = 500) => {
     if (mode !== 'edit') return
 
     saveVersionRef.current += 1
@@ -721,10 +717,40 @@ function ProfilePage() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
 
     saveTimerRef.current = setTimeout(() => {
-      const { form: f, cityData: c, preferences: p, photoItems: pi, newPhotos: np } = pendingRef.current
-      doSave(f, c, p, pi, np, version)
+      // Check for real changes using refs only — no reactive deps needed
+      const pending = pendingRef.current
+      const last = lastSavedStateRef.current
+
+      if (last) {
+        // Compare by value, photos compared by URL only (ignores type: 'new' vs 'existing')
+        const photoUrlsMatch =
+          JSON.stringify(pending.photoItems.map((p) => p.url)) ===
+          JSON.stringify(last.photoItems.map((p) => p.url))
+
+        const noRealChanges =
+          pending.form.first_name === last.form.first_name &&
+          pending.form.age === last.form.age &&
+          pending.form.bio === last.form.bio &&
+          pending.form.city === last.form.city &&
+          JSON.stringify(pending.form.interests) === JSON.stringify(last.form.interests) &&
+          JSON.stringify(pending.form.skills) === JSON.stringify(last.form.skills) &&
+          pending.cityData.city === last.cityData.city &&
+          pending.cityData.lat === last.cityData.lat &&
+          pending.cityData.lng === last.cityData.lng &&
+          photoUrlsMatch &&
+          pending.newPhotos.length === 0
+
+        if (noRealChanges) {
+          return // Skip — nothing actually changed
+        }
+      }
+
+      doSaveRef.current(pending.form, pending.cityData, pending.preferences, pending.photoItems, pending.newPhotos, version)
     }, delay)
-  }, [mode, doSave])
+  // NOTE: doSave intentionally NOT in deps — we use doSaveRef to avoid the infinite loop:
+  // doSave → setProfile → profile changes → doSave recreated → triggerSave recreated → useEffects fire → loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   // Cleanup timers
   useEffect(() => {
@@ -768,6 +794,10 @@ function ProfilePage() {
   }, [isSavingCritical])
 
   // ─── Auto-save triggers ────────────────────────────────────────
+  // IMPORTANT: triggerSave is intentionally NOT in these dependency arrays.
+  // Including it would cause an infinite loop because doSave → setProfile → profile changes
+  // → doSave recreated → triggerSave recreated → these effects re-fire → loop.
+  // triggerSave only depends on [mode] and uses refs internally, so it's safe to omit.
   const isInitialMount = useRef(true)
 
   // Text fields: debounce 500ms
@@ -775,14 +805,16 @@ function ProfilePage() {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
     triggerSave(500)
-  }, [form.first_name, form.age, form.bio, triggerSave])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.first_name, form.age, form.bio])
 
   // Interests, skills, preferences: debounce 500ms (user clicks)
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
     triggerSave(500)
-  }, [form.interests, form.skills, preferences, triggerSave])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.interests, form.skills, preferences])
 
   // City (from Google Places selection): save promptly
   useEffect(() => {
@@ -790,14 +822,16 @@ function ProfilePage() {
     if (mode !== 'edit') return
     if (!cityData.lat) return // only save when Google Places sets lat/lng
     triggerSave(500)
-  }, [cityData, triggerSave])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityData])
 
   // Photos: save after change
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
     triggerSave(500)
-  }, [photoItems, triggerSave])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoItems])
 
   // Mark initial mount done after first render in edit mode
   useEffect(() => {
