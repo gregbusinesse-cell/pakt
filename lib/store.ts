@@ -19,8 +19,15 @@ interface AppState {
   refreshNotifications: () => void
 
   // Profile auto-save — shared between profile page and layout
+  // isDirty: there are unsaved changes (covers both debounce window AND active save)
+  // isSaveInProgress: doSave() is currently running an async save
+  // pendingNavTarget: navigation target queued while save is in progress
+  isDirty: boolean
+  setDirty: (v: boolean) => void
   isSaveInProgress: boolean
   setSaveInProgress: (v: boolean) => void
+  pendingNavTarget: string | null
+  setPendingNavTarget: (t: string | null) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -39,6 +46,10 @@ export const useAppStore = create<AppState>((set) => ({
   refreshNotifications: () =>
     set((state) => ({ notificationsVersion: state.notificationsVersion + 1 })),
 
+  isDirty: false,
+  setDirty: (v) => set({ isDirty: v }),
   isSaveInProgress: false,
   setSaveInProgress: (v) => set({ isSaveInProgress: v }),
+  pendingNavTarget: null,
+  setPendingNavTarget: (t) => set({ pendingNavTarget: t }),
 }))

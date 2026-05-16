@@ -5,7 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store'
-import { Flame, MessageCircle, User, X } from 'lucide-react'
+import { flushPendingSave } from '@/lib/saveHandle'
+import { Flame, MessageCircle, User } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
 
 const NAV_ITEMS = [
@@ -20,9 +21,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const db = supabase as any
   const router = useRouter()
   const pathname = usePathname()
-  const { setProfile, notificationsVersion, isSaveInProgress } = useAppStore()
-
-  const [showSaveBlockModal, setShowSaveBlockModal] = useState(false)
+  const {
+    setProfile,
+    notificationsVersion,
+    isSaveInProgress,
+    isDirty,
+    pendingNavTarget,
+    setPendingNavTarget,
+  } = useAppStore()
 
   const [authLoading, setAuthLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
@@ -276,12 +282,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [refreshNotificationCount, supabase, userId])
 
-  // Close save block modal when save finishes
+  // When save completes and there was a pending nav target, navigate now
   useEffect(() => {
-    if (!isSaveInProgress && showSaveBlockModal) {
-      setShowSaveBlockModal(false)
+    if (!isDirty && !isSaveInProgress && pendingNavTarget) {
+      const target = pendingNavTarget
+      setPendingNavTarget(null)
+      router.push(target)
     }
-  }, [isSaveInProgress, showSaveBlockModal])
+  }, [isDirty, isSaveInProgress, pendingNavTarget, router, setPendingNavTarget])
+
+  // Clear pending nav target when leaving /profile (user navigated successfully)
+  useEffect(() => {
+    if (!pathname?.startsWith('/profile') && pendingNavTarget) {
+      setPendingNavTarget(null)
+    }
+  }, [pathname, pendingNavTarget, setPendingNavTarget])
+
+  const isNavBlocked = isDirty || isSaveInProgress
+  const showNavModal = pendingNavTarget !== null && isNavBlocked
 
   if (authLoading) {
     return (
@@ -315,10 +333,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               key={href}
               type="button"
               aria-label={label}
-              onClick={(e) => {
-                if (isSaveInProgress) {
-                  e.preventDefault()
-                  setShowSaveBlockModal(true)
+              onClick={() => {
+                if (isActive) return
+                // If there are unsaved changes on /profile, queue the nav and flush
+                if (isNavBlocked) {
+                  setPendingNavTarget(href)
+                  flushPendingSave()
                   return
                 }
                 router.push(href)
@@ -346,9 +366,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         })}
       </nav>
 
-      {/* Save in progress modal — only when user tries to navigate */}
-      {showSaveBlockModal && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center pb-[calc(env(safe-area-inset-bottom)+100px)] px-4">
+      {/* Save in progress modal — visible while a nav target is queued waiting for save */}
+      {showNavModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 px-4">
           <div className="bg-dark-200 border border-dark-500 rounded-[14px] px-6 py-5 max-w-sm w-full shadow-xl flex items-start gap-4">
             <div className="mt-0.5 shrink-0">
               <div className="w-4 h-4 rounded-full border-[1.5px] border-gold/70 border-t-transparent animate-spin" />
@@ -359,13 +379,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 Veuillez patienter, votre profil est en cours de mise à jour.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowSaveBlockModal(false)}
-              className="shrink-0 text-white/30 hover:text-white/60 transition-colors mt-0.5"
-            >
-              <X size={16} />
-            </button>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, Suspense } from 'rea
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from '@supabase/auth-helpers-react'
 import { useAppStore } from '@/lib/store'
+import { registerFlushHandler } from '@/lib/saveHandle'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { INTERESTS, MAX_PHOTOS, SKILLS_LIST, validatePhoto, parseSkills, type UserSkill, type SkillFilter } from '@/lib/utils'
@@ -382,7 +383,15 @@ export default function ProfilePageWrapper() {
 function ProfilePage() {
   const session = useSession()
   const supabase = useMemo(() => createClient(), [])
-  const { profile, setProfile, isSaveInProgress, setSaveInProgress } = useAppStore()
+  const {
+    profile,
+    setProfile,
+    isSaveInProgress,
+    setSaveInProgress,
+    isDirty,
+    setDirty,
+    setPendingNavTarget,
+  } = useAppStore()
   const isSuspended = Boolean(profile?.is_suspended)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -411,7 +420,6 @@ function ProfilePage() {
 
   // ─── Auto-save state ───────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
-  const [showSaveBlockModal, setShowSaveBlockModal] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveVersionRef = useRef(0)
@@ -669,7 +677,8 @@ function ProfilePage() {
         setPhotoItems(finalPhotoItems)
       }
 
-      // Save done — unblock navigation immediately
+      // Save done — clear dirty flag and unblock navigation immediately
+      setDirty(false)
       setSaveInProgress(false)
       setSaveStatus('saved')
 
@@ -679,15 +688,19 @@ function ProfilePage() {
       }, 800)
     } catch (err) {
       if (!isMountedRef.current) return
+      // Save failed — clear any pending navigation so modals close.
+      // User stays on /profile/edit with their unsaved changes, can retry.
       setSaveInProgress(false)
       setSaveStatus('error')
+      setPendingNavTarget(null)
+      toast.error('Erreur de sauvegarde — réessayez')
       console.error('[PROFILE] auto-save error', err)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setSaveStatus('idle')
       }, 3000)
     }
-  }, [session?.user, supabase, isBusinessPro, setProfile, setSaveInProgress])
+  }, [session?.user, supabase, isBusinessPro, setProfile, setSaveInProgress, setDirty, setPendingNavTarget])
   // NOTE: profile is intentionally NOT in deps — we use profileRef instead
   // to prevent doSave from being recreated on every profile change (causes infinite loops)
 
@@ -754,24 +767,116 @@ function ProfilePage() {
     }
   }, [])
 
-  // Block browser-level navigation (close tab, refresh) when save is in progress
+  // Block browser-level navigation (close tab, refresh) when dirty or saving
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isSaveInProgress) {
+      if (isDirty || isSaveInProgress) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isSaveInProgress])
+  }, [isDirty, isSaveInProgress])
 
-  // Close local modal when save finishes
+  // ─── Pending mode switch (Visualiser/Modifier) ─────────────────
+  // When user clicks Visualiser while there are unsaved changes, we queue the
+  // mode switch and trigger an immediate flush. Once save completes, the mode
+  // switches automatically.
+  const [pendingViewMode, setPendingViewMode] = useState<'view' | 'edit' | null>(null)
+
+  // Sync isDirty flag with actual unsaved changes (covers debounce window)
   useEffect(() => {
-    if (!isSaveInProgress && showSaveBlockModal) {
-      setShowSaveBlockModal(false)
+    if (mode !== 'edit') {
+      setDirty(false)
+      return
     }
-  }, [isSaveInProgress, showSaveBlockModal])
+    setDirty(hasUnsavedChanges())
+  }, [form, cityData, photoItems, mode, hasUnsavedChanges, setDirty])
+
+  // Reset dirty state when leaving the page
+  useEffect(() => {
+    return () => {
+      setDirty(false)
+      setSaveInProgress(false)
+    }
+  }, [setDirty, setSaveInProgress])
+
+  // Imperative flush: cancel debounce and run save immediately if there are changes.
+  // Called by the layout's nav buttons and the Visualiser/Modifier toggle.
+  const flushSaveImpl = useCallback(async () => {
+    // Already saving? Let it finish — the watcher useEffect will navigate when done.
+    if (isSaveInProgress) return
+
+    // Cancel pending debounce
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+
+    // Check if there's anything to save
+    const pending = pendingRef.current
+    const last = lastSavedStateRef.current
+
+    let hasRealChanges = !last
+    if (last) {
+      const photoUrlsMatch =
+        JSON.stringify(pending.photoItems.map((p) => p.url)) ===
+        JSON.stringify(last.photoItems.map((p) => p.url))
+
+      hasRealChanges = !(
+        pending.form.first_name === last.form.first_name &&
+        pending.form.age === last.form.age &&
+        pending.form.bio === last.form.bio &&
+        pending.form.city === last.form.city &&
+        JSON.stringify(pending.form.interests) === JSON.stringify(last.form.interests) &&
+        JSON.stringify(pending.form.skills) === JSON.stringify(last.form.skills) &&
+        pending.cityData.city === last.cityData.city &&
+        pending.cityData.lat === last.cityData.lat &&
+        pending.cityData.lng === last.cityData.lng &&
+        photoUrlsMatch &&
+        pending.newPhotos.length === 0
+      )
+    }
+
+    if (!hasRealChanges) {
+      setDirty(false)
+      return
+    }
+
+    saveVersionRef.current += 1
+    const version = saveVersionRef.current
+    await doSaveRef.current(pending.form, pending.cityData, pending.preferences, pending.photoItems, pending.newPhotos, version)
+  }, [isSaveInProgress, setDirty])
+
+  // Stable ref for flush so we don't re-register on every render
+  const flushSaveRef = useRef(flushSaveImpl)
+  useEffect(() => { flushSaveRef.current = flushSaveImpl }, [flushSaveImpl])
+
+  // Register the flush handler globally so the layout can call it
+  useEffect(() => {
+    registerFlushHandler(() => flushSaveRef.current())
+    return () => registerFlushHandler(null)
+  }, [])
+
+  // When save completes and there's a pending mode switch, execute it
+  useEffect(() => {
+    if (!isDirty && !isSaveInProgress && pendingViewMode) {
+      const target = pendingViewMode
+      setPendingViewMode(null)
+      setMode(target)
+    }
+  }, [isDirty, isSaveInProgress, pendingViewMode])
+
+  // If save errored, drop the pending mode switch so the modal closes
+  useEffect(() => {
+    if (saveStatus === 'error' && pendingViewMode) {
+      setPendingViewMode(null)
+    }
+  }, [saveStatus, pendingViewMode])
+
+  // Local modal: visible while a pending mode switch is waiting for save
+  const showLocalSaveModal = pendingViewMode !== null && (isDirty || isSaveInProgress)
 
   // ─── Auto-save triggers ────────────────────────────────────────
   // IMPORTANT: triggerSave is intentionally NOT in these dependency arrays.
@@ -1225,7 +1330,13 @@ function ProfilePage() {
             <button
               type="button"
               onClick={() => {
-                if (isSaveInProgress) { setShowSaveBlockModal(true); return }
+                if (mode === 'view') return
+                // If there are unsaved changes, queue the switch and force flush
+                if (isDirty || isSaveInProgress) {
+                  setPendingViewMode('view')
+                  flushSaveImpl()
+                  return
+                }
                 setMode('view')
               }}
               className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
@@ -1238,7 +1349,12 @@ function ProfilePage() {
             <button
               type="button"
               onClick={() => {
-                if (isSaveInProgress) { setShowSaveBlockModal(true); return }
+                if (mode === 'edit') return
+                if (isDirty || isSaveInProgress) {
+                  setPendingViewMode('edit')
+                  flushSaveImpl()
+                  return
+                }
                 setMode('edit')
               }}
               className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
@@ -1256,9 +1372,9 @@ function ProfilePage() {
         </div>
       </header>
 
-      {/* Save block modal — only appears when user tries to navigate during save */}
-      {showSaveBlockModal && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center pb-[calc(env(safe-area-inset-bottom)+100px)] px-4">
+      {/* Save block modal — only appears when user tries to switch view/edit during save */}
+      {showLocalSaveModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 px-4">
           <div className="bg-dark-200 border border-dark-500 rounded-[14px] px-6 py-5 max-w-sm w-full shadow-xl flex items-start gap-4">
             <div className="mt-0.5 shrink-0">
               <div className="w-4 h-4 rounded-full border-[1.5px] border-gold/70 border-t-transparent animate-spin" />
