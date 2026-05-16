@@ -31,6 +31,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing targetUserId or reason' }, { status: 400 })
     }
 
+    // Prevent self-reporting
+    if (targetUserId === user.id) {
+      return NextResponse.json({ error: 'Cannot report yourself' }, { status: 400 })
+    }
+
     const supabase = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
     const [{ data: reporter }, { data: target }] = await Promise.all([

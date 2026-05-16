@@ -107,7 +107,7 @@ async function persistMatch({
     throw insertMatchError
   }
 
-  console.error('[API_SWIPE] match persisted', {
+  console.log('[API_SWIPE] match persisted', {
     matchId: insertedMatch.id,
     user1_id,
     user2_id,

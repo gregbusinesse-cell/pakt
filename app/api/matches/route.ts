@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  console.error('[API_MATCHES] match persisted', {
+  console.log('[API_MATCHES] match persisted', {
     matchId: insertedMatch.id,
     user1_id,
     user2_id,

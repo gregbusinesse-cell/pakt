@@ -247,10 +247,10 @@ export default function SwipePage() {
         console.error('[SWIPE] views select error', viewsResult.error)
       }
 
-      const blockedIds = new Set<string>([
+      const blockedIds = [
         ...((blockedByMeResult.data || []).map((b: { blocked_id: string }) => b.blocked_id)),
         ...((blockedMeResult.data || []).map((b: { blocker_id: string }) => b.blocker_id)),
-      ])
+      ]
 
       const swipedSet = new Set<string>([
         sessionUserId,

@@ -28,6 +28,23 @@ export async function POST(req: NextRequest) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     const [user1_id, user2_id] = [user.id, otherUserId].sort()
 
+    // Verify user is authorized to delete this conversation
+    const { data: conversation, error: convError } = await supabase
+      .from('conversations')
+      .select('id, user1_id, user2_id')
+      .eq('id', conversationId)
+      .single()
+
+    if (convError || !conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+
+    // Check if current user is a participant in this conversation
+    const isParticipant = (conversation.user1_id === user.id || conversation.user2_id === user.id)
+    if (!isParticipant) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
     // 1. Silent mutual block — prevents re-matching in swipes
     await supabase
       .from('blocked_users')

@@ -43,6 +43,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Paramètres manquants' }, { status: 400 })
     }
 
+    // Verify sender is participant of this conversation
+    const { data: conversation, error: convError } = await supabaseAdmin
+      .from('conversations')
+      .select('id, user1_id, user2_id')
+      .eq('id', conversationId)
+      .single()
+
+    if (convError || !conversation) {
+      return NextResponse.json({ error: 'Conversation non trouvée' }, { status: 404 })
+    }
+
+    const isParticipant = conversation.user1_id === user.id || conversation.user2_id === user.id
+    if (!isParticipant) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+    }
+
     // Verify sender is paid
     const { data: senderProfile } = await supabaseAdmin
       .from('profiles')

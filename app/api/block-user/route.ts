@@ -26,6 +26,17 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
+    // Verify target user exists
+    const { data: targetUser } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', targetUserId)
+      .single()
+
+    if (!targetUser) {
+      return NextResponse.json({ error: 'Target user not found' }, { status: 404 })
+    }
+
     // 1. Insert block record (upsert to avoid duplicates)
     const { error: blockError } = await supabase
       .from('blocked_users')
