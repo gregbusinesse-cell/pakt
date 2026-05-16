@@ -18,6 +18,7 @@ interface Props {
   zIndex?: number
   isTop?: boolean
   isOwnProfile?: boolean
+  readonlyMatchView?: boolean
 }
 
 function parseJsonArray(value: unknown): unknown[] {
@@ -55,6 +56,7 @@ export default function SwipeCard({
   zIndex = 0,
   isTop = false,
   isOwnProfile = false,
+  readonlyMatchView = false,
 }: Props) {
   const [photoIndex, setPhotoIndex] = useState(0)
 
@@ -196,7 +198,7 @@ export default function SwipeCard({
                 </div>
               )}
 
-              {isTop && !isOwnProfile && (
+              {isTop && !isOwnProfile && !readonlyMatchView && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
                   <div className="flex items-center justify-center gap-5">
                     {/* Undo (left) — always clickable, paywall handled in onClick */}

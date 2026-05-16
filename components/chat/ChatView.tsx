@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
+import SwipeCard from '@/components/swipe/SwipeCard'
 import { useAppStore } from '@/lib/store'
 
 interface Props {
@@ -129,6 +130,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const [showBlockConfirm, setShowBlockConfirm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -691,18 +693,20 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           <ChevronLeft size={20} className="text-white/70" />
         </button>
 
-        <div className="w-10 h-10 rounded-full overflow-hidden bg-dark-300 shrink-0">
-          {otherUser.photos?.[0] ? (
-            <img src={otherUser.photos[0]} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-xl">👤</div>
-          )}
-        </div>
+        <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-dark-300 shrink-0">
+            {otherUser.photos?.[0] ? (
+              <img src={otherUser.photos[0]} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xl">👤</div>
+            )}
+          </div>
 
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold truncate">{otherUser.first_name}</p>
-          {otherUser.city && <p className="text-xs text-white/40 truncate">{otherUser.city}</p>}
-        </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold truncate">{otherUser.first_name}</p>
+            {otherUser.city && <p className="text-xs text-white/40 truncate">{otherUser.city}</p>}
+          </div>
+        </button>
 
         <div className="relative">
           <button
@@ -1071,6 +1075,39 @@ export default function ChatView({ conversationId, conversationType, otherUser }
                     {actionLoading ? 'Suppression...' : 'Supprimer'}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Profile Modal ── */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowProfileModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-0 z-[111] flex items-center justify-center p-4"
+              onClick={() => setShowProfileModal(false)}
+            >
+              <div className="w-full max-w-md bg-dark rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <SwipeCard
+                  profile={otherUser as any}
+                  onSwipe={() => {}}
+                  disabledActions={true}
+                  readonlyMatchView={true}
+                  isTop={true}
+                />
               </div>
             </motion.div>
           </>

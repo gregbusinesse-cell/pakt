@@ -11,6 +11,7 @@ import { formatTime, normalizePlan, isPaidPlan as isPaidPlanUtil, canChat } from
 import type { Profile } from '@/lib/supabase/types'
 import { MessageCircle, Users, Crown, Lock, Heart, Zap, X, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
+import SwipeCard from '@/components/swipe/SwipeCard'
 
 type Tab = 'matches' | 'likes' | 'conversations'
 
@@ -337,6 +338,8 @@ export default function MatchesPage() {
   const [selectedLike, setSelectedLike] = useState<LikeItem | null>(null)
   const [likeActionLoading, setLikeActionLoading] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [profileViewerUser, setProfileViewerUser] = useState<MatchItem['otherUser'] | null>(null)
 
   // Resolve auth
   useEffect(() => {
@@ -913,7 +916,15 @@ export default function MatchesPage() {
                       className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
                     >
                       {/* Avatar — always clear, never blurred */}
-                      <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setProfileViewerUser(item.otherUser)
+                          setShowProfileModal(true)
+                        }}
+                        className="relative shrink-0 hover:opacity-75 transition-opacity"
+                      >
                         <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${showEncourageBanner ? 'ring-gold/50' : 'ring-gold/30'}`}>
                           {item.otherUser.photos?.[0] ? (
                             <img
@@ -935,7 +946,8 @@ export default function MatchesPage() {
                         {!item.isViewed && (
                           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
                         )}
-                      </div>
+                        </div>
+                      </button>
 
                       {/* Info — real name, real time, always visible */}
                       <div className="flex-1 min-w-0">
@@ -1366,6 +1378,39 @@ export default function MatchesPage() {
               )
             })()}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Profile Modal ── */}
+      <AnimatePresence>
+        {showProfileModal && profileViewerUser && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowProfileModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className="fixed inset-0 z-[111] flex items-center justify-center p-4"
+              onClick={() => setShowProfileModal(false)}
+            >
+              <div className="w-full max-w-md bg-dark rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <SwipeCard
+                  profile={profileViewerUser as any}
+                  onSwipe={() => {}}
+                  disabledActions={true}
+                  readonlyMatchView={true}
+                  isTop={true}
+                />
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>
