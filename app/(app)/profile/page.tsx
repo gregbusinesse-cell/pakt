@@ -411,15 +411,74 @@ function ProfilePage() {
 
   // ─── Auto-save state ───────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [isSavingCritical, setIsSavingCritical] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveVersionRef = useRef(0)
   const isMountedRef = useRef(true)
 
+  // Track last successfully saved state to prevent spam indicator
+  const lastSavedStateRef = useRef<{
+    form: ProfileForm
+    cityData: { city: string; lat: number | null; lng: number | null }
+    photoItems: PhotoItem[]
+  } | null>(null)
+
   useEffect(() => {
     isMountedRef.current = true
     return () => { isMountedRef.current = false }
   }, [])
+
+  // Check if there are actual unsaved changes
+  const hasUnsavedChanges = useCallback(() => {
+    if (!lastSavedStateRef.current) return false // Nothing saved yet
+    const last = lastSavedStateRef.current
+    return (
+      form.first_name !== last.form.first_name ||
+      form.age !== last.form.age ||
+      form.bio !== last.form.bio ||
+      form.city !== last.form.city ||
+      JSON.stringify(form.interests) !== JSON.stringify(last.form.interests) ||
+      JSON.stringify(form.skills) !== JSON.stringify(last.form.skills) ||
+      cityData.city !== last.cityData.city ||
+      cityData.lat !== last.cityData.lat ||
+      cityData.lng !== last.cityData.lng ||
+      JSON.stringify(photoItems) !== JSON.stringify(last.photoItems)
+    )
+  }, [form, cityData, photoItems])
+
+  // Detect if a save is "heavy" (photos, many skills, etc.)
+  const isHeavySave = useCallback((
+    currentNewPhotos: File[],
+    currentPhotoItems: PhotoItem[],
+    currentForm: ProfileForm,
+    currentPreferences: Preferences
+  ) => {
+    // Heavy if uploading photos
+    if (currentNewPhotos.length > 0) return true
+
+    // Heavy if photo count changed significantly
+    const lastPhotoCount = lastSavedStateRef.current?.photoItems.length || 0
+    if (Math.abs(currentPhotoItems.length - lastPhotoCount) > 0) return true
+
+    // Heavy if preferences changed (only for pro users)
+    if (isBusinessPro && lastSavedStateRef.current) {
+      // Preferences change is considered heavy
+      const lastPrefs = lastSavedStateRef.current as any
+      if (JSON.stringify(currentPreferences) !== JSON.stringify(lastPrefs.preferences)) {
+        return true
+      }
+    }
+
+    // Heavy if many skills changed
+    if (currentForm.skills.length > 2 && lastSavedStateRef.current) {
+      if (JSON.stringify(currentForm.skills) !== JSON.stringify(lastSavedStateRef.current.form.skills)) {
+        return true
+      }
+    }
+
+    return false
+  }, [isBusinessPro])
 
   const [preferences, setPreferences] = useState<Preferences>(() =>
     isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES
@@ -512,6 +571,12 @@ function ProfilePage() {
   ) => {
     if (!session?.user) return
 
+    // Detect if this is a heavy save (photos, many changes, etc.)
+    const heavy = isHeavySave(currentNewPhotos, currentPhotoItems, currentForm, currentPreferences)
+    if (heavy) {
+      setIsSavingCritical(true)
+    }
+
     setSaveStatus('saving')
 
     try {
@@ -592,21 +657,40 @@ function ProfilePage() {
         setPhotoItems(allPhotos.map((url) => ({ type: 'existing', url })))
       }
 
+      // Track this as last successful save state
+      lastSavedStateRef.current = {
+        form: { ...currentForm },
+        cityData: { ...currentCityData },
+        photoItems: currentPhotoItems.slice(),
+      }
+
       setSaveStatus('saved')
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-      savedTimerRef.current = setTimeout(() => {
-        if (isMountedRef.current) setSaveStatus('idle')
-      }, 2000)
+      if (heavy) {
+        // Keep critical indicator for a moment longer so user sees completion
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            setSaveStatus('idle')
+            setIsSavingCritical(false)
+          }
+        }, 1500)
+      } else {
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => {
+          if (isMountedRef.current) setSaveStatus('idle')
+        }, 1200)
+      }
     } catch (err) {
       if (!isMountedRef.current) return
       setSaveStatus('error')
+      setIsSavingCritical(false)
       console.error('[PROFILE] auto-save error', err)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setSaveStatus('idle')
       }, 3000)
     }
-  }, [session?.user, supabase, isBusinessPro, profile, setProfile])
+  }, [session?.user, supabase, isBusinessPro, profile, setProfile, isHeavySave])
 
   // ─── Debounced trigger ─────────────────────────────────────────
   const scheduleSave = useCallback((delay = 800) => {
@@ -651,6 +735,19 @@ function ProfilePage() {
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
     }
   }, [])
+
+  // Block page unload/navigation when saving critical data
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSavingCritical) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isSavingCritical])
 
   // ─── Auto-save triggers ────────────────────────────────────────
   const isInitialMount = useRef(true)
@@ -753,25 +850,35 @@ function ProfilePage() {
       // Reset form from profile
       const photos = normalizePhotos(profile?.photos)
 
-      setForm({
+      const newForm = {
         first_name: profile?.first_name || '',
         age: String(profile?.age || ''),
         bio: profile?.bio || '',
         city: profile?.city || '',
         interests: Array.isArray(profile?.interests) ? profile.interests.slice(0, 5) : [],
         skills: parseSkills((profile as any)?.skills),
-      })
+      }
 
-      setCityData({
+      const newCityData = {
         city: profile?.city || '',
         lat: (profile as any)?.city_lat || null,
         lng: (profile as any)?.city_lng || null,
-      })
+      }
 
+      const newPhotoItems = photos.map((url) => ({ type: 'existing', url }))
+
+      setForm(newForm)
+      setCityData(newCityData)
       setPreferences(isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES)
-
       setNewPhotos([])
-      setPhotoItems(photos.map((url) => ({ type: 'existing', url })))
+      setPhotoItems(newPhotoItems)
+
+      // Initialize lastSavedState when entering edit mode
+      lastSavedStateRef.current = {
+        form: newForm,
+        cityData: newCityData,
+        photoItems: newPhotoItems,
+      }
 
       // Mark as initial mount to avoid triggering saves
       isInitialMount.current = true
@@ -1085,8 +1192,9 @@ function ProfilePage() {
           <div className="flex items-center bg-dark-200 border border-dark-500 rounded-[12px] p-1">
             <button
               type="button"
+              disabled={isSavingCritical}
               onClick={() => setMode('view')}
-              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
+              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 mode === 'view' ? 'bg-[#d4a853] text-dark' : 'text-white/70 hover:text-white'
               }`}
             >
@@ -1095,8 +1203,9 @@ function ProfilePage() {
 
             <button
               type="button"
+              disabled={isSavingCritical}
               onClick={() => setMode('edit')}
-              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
+              className={`px-5 py-2 rounded-[10px] text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 mode === 'edit' ? 'bg-[#d4a853] text-dark' : 'text-white/70 hover:text-white'
               }`}
             >
@@ -1104,10 +1213,29 @@ function ProfilePage() {
             </button>
           </div>
           <div className="w-20 flex justify-end">
-            <SaveIndicator status={saveStatus} />
+            <SaveIndicator
+              status={hasUnsavedChanges() && (saveStatus === 'saving' || saveStatus === 'saved') ? saveStatus : 'idle'}
+            />
           </div>
         </div>
       </header>
+
+      {/* Critical save blocker modal */}
+      {isSavingCritical && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70">
+          <div className="bg-dark-200 border border-dark-500 rounded-[12px] px-8 py-6 max-w-sm mx-4 text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="w-4 h-4 rounded-full border-[1.5px] border-gold/60 border-t-transparent animate-spin" />
+            </div>
+            <p className="text-white/80 text-sm leading-relaxed">
+              Patientez quelques secondes, votre profil est en train de se mettre à jour.
+            </p>
+            <p className="text-white/40 text-xs mt-3">
+              Assurez-vous de ne pas quitter la page.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 px-5 py-6">
         <AnimatePresence mode="wait" initial={false}>
