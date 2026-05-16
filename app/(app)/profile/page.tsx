@@ -412,6 +412,7 @@ function ProfilePage() {
   // ─── Auto-save state ───────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [isSavingCritical, setIsSavingCritical] = useState(false)
+  const [showCriticalSaveModal, setShowCriticalSaveModal] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveVersionRef = useRef(0)
@@ -665,21 +666,17 @@ function ProfilePage() {
       }
 
       setSaveStatus('saved')
+
       if (heavy) {
-        // Keep critical indicator for a moment longer so user sees completion
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-        savedTimerRef.current = setTimeout(() => {
-          if (isMountedRef.current) {
-            setSaveStatus('idle')
-            setIsSavingCritical(false)
-          }
-        }, 1500)
-      } else {
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-        savedTimerRef.current = setTimeout(() => {
-          if (isMountedRef.current) setSaveStatus('idle')
-        }, 1200)
+        // For heavy saves, turn off critical flag immediately
+        setIsSavingCritical(false)
       }
+
+      // Brief indicator that save happened, then return to idle
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current) setSaveStatus('idle')
+      }, 600) // Brief flash to show completion
     } catch (err) {
       if (!isMountedRef.current) return
       setSaveStatus('error')
@@ -737,9 +734,13 @@ function ProfilePage() {
   }, [])
 
   // Block page unload/navigation when saving critical data
+  // Only show modal if user tries to navigate during critical save
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isSavingCritical) {
+        // Show modal only when user actually tries to leave
+        setShowCriticalSaveModal(true)
+        // Block the navigation
         e.preventDefault()
         e.returnValue = ''
       }
@@ -748,6 +749,13 @@ function ProfilePage() {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isSavingCritical])
+
+  // Close modal immediately when save finishes
+  useEffect(() => {
+    if (!isSavingCritical && showCriticalSaveModal) {
+      setShowCriticalSaveModal(false)
+    }
+  }, [isSavingCritical, showCriticalSaveModal])
 
   // ─── Auto-save triggers ────────────────────────────────────────
   const isInitialMount = useRef(true)
@@ -1220,18 +1228,15 @@ function ProfilePage() {
         </div>
       </header>
 
-      {/* Critical save blocker modal */}
-      {isSavingCritical && (
+      {/* Critical save modal - only shown when user tries to navigate during save */}
+      {showCriticalSaveModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70">
           <div className="bg-dark-200 border border-dark-500 rounded-[12px] px-8 py-6 max-w-sm mx-4 text-center">
             <div className="mb-4 flex justify-center">
               <div className="w-4 h-4 rounded-full border-[1.5px] border-gold/60 border-t-transparent animate-spin" />
             </div>
             <p className="text-white/80 text-sm leading-relaxed">
-              Patientez quelques secondes, votre profil est en train de se mettre à jour.
-            </p>
-            <p className="text-white/40 text-xs mt-3">
-              Assurez-vous de ne pas quitter la page.
+              Patientez, votre profil est en train de se mettre à jour.
             </p>
           </div>
         </div>
