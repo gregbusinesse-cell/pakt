@@ -270,7 +270,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     }
 
     if (!isPaidPlan(otherPlan)) {
-      throw new Error("Ce membre est en plan Free. Envoie-lui un encouragement pour l'inviter à passer Business.")
+      throw new Error("Ce membre doit passer Business pour débloquer la conversation.")
     }
   }
 
@@ -678,7 +678,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         {canEncourage && (
           <div className="mb-3 rounded-[14px] border border-gold/15 bg-gold/[0.04] p-3">
             <p className="text-[11px] text-white/40 text-center mb-2.5">
-              Ce membre est en plan Free et ne peut pas répondre.
+              Ce membre doit passer Business pour débloquer la conversation.
             </p>
             <button
               type="button"

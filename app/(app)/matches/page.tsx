@@ -962,7 +962,9 @@ export default function MatchesPage() {
                           {isOpening
                             ? 'Ouverture...'
                             : userCanChat
-                              ? 'Nouveau match ! Dis bonjour'
+                              ? isPaidPlanUtil(item.otherUser.plan)
+                                ? 'Nouveau match ! Dis bonjour'
+                                : 'En attente du plan Business de ce membre'
                               : showEncourageBanner
                                 ? 'Souhaite echanger avec vous'
                                 : 'Passe Business pour discuter'}
@@ -1127,7 +1129,7 @@ export default function MatchesPage() {
                               src={(item.otherUser.photos as string[])[0]}
                               alt=""
                               className={`w-full h-full object-cover ${
-                                item.isLocked ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
+                                item.isLocked && !userCanChat ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
                               }`}
                             />
                           ) : (
@@ -1139,7 +1141,7 @@ export default function MatchesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <p className="font-semibold truncate">
-                            {item.isLocked
+                            {item.isLocked && !userCanChat
                               ? 'Conversation verrouillée'
                               : item.otherUser.first_name || 'Profil'}
                           </p>
@@ -1151,7 +1153,9 @@ export default function MatchesPage() {
                         </div>
                         <p className="text-white/40 text-sm truncate">
                           {item.isLocked
-                            ? 'Passe Business pour discuter'
+                            ? userCanChat
+                              ? 'Ce membre doit passer Business pour répondre'
+                              : 'Passe Business pour discuter'
                             : isOpening
                               ? 'Ouverture...'
                               : lastMessage}
