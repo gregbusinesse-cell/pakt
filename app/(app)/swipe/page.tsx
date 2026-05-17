@@ -282,6 +282,8 @@ export default function SwipePage() {
         .eq('is_suspended', false)
         .eq('email_confirmed', true)
         .neq('id', sessionUserId)
+        .gte('age', ageMin)
+        .lte('age', ageMax)
         .limit(80)
 
       if (profilesError) {

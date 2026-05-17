@@ -188,6 +188,7 @@ export default function SwipeCard({
                 </div>
               )}
 
+              {/* Photo indicators */}
               {photosArray.length > 0 && (
                 <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-20 pointer-events-none">
                   {photosArray.map((_, i) => (
@@ -200,6 +201,13 @@ export default function SwipeCard({
                   ))}
                 </div>
               )}
+
+              {/* Name and age overlay at top */}
+              <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/60 via-black/30 to-transparent z-30 pointer-events-none p-4">
+                <h2 className="text-white font-bold text-2xl">
+                  {profile.first_name || 'Utilisateur'}, <span className="text-gold font-semibold">{profile.age ?? '?'}</span>
+                </h2>
+              </div>
 
               {isTop && !isOwnProfile && !readonlyMatchView && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
@@ -253,13 +261,21 @@ export default function SwipeCard({
               )}
             </div>
 
-            <div>
-              <h2 className="text-white font-medium text-xl">
-                {profile.first_name || 'Utilisateur'},{' '}
-                <span className="text-white/80 font-normal text-lg">{profile.age ?? ''}</span>
-              </h2>
-              {profile.city ? <p className="text-white/60">{profile.city}</p> : null}
-            </div>
+            {/* Name and age shown only for profile/readonly views (not in swipe card) */}
+            {(isOwnProfile || readonlyMatchView) && (
+              <div>
+                <h2 className="text-white font-medium text-xl">
+                  {profile.first_name || 'Utilisateur'},{' '}
+                  <span className="text-white/80 font-normal text-lg">{profile.age ?? ''}</span>
+                </h2>
+                {profile.city ? <p className="text-white/60">{profile.city}</p> : null}
+              </div>
+            )}
+
+            {/* Show city in swipe card (name/age in overlay at top) */}
+            {!isOwnProfile && !readonlyMatchView && profile.city && (
+              <p className="text-white/60 text-sm">{profile.city}</p>
+            )}
 
             <div className="bg-dark-200 border border-dark-500 rounded-[12px] p-4">
               <p className="text-white/70 text-sm leading-relaxed">{profile.bio || 'Aucune bio'}</p>
