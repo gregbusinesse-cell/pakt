@@ -432,6 +432,20 @@ function ProfilePage() {
     isBusinessPro ? getInitialPreferences(profile?.preferences) : LOCKED_PREFERENCES
   )
 
+  // CRITICAL FIX: Sync preferences with profile.preferences when profile loads
+  // Without this, preferences stays at DEFAULT when profile loads AFTER initial mount
+  // which causes the user's saved criteria to be overwritten by DEFAULT on auto-save
+  const prefsSyncedRef = useRef(false)
+  useEffect(() => {
+    if (prefsSyncedRef.current) return
+    if (!profile) return
+
+    const dbPrefs = isBusinessPro ? getInitialPreferences(profile.preferences) : LOCKED_PREFERENCES
+    setPreferences(dbPrefs)
+    prefsSyncedRef.current = true
+    console.log('[PROFILE] Preferences synced from profile.preferences:', dbPrefs)
+  }, [profile, isBusinessPro])
+
   const displayedPreferences = isBusinessPro ? preferences : LOCKED_PREFERENCES
 
   const handleLockedFiltersClick = () => {
@@ -894,6 +908,9 @@ function ProfilePage() {
   useEffect(() => {
     if (isInitialMount.current) return
     if (mode !== 'edit') return
+    // CRITICAL: don't trigger save if preferences haven't synced with profile yet
+    // This prevents overwriting saved custom criteria with DEFAULT values
+    if (!prefsSyncedRef.current) return
     triggerSave(500)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.interests, form.skills, preferences])

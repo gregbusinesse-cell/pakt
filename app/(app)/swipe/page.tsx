@@ -276,6 +276,7 @@ export default function SwipePage() {
           .eq('is_suspended', false)
           .eq('email_confirmed', true)
           .neq('id', sessionUserId)
+          .order('id', { ascending: true }) // Stable order for consistent profile display
           .limit(200), // Fetch more to allow client-side filtering
       ])
 
@@ -566,12 +567,20 @@ export default function SwipePage() {
 
       // Update local state - this will trigger loadProfiles via the useEffect below
       setPreferences(newPrefs)
+
+      // CRITICAL: also update profile in the store so /profile sees the new values
+      // and doesn't overwrite them with stale data
+      if (profile) {
+        setProfile({ ...profile, preferences: newPrefs } as any)
+      }
+
+      console.log('[SWIPE] Preferences saved and profile updated:', newPrefs)
       toast.success('Critères mis à jour')
     } catch (error) {
       console.error('[SWIPE] handleSavePreferences error', error)
       throw error
     }
-  }, [isPro, sessionUserId, supabase])
+  }, [isPro, sessionUserId, supabase, profile, setProfile])
 
   useEffect(() => {
     loadProfiles()

@@ -158,14 +158,16 @@ export default function SwipeCard({
       >
         <div className={`flex flex-col items-center ${isOwnProfile ? 'pb-8' : 'pb-32'}`}>
           <div className="max-w-md mx-auto px-4 py-6 space-y-6 w-full">
+            {/* "Liked you" badge OUTSIDE the card, above it - no overlap with name/age */}
+            {hasLikedYou && !isOwnProfile && !readonlyMatchView && (
+              <div className="flex justify-center mb-2">
+                <span className="inline-flex items-center rounded-full bg-gold text-dark px-4 py-1.5 text-xs font-bold shadow-lg">
+                  Cette personne vous a liké
+                </span>
+              </div>
+            )}
+
             <div className="relative z-0">
-              {hasLikedYou && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                  <span className="inline-flex items-center rounded-full bg-gold text-dark px-4 py-1.5 text-xs font-bold shadow-lg">
-                    Cette personne vous a liké
-                  </span>
-                </div>
-              )}
 
               {photosArray.length > 0 ? (
                 <img
