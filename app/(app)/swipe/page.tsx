@@ -265,7 +265,7 @@ export default function SwipePage() {
       ageMax: safeAgeMax,
       maxDistance: safeMaxDistance,
       isPro,
-      prefLoaded: prefLoadedRef.current,
+      prefsLoaded,
     })
 
     setLoading((prev) => (!hasProfilesRef.current ? true : prev))
