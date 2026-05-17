@@ -74,14 +74,11 @@ export default function SwipePage() {
   const [lastSwipeDir, setLastSwipeDir] = useState<'left' | 'right' | null>(null)
   const [showUndoPaywall, setShowUndoPaywall] = useState(false)
   const [showCriteriaPanel, setShowCriteriaPanel] = useState(false)
-  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES)
-  const [prefsLoaded, setPrefsLoaded] = useState(false)
 
   // Empty state detection
   const [emptyStateType, setEmptyStateType] = useState<'no-profiles' | 'filtered-criteria' | 'all-viewed' | null>(null)
 
   const hasProfilesRef = useRef(false)
-  const prefLoadedRef = useRef(false)
 
   const profileWithLocation = profile as ProfileWithLocation | null
   const sessionUserId = session?.user?.id
@@ -95,15 +92,30 @@ export default function SwipePage() {
   const userLat = profileWithLocation?.city_lat ?? null
   const userLng = profileWithLocation?.city_lng ?? null
 
-  // Use local preferences state (loaded from DB)
-  const maxDistance = preferences?.distance_km ?? DEFAULT_PREFERENCES.distance_km
-  const ageMin = preferences?.age_min ?? DEFAULT_PREFERENCES.age_min
-  const ageMax = preferences?.age_max ?? DEFAULT_PREFERENCES.age_max
+  // CRITICAL: preferences derived DIRECTLY from profile.preferences (single source of truth)
+  // No local state - this ensures /swipe always uses the latest values from /profile or CriteriaPanel
+  const preferences = useMemo<Preferences>(() => {
+    if (!profile || !isPro) return DEFAULT_PREFERENCES
+    const rawPrefs = (profile as any).preferences || {}
+    return {
+      distance_km: Number(rawPrefs.distance_km ?? DEFAULT_PREFERENCES.distance_km),
+      age_min: Number(rawPrefs.age_min ?? DEFAULT_PREFERENCES.age_min),
+      age_max: Number(rawPrefs.age_max ?? DEFAULT_PREFERENCES.age_max),
+      skill_filters: Array.isArray(rawPrefs.skill_filters) ? rawPrefs.skill_filters : [],
+    }
+  }, [profile, isPro])
+
+  // Prefs are "loaded" as soon as profile is loaded
+  const prefsLoaded = profile !== null
+
+  const maxDistance = preferences.distance_km
+  const ageMin = preferences.age_min
+  const ageMax = preferences.age_max
 
   // Only Pro users can apply skill filters; others get empty array
   const skillFilters = useMemo<SkillFilter[]>(
-    () => (isPro ? preferences?.skill_filters ?? [] : []),
-    [isPro, preferences?.skill_filters]
+    () => (isPro ? preferences.skill_filters ?? [] : []),
+    [isPro, preferences.skill_filters]
   )
 
   const isEmailVerified = Boolean(sessionEmailConfirmedAt) || profile?.email_confirmed === true
@@ -486,57 +498,8 @@ export default function SwipePage() {
     setProfiles([])
   }, [preferences, prefsLoaded])
 
-  // Load preferences from DB once profile is loaded
-  // CRITICAL: must wait for profile to be loaded to know if user is Pro
-  // Otherwise isPro=false initially, then becomes true, but prefs never reload
-  useEffect(() => {
-    if (!sessionUserId) return
-    if (!profile) return // Wait for profile to be loaded (isPro depends on it)
-    if (prefLoadedRef.current) return // Only load once per session
-
-    // For non-Pro users, just use DEFAULT preferences (no DB load needed)
-    if (!isPro) {
-      console.log('[SWIPE] Non-Pro user, using DEFAULT preferences')
-      prefLoadedRef.current = true
-      setPrefsLoaded(true)
-      return
-    }
-
-    // For Pro users, load preferences from DB
-    console.log('[SWIPE] Pro user detected, loading preferences from DB...')
-    ;(async () => {
-      try {
-        const { data, error } = await db
-          .from('profiles')
-          .select('preferences')
-          .eq('id', sessionUserId)
-          .single()
-
-        if (error) {
-          console.error('[SWIPE] preferences load error', error)
-          return
-        }
-
-        if (data?.preferences) {
-          const loadedPrefs = {
-            distance_km: Number(data.preferences.distance_km ?? DEFAULT_PREFERENCES.distance_km),
-            age_min: Number(data.preferences.age_min ?? DEFAULT_PREFERENCES.age_min),
-            age_max: Number(data.preferences.age_max ?? DEFAULT_PREFERENCES.age_max),
-            skill_filters: data.preferences.skill_filters ?? [],
-          }
-          console.log('[SWIPE] Preferences loaded from DB:', loadedPrefs)
-          setPreferences(loadedPrefs)
-        } else {
-          console.log('[SWIPE] No preferences saved in DB, using defaults')
-        }
-      } catch (error) {
-        console.error('[SWIPE] preferences load catch', error)
-      } finally {
-        prefLoadedRef.current = true
-        setPrefsLoaded(true)
-      }
-    })()
-  }, [sessionUserId, isPro, db, profile])
+  // No need to load preferences separately - they are derived from profile.preferences (store)
+  // The store is updated by /profile auto-save or /swipe CriteriaPanel save
 
   const handleSavePreferences = useCallback(async (newPrefs: Preferences) => {
     if (!isPro || !sessionUserId) {
@@ -565,16 +528,13 @@ export default function SwipePage() {
         throw new Error(error.error || 'Erreur sauvegarde')
       }
 
-      // Update local state - this will trigger loadProfiles via the useEffect below
-      setPreferences(newPrefs)
-
-      // CRITICAL: also update profile in the store so /profile sees the new values
-      // and doesn't overwrite them with stale data
+      // Update profile in the store - this is the single source of truth
+      // preferences (memo) will automatically reflect these new values
       if (profile) {
         setProfile({ ...profile, preferences: newPrefs } as any)
       }
 
-      console.log('[SWIPE] Preferences saved and profile updated:', newPrefs)
+      console.log('[SWIPE] Preferences saved to DB and store:', newPrefs)
       toast.success('Critères mis à jour')
     } catch (error) {
       console.error('[SWIPE] handleSavePreferences error', error)
