@@ -449,6 +449,13 @@ export default function SwipePage() {
     hasProfilesRef.current = profiles.length > 0
   }, [profiles.length])
 
+  // When preferences change (not on initial mount), clear profiles immediately
+  // to prevent displaying old profiles with new criteria during loadProfiles fetch
+  useEffect(() => {
+    if (!prefLoadedRef.current) return // Skip on initial mount
+    setProfiles([])
+  }, [preferences])
+
   // Load preferences from DB on mount (Pro users only)
   useEffect(() => {
     if (!sessionUserId || !isPro || prefLoadedRef.current) return
