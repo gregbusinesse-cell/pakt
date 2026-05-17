@@ -242,49 +242,30 @@ export default function SwipePage() {
       cooldownDate.setDate(cooldownDate.getDate() - VIEW_COOLDOWN_DAYS)
       const cooldownISO = cooldownDate.toISOString()
 
-      const [swipedResult, viewsResult, blockedByMeResult, blockedMeResult] = await Promise.all([
-        db.from('swipes').select('target_id').eq('swiper_id', sessionUserId),
-        db
-          .from('profile_views')
-          .select('viewed_id')
-          .eq('viewer_id', sessionUserId)
-          .gte('last_viewed_at', cooldownISO),
-        db.from('blocked_users').select('blocked_id').eq('blocker_id', sessionUserId),
-        db.from('blocked_users').select('blocker_id').eq('blocked_id', sessionUserId),
-      ])
+      // Load recent views for filtering (RPC already handles swipes/blocked users)
+      const { data: viewsResult, error: viewsError } = await db
+        .from('profile_views')
+        .select('viewed_id')
+        .eq('viewer_id', sessionUserId)
+        .gte('last_viewed_at', cooldownISO)
 
-      if (swipedResult.error) {
-        console.error('[SWIPE] swipes select error', swipedResult.error)
+      if (viewsError) {
+        console.error('[SWIPE] views select error', viewsError)
       }
-      if (viewsResult.error) {
-        console.error('[SWIPE] views select error', viewsResult.error)
-      }
-
-      const blockedIds = [
-        ...((blockedByMeResult.data || []).map((b: { blocked_id: string }) => b.blocked_id)),
-        ...((blockedMeResult.data || []).map((b: { blocker_id: string }) => b.blocker_id)),
-      ]
-
-      const swipedSet = new Set<string>([
-        sessionUserId,
-        ...((swipedResult.data || []).map((s: { target_id: string }) => s.target_id)),
-        ...blockedIds,
-      ])
 
       const recentlyViewedSet = new Set<string>(
         (viewsResult.data || []).map((v: { viewed_id: string }) => v.viewed_id)
       )
 
-      const { data: profilesData, error: profilesError } = await db
-        .from('profiles')
-        .select('*')
-        .eq('is_onboarded', true)
-        .eq('is_suspended', false)
-        .eq('email_confirmed', true)
-        .neq('id', sessionUserId)
-        .gte('age', ageMin)
-        .lte('age', ageMax)
-        .limit(80)
+      // Use RPC to ensure all criteria (age, swipes, blocked) are applied correctly at DB level
+      const { data: profilesData, error: profilesError } = await db.rpc('get_eligible_profiles', {
+        p_user_id: sessionUserId,
+        p_age_min: ageMin,
+        p_age_max: ageMax,
+        p_distance_km: maxDistance,
+        p_user_lat: userLat,
+        p_user_lng: userLng,
+      })
 
       if (profilesError) {
         console.error('[SWIPE] profiles select error', profilesError)
@@ -292,15 +273,10 @@ export default function SwipePage() {
         return
       }
 
-      // Base filter: already swiped + geo + age (applies to everyone)
+      // Distance + recently viewed filter (RPC already filters by age, swipes, blocked)
       const applyBaseFilter = (candidate: ProfileWithLocation) => {
-        if (swipedSet.has(candidate.id)) return false
-
-        // Age filter - coerce to number to handle string ages from database
-        const candidateAge = typeof candidate.age === 'number' ? candidate.age : parseInt(String(candidate.age), 10)
-        if (Number.isNaN(candidateAge) || candidateAge < ageMin || candidateAge > ageMax) return false
-
-        if (candidate.city_lat === null || candidate.city_lat === undefined || candidate.city_lng === null || candidate.city_lng === undefined) return false
+        // Distance filter
+        if (candidate.city_lat === null || candidate.city_lat === undefined || candidate.city_lng === null || candidate.city_lng === undefined) return true
         if (userLat === null || userLat === undefined || userLng === null || userLng === undefined) return true
 
         const radius = 6371
