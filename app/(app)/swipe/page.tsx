@@ -75,6 +75,7 @@ export default function SwipePage() {
   const [showUndoPaywall, setShowUndoPaywall] = useState(false)
   const [showCriteriaPanel, setShowCriteriaPanel] = useState(false)
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES)
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
 
   // Empty state detection
   const [emptyStateType, setEmptyStateType] = useState<'no-profiles' | 'filtered-criteria' | 'all-viewed' | null>(null)
@@ -235,6 +236,26 @@ export default function SwipePage() {
       return
     }
 
+    // For Pro users, wait until preferences are loaded from DB before fetching profiles
+    // This prevents filtering with DEFAULT preferences when user has custom criteria saved
+    if (isPro && !prefsLoaded) {
+      console.log('[SWIPE] Waiting for preferences to load before fetching profiles')
+      return
+    }
+
+    // Ensure age criteria are numbers (defensive coercion)
+    const safeAgeMin = Number(ageMin) || 18
+    const safeAgeMax = Number(ageMax) || 99
+    const safeMaxDistance = Number(maxDistance) || 1000
+
+    console.log('[SWIPE] loadProfiles called with criteria', {
+      ageMin: safeAgeMin,
+      ageMax: safeAgeMax,
+      maxDistance: safeMaxDistance,
+      isPro,
+      prefLoaded: prefLoadedRef.current,
+    })
+
     setLoading((prev) => (!hasProfilesRef.current ? true : prev))
 
     try {
@@ -242,30 +263,23 @@ export default function SwipePage() {
       cooldownDate.setDate(cooldownDate.getDate() - VIEW_COOLDOWN_DAYS)
       const cooldownISO = cooldownDate.toISOString()
 
-      // Load recent views for filtering (RPC already handles swipes/blocked users)
-      const { data: viewsResult, error: viewsError } = await db
-        .from('profile_views')
-        .select('viewed_id')
-        .eq('viewer_id', sessionUserId)
-        .gte('last_viewed_at', cooldownISO)
+      // Fetch all needed data in parallel
+      const [swipedResult, viewsResult, blockedByMeResult, blockedMeResult, profilesResult] = await Promise.all([
+        db.from('swipes').select('target_id').eq('swiper_id', sessionUserId),
+        db.from('profile_views').select('viewed_id').eq('viewer_id', sessionUserId).gte('last_viewed_at', cooldownISO),
+        db.from('blocked_users').select('blocked_id').eq('blocker_id', sessionUserId),
+        db.from('blocked_users').select('blocker_id').eq('blocked_id', sessionUserId),
+        db
+          .from('profiles')
+          .select('*')
+          .eq('is_onboarded', true)
+          .eq('is_suspended', false)
+          .eq('email_confirmed', true)
+          .neq('id', sessionUserId)
+          .limit(200), // Fetch more to allow client-side filtering
+      ])
 
-      if (viewsError) {
-        console.error('[SWIPE] views select error', viewsError)
-      }
-
-      const recentlyViewedSet = new Set<string>(
-        (viewsResult.data || []).map((v: { viewed_id: string }) => v.viewed_id)
-      )
-
-      // Use RPC to ensure all criteria (age, swipes, blocked) are applied correctly at DB level
-      const { data: profilesData, error: profilesError } = await db.rpc('get_eligible_profiles', {
-        p_user_id: sessionUserId,
-        p_age_min: ageMin,
-        p_age_max: ageMax,
-        p_distance_km: maxDistance,
-        p_user_lat: userLat,
-        p_user_lng: userLng,
-      })
+      const { data: profilesData, error: profilesError } = profilesResult
 
       if (profilesError) {
         console.error('[SWIPE] profiles select error', profilesError)
@@ -273,23 +287,57 @@ export default function SwipePage() {
         return
       }
 
-      // Distance + recently viewed filter (RPC already filters by age, swipes, blocked)
+      const blockedIds = [
+        ...((blockedByMeResult.data || []).map((b: { blocked_id: string }) => b.blocked_id)),
+        ...((blockedMeResult.data || []).map((b: { blocker_id: string }) => b.blocker_id)),
+      ]
+
+      const swipedSet = new Set<string>([
+        sessionUserId,
+        ...((swipedResult.data || []).map((s: { target_id: string }) => s.target_id)),
+        ...blockedIds,
+      ])
+
+      const recentlyViewedSet = new Set<string>(
+        (viewsResult.data || []).map((v: { viewed_id: string }) => v.viewed_id)
+      )
+
+      // STRICT CLIENT-SIDE FILTERING - guaranteed to apply criteria
       const applyBaseFilter = (candidate: ProfileWithLocation) => {
-        // Distance filter
-        if (candidate.city_lat === null || candidate.city_lat === undefined || candidate.city_lng === null || candidate.city_lng === undefined) return true
-        if (userLat === null || userLat === undefined || userLng === null || userLng === undefined) return true
+        // 1. Exclude already swiped / blocked
+        if (swipedSet.has(candidate.id)) return false
+
+        // 2. STRICT age filter - coerce candidate age to number
+        const rawAge = candidate.age
+        const candidateAge = typeof rawAge === 'number' ? rawAge : parseInt(String(rawAge), 10)
+        if (Number.isNaN(candidateAge)) {
+          console.log('[SWIPE] Rejecting profile with invalid age:', candidate.id, rawAge)
+          return false
+        }
+        if (candidateAge < safeAgeMin || candidateAge > safeAgeMax) {
+          return false
+        }
+
+        // 3. Distance filter
+        if (candidate.city_lat === null || candidate.city_lat === undefined || candidate.city_lng === null || candidate.city_lng === undefined) {
+          return false
+        }
+        if (userLat === null || userLat === undefined || userLng === null || userLng === undefined) {
+          return true // No user location = accept any candidate with location
+        }
 
         const radius = 6371
-        const dLat = ((candidate.city_lat - userLat) * Math.PI) / 180
-        const dLng = ((candidate.city_lng - userLng) * Math.PI) / 180
+        const dLat = ((Number(candidate.city_lat) - Number(userLat)) * Math.PI) / 180
+        const dLng = ((Number(candidate.city_lng) - Number(userLng)) * Math.PI) / 180
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((userLat * Math.PI) / 180) *
-            Math.cos((candidate.city_lat * Math.PI) / 180) *
+          Math.cos((Number(userLat) * Math.PI) / 180) *
+            Math.cos((Number(candidate.city_lat) * Math.PI) / 180) *
             Math.sin(dLng / 2) *
             Math.sin(dLng / 2)
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        return radius * c <= maxDistance
+        const distance = radius * c
+        return distance <= safeMaxDistance
       }
 
       // Pro skill filter: only for Business Pro with active filters
@@ -355,7 +403,9 @@ export default function SwipePage() {
     ageMax,
     ageMin,
     db,
+    isPro,
     maxDistance,
+    prefsLoaded,
     recordProfileView,
     sessionUserId,
     skillFilters,
@@ -430,13 +480,24 @@ export default function SwipePage() {
   // When preferences change (not on initial mount), clear profiles immediately
   // to prevent displaying old profiles with new criteria during loadProfiles fetch
   useEffect(() => {
-    if (!prefLoadedRef.current) return // Skip on initial mount
+    if (!prefsLoaded) return // Skip until prefs are first loaded
+    console.log('[SWIPE] Preferences changed, clearing profiles to force refetch')
     setProfiles([])
-  }, [preferences])
+  }, [preferences, prefsLoaded])
 
   // Load preferences from DB on mount (Pro users only)
   useEffect(() => {
-    if (!sessionUserId || !isPro || prefLoadedRef.current) return
+    if (!sessionUserId) return
+
+    // For non-Pro users, just mark as loaded (they use DEFAULT preferences)
+    if (!isPro) {
+      prefLoadedRef.current = true
+      setPrefsLoaded(true)
+      return
+    }
+
+    // Already loaded for this session
+    if (prefLoadedRef.current) return
 
     ;(async () => {
       try {
@@ -452,17 +513,22 @@ export default function SwipePage() {
         }
 
         if (data?.preferences) {
-          setPreferences({
+          const loadedPrefs = {
             distance_km: Number(data.preferences.distance_km ?? DEFAULT_PREFERENCES.distance_km),
             age_min: Number(data.preferences.age_min ?? DEFAULT_PREFERENCES.age_min),
             age_max: Number(data.preferences.age_max ?? DEFAULT_PREFERENCES.age_max),
             skill_filters: data.preferences.skill_filters ?? [],
-          })
+          }
+          console.log('[SWIPE] Preferences loaded from DB:', loadedPrefs)
+          setPreferences(loadedPrefs)
+        } else {
+          console.log('[SWIPE] No preferences saved in DB, using defaults')
         }
       } catch (error) {
         console.error('[SWIPE] preferences load catch', error)
       } finally {
         prefLoadedRef.current = true
+        setPrefsLoaded(true)
       }
     })()
   }, [sessionUserId, isPro, db])
