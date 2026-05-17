@@ -485,20 +485,24 @@ export default function SwipePage() {
     setProfiles([])
   }, [preferences, prefsLoaded])
 
-  // Load preferences from DB on mount (Pro users only)
+  // Load preferences from DB once profile is loaded
+  // CRITICAL: must wait for profile to be loaded to know if user is Pro
+  // Otherwise isPro=false initially, then becomes true, but prefs never reload
   useEffect(() => {
     if (!sessionUserId) return
+    if (!profile) return // Wait for profile to be loaded (isPro depends on it)
+    if (prefLoadedRef.current) return // Only load once per session
 
-    // For non-Pro users, just mark as loaded (they use DEFAULT preferences)
+    // For non-Pro users, just use DEFAULT preferences (no DB load needed)
     if (!isPro) {
+      console.log('[SWIPE] Non-Pro user, using DEFAULT preferences')
       prefLoadedRef.current = true
       setPrefsLoaded(true)
       return
     }
 
-    // Already loaded for this session
-    if (prefLoadedRef.current) return
-
+    // For Pro users, load preferences from DB
+    console.log('[SWIPE] Pro user detected, loading preferences from DB...')
     ;(async () => {
       try {
         const { data, error } = await db
@@ -531,7 +535,7 @@ export default function SwipePage() {
         setPrefsLoaded(true)
       }
     })()
-  }, [sessionUserId, isPro, db])
+  }, [sessionUserId, isPro, db, profile])
 
   const handleSavePreferences = useCallback(async (newPrefs: Preferences) => {
     if (!isPro || !sessionUserId) {
