@@ -49,6 +49,8 @@ export default function AuthPage() {
   const handleGoogleCredential = useCallback(
     async (response: any) => {
       try {
+        console.log('[AUTH] Google credential received')
+
         if (!response?.credential) {
           throw new Error('Aucun token reçu de Google')
         }
@@ -59,6 +61,8 @@ export default function AuthPage() {
         })
 
         if (error) throw error
+
+        console.log('[AUTH] signInWithIdToken success')
       } catch (err: any) {
         console.error('[AUTH] Google sign-in error:', err)
         toast.error(err?.message || 'Erreur de connexion Google')
@@ -73,23 +77,26 @@ export default function AuthPage() {
 
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
     if (!clientId) {
-      console.error('[AUTH] NEXT_PUBLIC_GOOGLE_CLIENT_ID manquant')
+      console.error('[AUTH] NEXT_PUBLIC_GOOGLE_CLIENT_ID manquant — verifier les variables Vercel')
       return
     }
 
     if (typeof window === 'undefined' || !window.google?.accounts?.id) {
+      console.warn('[AUTH] Google Identity Services pas encore chargé')
       return
     }
+
+    console.log('[AUTH] Initializing Google Identity Services')
 
     window.google.accounts.id.initialize({
       client_id: clientId,
       callback: handleGoogleCredential,
       auto_select: false,
       cancel_on_tap_outside: true,
-      use_fedcm_for_prompt: true,
     })
 
-    // Render the official Google button (hidden, used as fallback for custom button)
+    // Render the official Google button INVISIBLE on top of our custom button
+    // (clicks go to this button, which opens the Google popup with PAKT branding)
     if (googleButtonRef.current) {
       window.google.accounts.id.renderButton(googleButtonRef.current, {
         type: 'standard',
@@ -102,14 +109,19 @@ export default function AuthPage() {
       })
     }
 
-    // Auto-trigger One Tap on page load
-    window.google.accounts.id.prompt()
+    // Auto-trigger One Tap on page load (small dialog top-right)
+    window.google.accounts.id.prompt((notification: any) => {
+      if (notification?.isNotDisplayed?.()) {
+        console.log('[AUTH] One Tap not displayed:', notification.getNotDisplayedReason?.())
+      }
+    })
 
     initializedRef.current = true
     setGoogleReady(true)
+    console.log('[AUTH] Google ready')
   }, [handleGoogleCredential])
 
-  // Try initializing on mount if script is already loaded (e.g., navigation)
+  // Try initializing on mount if script is already loaded (e.g., back navigation)
   useEffect(() => {
     if (typeof window !== 'undefined' && window.google?.accounts?.id) {
       initializeGoogle()
@@ -136,33 +148,16 @@ export default function AuthPage() {
     }
   }
 
-  const handleGoogleAuth = () => {
-    if (!googleReady || !window.google?.accounts?.id) {
-      toast.error('Google se charge, réessaye dans une seconde')
-      return
-    }
-
-    // Click the hidden official Google button — this opens the Google account picker
-    // popup directly with PAKT branding (because the origin is paktapp.fr, not Supabase)
-    const hiddenBtn = googleButtonRef.current?.querySelector(
-      'div[role="button"]'
-    ) as HTMLElement | null
-
-    if (hiddenBtn) {
-      hiddenBtn.click()
-    } else {
-      // Fallback: trigger One Tap prompt
-      window.google.accounts.id.prompt()
-    }
-  }
-
   return (
     <>
       {/* Load Google Identity Services */}
       <Script
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
-        onLoad={initializeGoogle}
+        onLoad={() => {
+          console.log('[AUTH] GIS script loaded')
+          initializeGoogle()
+        }}
       />
 
       <div className="app-height flex flex-col items-center justify-center bg-dark px-6 pt-16 overflow-y-auto">
@@ -227,29 +222,35 @@ export default function AuthPage() {
             <div className="flex-1 h-px bg-dark-400" />
           </div>
 
-          {/* Hidden official Google button — clicked programmatically by our custom button */}
-          <div
-            ref={googleButtonRef}
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              left: '-9999px',
-              top: '-9999px',
-              opacity: 0,
-              pointerEvents: 'none',
-              width: 0,
-              height: 0,
-              overflow: 'hidden',
-            }}
-          />
+          {/* Custom Google button — visually styled like PAKT, but Google's official button
+              is rendered INVISIBLE on top (opacity 0.0001) to capture clicks.
+              Clicks naturally go to Google's button which opens popup with PAKT branding. */}
+          <div className="relative w-full">
+            {/* Visual custom button (no functionality, just for display) */}
+            <div
+              className="w-full flex items-center justify-center gap-3 bg-dark-200 border border-dark-400 rounded-2xl py-4 text-white pointer-events-none select-none"
+              aria-hidden="true"
+            >
+              <GoogleIcon />
+              Continuer avec Google
+            </div>
 
-          <button
-            onClick={handleGoogleAuth}
-            className="w-full flex items-center justify-center gap-3 bg-dark-200 border border-dark-400 rounded-2xl py-4 text-white"
-          >
-            <GoogleIcon />
-            Continuer avec Google
-          </button>
+            {/* Invisible but clickable Google official button overlay */}
+            <div
+              ref={googleButtonRef}
+              className="absolute inset-0 flex items-center justify-center [&>div]:!w-full [&>div]:!h-full [&_iframe]:!w-full [&_iframe]:!h-full"
+              style={{
+                opacity: 0.0001, // Almost invisible but still clickable
+              }}
+            />
+
+            {/* Loading state if Google not ready */}
+            {!googleReady && (
+              <div className="absolute inset-0 flex items-center justify-center bg-dark-200 rounded-2xl">
+                <span className="text-white/40 text-sm">Chargement Google...</span>
+              </div>
+            )}
+          </div>
 
           <p className="text-center text-white/30 text-xs mt-8">
             En continuant, tu acceptes nos{' '}
