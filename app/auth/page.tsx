@@ -1,16 +1,17 @@
 'use client'
 // app/auth/page.tsx
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import Script from 'next/script'
 import { createClient } from '@/lib/supabase/client'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
-function getSiteUrl() {
-  const url = process.env.NEXT_PUBLIC_SITE_URL
-  if (!url) return ''
-  return url.endsWith('/') ? url.slice(0, -1) : url
+declare global {
+  interface Window {
+    google?: any
+  }
 }
 
 export default function AuthPage() {
@@ -18,9 +19,14 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [googleReady, setGoogleReady] = useState(false)
+
+  const googleButtonRef = useRef<HTMLDivElement>(null)
+  const initializedRef = useRef(false)
 
   const supabase = useMemo(() => createClient(), [])
 
+  // Redirect on sign-in
   useEffect(() => {
     let redirecting = false
 
@@ -29,9 +35,6 @@ export default function AuthPage() {
     } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[AUTH] onAuthStateChange:', event, Boolean(session))
 
-      // ONLY redirect on SIGNED_IN — this fires after login/signup completes.
-      // Never redirect on INITIAL_SESSION (fires on every page load → loop)
-      // Never redirect on TOKEN_REFRESHED (fires when token auto-refreshes → loop)
       if (session && !redirecting && event === 'SIGNED_IN') {
         redirecting = true
         console.log('[AUTH] redirecting to / after SIGNED_IN')
@@ -41,6 +44,77 @@ export default function AuthPage() {
 
     return () => subscription.unsubscribe()
   }, [supabase])
+
+  // Callback for Google ID token
+  const handleGoogleCredential = useCallback(
+    async (response: any) => {
+      try {
+        if (!response?.credential) {
+          throw new Error('Aucun token reçu de Google')
+        }
+
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token: response.credential,
+        })
+
+        if (error) throw error
+      } catch (err: any) {
+        console.error('[AUTH] Google sign-in error:', err)
+        toast.error(err?.message || 'Erreur de connexion Google')
+      }
+    },
+    [supabase]
+  )
+
+  // Initialize Google Identity Services (called when GIS script is loaded)
+  const initializeGoogle = useCallback(() => {
+    if (initializedRef.current) return
+
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+    if (!clientId) {
+      console.error('[AUTH] NEXT_PUBLIC_GOOGLE_CLIENT_ID manquant')
+      return
+    }
+
+    if (typeof window === 'undefined' || !window.google?.accounts?.id) {
+      return
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: handleGoogleCredential,
+      auto_select: false,
+      cancel_on_tap_outside: true,
+      use_fedcm_for_prompt: true,
+    })
+
+    // Render the official Google button (hidden, used as fallback for custom button)
+    if (googleButtonRef.current) {
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        type: 'standard',
+        theme: 'filled_black',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'pill',
+        logo_alignment: 'left',
+        width: 320,
+      })
+    }
+
+    // Auto-trigger One Tap on page load
+    window.google.accounts.id.prompt()
+
+    initializedRef.current = true
+    setGoogleReady(true)
+  }, [handleGoogleCredential])
+
+  // Try initializing on mount if script is already loaded (e.g., navigation)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.google?.accounts?.id) {
+      initializeGoogle()
+    }
+  }, [initializeGoogle])
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,105 +136,130 @@ export default function AuthPage() {
     }
   }
 
-  const handleGoogleAuth = async () => {
-  const siteUrl = window.location.origin
-  if (!siteUrl) {
-    toast.error('NEXT_PUBLIC_SITE_URL manquant')
-    return
-  }
+  const handleGoogleAuth = () => {
+    if (!googleReady || !window.google?.accounts?.id) {
+      toast.error('Google se charge, réessaye dans une seconde')
+      return
+    }
 
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${siteUrl}/auth/callback`,
-    },
-  })
+    // Click the hidden official Google button — this opens the Google account picker
+    // popup directly with PAKT branding (because the origin is paktapp.fr, not Supabase)
+    const hiddenBtn = googleButtonRef.current?.querySelector(
+      'div[role="button"]'
+    ) as HTMLElement | null
 
-  if (error) {
-    console.error(error)
-    toast.error(error.message)
+    if (hiddenBtn) {
+      hiddenBtn.click()
+    } else {
+      // Fallback: trigger One Tap prompt
+      window.google.accounts.id.prompt()
+    }
   }
-}
 
   return (
-    <div className="app-height flex flex-col items-center justify-center bg-dark px-6 pt-16 overflow-y-auto">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-gold/5 blur-[100px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-gold/3 blur-[80px]" />
-      </div>
+    <>
+      {/* Load Google Identity Services */}
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        onLoad={initializeGoogle}
+      />
 
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-sm relative z-10"
-      >
-        <div className="text-center mb-10">
-          <h1 className="text-5xl font-black tracking-widest text-gold-gradient mb-2">PAKT</h1>
-          <p className="text-white/40 text-sm tracking-wider">Le Tinder du Business</p>
+      <div className="app-height flex flex-col items-center justify-center bg-dark px-6 pt-16 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-gold/5 blur-[100px]" />
+          <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-gold/3 blur-[80px]" />
         </div>
 
-        <div className="flex bg-dark-200 rounded-2xl p-1 mb-6">
-          {(['login', 'signup'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${
-                mode === m ? 'bg-gold text-dark' : 'text-white/50 hover:text-white'
-              }`}
-            >
-              {m === 'login' ? 'Connexion' : 'Inscription'}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={handleEmailAuth} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="pakt-input"
-            required
-          />
-
-          <input
-            type="password"
-            placeholder="Mot de passe"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="pakt-input"
-            required
-            minLength={6}
-          />
-
-          <button type="submit" disabled={loading} className="btn-primary mt-2">
-            {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
-          </button>
-        </form>
-
-        <div className="flex items-center gap-4 my-6">
-          <div className="flex-1 h-px bg-dark-400" />
-          <span className="text-white/30 text-xs uppercase">ou</span>
-          <div className="flex-1 h-px bg-dark-400" />
-        </div>
-
-        <button
-          onClick={handleGoogleAuth}
-          className="w-full flex items-center justify-center gap-3 bg-dark-200 border border-dark-400 rounded-2xl py-4 text-white"
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-sm relative z-10"
         >
-          <GoogleIcon />
-          Continuer avec Google
-        </button>
+          <div className="text-center mb-10">
+            <h1 className="text-5xl font-black tracking-widest text-gold-gradient mb-2">PAKT</h1>
+            <p className="text-white/40 text-sm tracking-wider">Le Tinder du Business</p>
+          </div>
 
-        <p className="text-center text-white/30 text-xs mt-8">
-          En continuant, tu acceptes nos{' '}
-          <Link href="/legal/cgu" className="text-gold/60 underline">
-            CGU
-          </Link>
-        </p>
-      </motion.div>
-    </div>
+          <div className="flex bg-dark-200 rounded-2xl p-1 mb-6">
+            {(['login', 'signup'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${
+                  mode === m ? 'bg-gold text-dark' : 'text-white/50 hover:text-white'
+                }`}
+              >
+                {m === 'login' ? 'Connexion' : 'Inscription'}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="pakt-input"
+              required
+            />
+
+            <input
+              type="password"
+              placeholder="Mot de passe"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pakt-input"
+              required
+              minLength={6}
+            />
+
+            <button type="submit" disabled={loading} className="btn-primary mt-2">
+              {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
+            </button>
+          </form>
+
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-dark-400" />
+            <span className="text-white/30 text-xs uppercase">ou</span>
+            <div className="flex-1 h-px bg-dark-400" />
+          </div>
+
+          {/* Hidden official Google button — clicked programmatically by our custom button */}
+          <div
+            ref={googleButtonRef}
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: '-9999px',
+              top: '-9999px',
+              opacity: 0,
+              pointerEvents: 'none',
+              width: 0,
+              height: 0,
+              overflow: 'hidden',
+            }}
+          />
+
+          <button
+            onClick={handleGoogleAuth}
+            className="w-full flex items-center justify-center gap-3 bg-dark-200 border border-dark-400 rounded-2xl py-4 text-white"
+          >
+            <GoogleIcon />
+            Continuer avec Google
+          </button>
+
+          <p className="text-center text-white/30 text-xs mt-8">
+            En continuant, tu acceptes nos{' '}
+            <Link href="/legal/cgu" className="text-gold/60 underline">
+              CGU
+            </Link>
+          </p>
+        </motion.div>
+      </div>
+    </>
   )
 }
 
