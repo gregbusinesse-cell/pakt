@@ -114,7 +114,19 @@ function EventsTab() {
 
 const CHANGELOG = [
   {
-    version: 'v1.2',
+    version: 'v1.1.3',
+    date: '18 mai 2025',
+    summary: 'Critères affinés et carte de swipe retravaillée',
+    changes: [
+      'Critères de recherche correctement appliqués sur les profils',
+      'Prénom et âge affichés directement sur la photo de profil',
+      'Badge des likes reçus repositionné pour plus de clarté',
+      'Navigation plus stable entre les onglets',
+      'Corrections de bugs et optimisation des performances',
+    ],
+  },
+  {
+    version: 'v1.1.2',
     date: '15 mai 2025',
     summary: 'Notifications, sauvegarde auto, swipe plus fluide',
     changes: [
@@ -128,7 +140,7 @@ const CHANGELOG = [
     ],
   },
   {
-    version: 'v1.1',
+    version: 'v1.1.1',
     date: '13 mai 2025',
     summary: 'Plans Business, messagerie et undo',
     changes: [
@@ -193,9 +205,9 @@ function ChangelogTab() {
               <div className="flex items-center gap-2.5">
                 {release.version && (
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                    release.version === 'v1.0'
-                      ? 'bg-white/10 text-white/50 border border-white/10'
-                      : 'text-dark bg-gold'
+                    idx === 0
+                      ? 'text-dark bg-gold'
+                      : 'bg-white/10 text-white/50 border border-white/10'
                   }`}>
                     {release.version}
                   </span>
@@ -273,9 +285,9 @@ function ChangelogTab() {
                     <div className="flex items-center gap-3 mb-3">
                       {release.version && (
                         <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
-                          release.version === 'v1.0'
-                            ? 'bg-white/10 text-white/50 border border-white/10'
-                            : 'text-dark bg-gold'
+                          idx === 0
+                            ? 'text-dark bg-gold'
+                            : 'bg-white/10 text-white/50 border border-white/10'
                         }`}>
                           {release.version}
                         </span>
@@ -302,7 +314,7 @@ function ChangelogTab() {
                 ))}
 
                 <div className="text-center pt-4 pb-8">
-                  <span className="text-[11px] text-white/15">PAKT v1.2</span>
+                  <span className="text-[11px] text-white/15">PAKT v1.1.3</span>
                 </div>
               </div>
             </motion.div>
@@ -695,7 +707,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.2</div>
+      <div className="text-center text-white/30 text-xs pb-10 pt-6">PAKT v1.1.3</div>
     </div>
   )
 }
