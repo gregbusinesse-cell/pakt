@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion'
-import { Heart, Undo2, X } from 'lucide-react'
+import { Heart, Undo2, X, UserCircle2 } from 'lucide-react'
 import type { Profile } from '@/lib/supabase/types'
 import SkillDisplay from '@/components/skills/SkillDisplay'
 
@@ -186,7 +186,7 @@ export default function SwipeCard({
                   className="w-full aspect-[3/4] rounded-2xl bg-dark-300 flex items-center justify-center"
                   style={{ touchAction: readonlyMatchView ? 'auto' : 'pan-y' }}
                 >
-                  <span className="text-8xl">👤</span>
+                  <UserCircle2 size={80} className="text-white/20" />
                 </div>
               )}
 

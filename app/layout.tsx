@@ -8,6 +8,7 @@ import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import SupabaseProvider from '@/components/providers/SupabaseProvider'
 import RefCaptureProvider from '@/components/providers/RefCaptureProvider'
+import CookieBanner from '@/components/legal/CookieBanner'
 
 const sora = Sora({
   subsets: ['latin'],
@@ -65,6 +66,8 @@ export default function RootLayout({
           <Suspense fallback={null}>
             <RefCaptureProvider>{children}</RefCaptureProvider>
           </Suspense>
+
+          <CookieBanner />
 
           <Toaster
             position="top-center"

@@ -5,7 +5,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Profile } from '@/lib/supabase/types'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, X } from 'lucide-react'
+import { MessageCircle, X, UserCircle2, Sparkles } from 'lucide-react'
 
 interface Props {
   isOpen: boolean
@@ -60,7 +60,7 @@ export default function MatchModal({ isOpen, myProfile, matchedProfile, onClose 
             >
               C'est un PAKT !
             </motion.h1>
-            <p className="text-white/60 mb-10">Vous vous êtes likés mutuellement 🎉</p>
+            <p className="text-white/60 mb-10">Vous vous êtes likés mutuellement</p>
 
             {/* Avatars */}
             <div className="flex items-center justify-center gap-4 mb-10">
@@ -73,7 +73,9 @@ export default function MatchModal({ isOpen, myProfile, matchedProfile, onClose 
                 {myProfile?.photos?.[0] ? (
                   <img src={myProfile.photos[0]} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-dark-300 flex items-center justify-center text-4xl">👤</div>
+                  <div className="w-full h-full bg-dark-300 flex items-center justify-center">
+                    <UserCircle2 size={56} className="text-white/20" />
+                  </div>
                 )}
               </motion.div>
 
@@ -81,9 +83,8 @@ export default function MatchModal({ isOpen, myProfile, matchedProfile, onClose 
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.5, type: 'spring' }}
-                className="text-4xl"
               >
-                💘
+                <Sparkles size={40} className="text-gold" />
               </motion.div>
 
               <motion.div
@@ -95,7 +96,9 @@ export default function MatchModal({ isOpen, myProfile, matchedProfile, onClose 
                 {matchedProfile?.photos?.[0] ? (
                   <img src={matchedProfile.photos[0]} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-dark-300 flex items-center justify-center text-4xl">👤</div>
+                  <div className="w-full h-full bg-dark-300 flex items-center justify-center">
+                    <UserCircle2 size={56} className="text-white/20" />
+                  </div>
                 )}
               </motion.div>
             </div>

@@ -697,7 +697,7 @@ export default function OnboardingPage() {
             {step === 0 && (
               <div className="flex flex-col gap-6 pt-4">
                 <div>
-                  <h2 className="text-3xl font-bold mb-1">Bienvenue 👋</h2>
+                  <h2 className="text-3xl font-bold mb-1">Bienvenue</h2>
                   <p className="text-white/50">Quelques infos pour commencer</p>
                 </div>
 
@@ -710,18 +710,32 @@ export default function OnboardingPage() {
                   autoFocus
                 />
 
-                <input
-                  type="number"
-                  placeholder="Ton âge"
-                  value={data.age}
-                  onChange={(event) => updateData('age', event.target.value)}
-                  className="pakt-input text-lg"
-                  min="15"
-                  max="99"
-                />
+                <div>
+                  <input
+                    type="number"
+                    placeholder="Ton âge"
+                    value={data.age}
+                    onChange={(event) => updateData('age', event.target.value)}
+                    className="pakt-input text-lg"
+                    min="15"
+                    max="99"
+                  />
+                  <p className="text-white/40 text-xs mt-2 leading-relaxed">
+                    En renseignant ton âge, tu déclares sur l&apos;honneur avoir au moins 15 ans et que les
+                    informations fournies sont exactes.
+                  </p>
+                </div>
 
                 {data.age && parseInt(data.age) < 15 && (
-                  <p className="text-red-400 text-sm">Tu dois avoir au moins 15 ans.</p>
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                    <p className="text-red-300 text-sm font-semibold mb-1">
+                      Inscription impossible
+                    </p>
+                    <p className="text-red-300/80 text-xs leading-relaxed">
+                      PAKT n&apos;est pas accessible aux personnes de moins de 15 ans. Tu ne peux pas créer
+                      de compte tant que cette condition n&apos;est pas remplie.
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -729,7 +743,7 @@ export default function OnboardingPage() {
             {step === 1 && (
               <div className="flex flex-col gap-6 pt-4">
                 <div>
-                  <h2 className="text-3xl font-bold mb-1">Ta bio ✍️</h2>
+                  <h2 className="text-3xl font-bold mb-1">Ta bio</h2>
                   <p className="text-white/50">Présente-toi en quelques mots</p>
                 </div>
 
@@ -754,7 +768,7 @@ export default function OnboardingPage() {
             {step === 2 && (
               <div className="flex flex-col gap-5 pt-4">
                 <div>
-                  <h2 className="text-3xl font-bold mb-1">Tes intérêts 🎯</h2>
+                  <h2 className="text-3xl font-bold mb-1">Tes intérêts</h2>
                   <p className="text-white/50">Sélectionne ce qui te correspond</p>
                 </div>
 
@@ -827,7 +841,7 @@ export default function OnboardingPage() {
             {step === 3 && (
               <div className="flex flex-col gap-6 pt-4 overflow-visible relative z-50">
                 <div>
-                  <h2 className="text-3xl font-bold mb-1">Ta ville 📍</h2>
+                  <h2 className="text-3xl font-bold mb-1">Ta ville</h2>
                   <p className="text-white/50">Pour trouver des personnes près de toi</p>
                 </div>
 
@@ -936,7 +950,7 @@ export default function OnboardingPage() {
             {step === 5 && (
               <div className="flex flex-col gap-5 pt-4">
                 <div>
-                  <h2 className="text-3xl font-bold mb-1">Tes photos 📸</h2>
+                  <h2 className="text-3xl font-bold mb-1">Tes photos</h2>
                   <p className="text-white/50">Ajoute jusqu&apos;à {MAX_PHOTOS} photos (min 1)</p>
                   <p className="text-white/30 text-xs mt-1">Minimum 400×400px · JPG, PNG ou WebP</p>
                 </div>
@@ -1011,7 +1025,7 @@ export default function OnboardingPage() {
               Création du profil...
             </>
           ) : step === STEPS - 1 ? (
-            '🚀 Lancer PAKT'
+            'Lancer PAKT'
           ) : (
             <>
               Continuer

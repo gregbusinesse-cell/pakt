@@ -688,8 +688,33 @@ export default function SettingsPage() {
                   </a>
                 ))}
 
-                {/* Support section */}
+                {/* Mes données personnelles (RGPD) */}
                 <div className="mt-6 bg-dark-200 border border-dark-500 rounded-[12px] p-5">
+                  <h3 className="text-sm font-bold text-white mb-2">Mes données personnelles</h3>
+                  <p className="text-xs leading-relaxed text-white/50 mb-4">
+                    Conformément au RGPD, tu peux à tout moment demander une copie de tes données personnelles
+                    (profil, messages, photos, historique). Ta demande sera traitée dans un délai maximum d&apos;un mois.
+                  </p>
+                  <a
+                    href="mailto:paktsupport@gmail.com?subject=Demande%20RGPD%20-%20Acc%C3%A8s%20%C3%A0%20mes%20donn%C3%A9es&body=Bonjour%2C%0A%0AConform%C3%A9ment%20au%20RGPD%2C%20je%20souhaite%20obtenir%20une%20copie%20de%20l%27ensemble%20des%20donn%C3%A9es%20personnelles%20que%20PAKT%20d%C3%A9tient%20sur%20moi.%0A%0AMerci%20de%20me%20faire%20parvenir%20mes%20donn%C3%A9es%20dans%20les%20meilleurs%20d%C3%A9lais.%0A%0ACordialement"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] bg-gold/10 border border-gold/20 text-gold text-sm font-semibold hover:bg-gold/15 transition-colors"
+                  >
+                    Demander mes données
+                  </a>
+                </div>
+
+                {/* Confidentialité & Tracking */}
+                <div className="mt-3 bg-dark-200 border border-dark-500 rounded-[12px] p-5">
+                  <h3 className="text-sm font-bold text-white mb-2">Confidentialité & Tracking</h3>
+                  <p className="text-xs leading-relaxed text-white/50">
+                    PAKT ne te traque pas. Aucune publicité, aucun cookie publicitaire, aucun suivi
+                    inter-applications. PAKT n&apos;utilise pas l&apos;identifiant publicitaire (IDFA / AAID).
+                    Aucune donnée personnelle n&apos;est revendue à des tiers.
+                  </p>
+                </div>
+
+                {/* Support section */}
+                <div className="mt-3 bg-dark-200 border border-dark-500 rounded-[12px] p-5">
                   <h3 className="text-sm font-bold text-white mb-2">Besoin d&apos;aide ?</h3>
                   <p className="text-xs leading-relaxed text-white/50 mb-4">
                     Une question, un problème technique, une demande de remboursement, un signalement ou besoin d&apos;assistance ? Notre équipe est là pour vous aider.

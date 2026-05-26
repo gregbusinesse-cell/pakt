@@ -9,11 +9,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { formatTime, normalizePlan, isPaidPlan as isPaidPlanUtil, canChat } from '@/lib/utils'
 import type { Profile } from '@/lib/supabase/types'
-import { MessageCircle, Users, Crown, Lock, Heart, Zap, X, ChevronLeft } from 'lucide-react'
+import { MessageCircle, Users, Crown, Lock, Heart, Zap, X, ChevronLeft, UserCircle2, Flame } from 'lucide-react'
 import toast from 'react-hot-toast'
 import SwipeCard from '@/components/swipe/SwipeCard'
 
-type Tab = 'matches' | 'likes' | 'conversations'
+type Tab = 'matches' | 'likes'
 
 interface ConversationRow {
   id: string
@@ -857,17 +857,6 @@ export default function MatchesPage() {
               return null
             })()}
           </button>
-
-          <button
-            type="button"
-            onClick={() => setTab('conversations')}
-            className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
-              tab === 'conversations' ? 'bg-gold text-dark' : 'text-white/50'
-            }`}
-          >
-            <MessageCircle size={15} />
-            Conv.
-          </button>
         </div>
       </div>
 
@@ -888,142 +877,74 @@ export default function MatchesPage() {
           /* ── MATCHES TAB — visible for ALL plans, no blur ── */
           matches.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
-              <span className="text-5xl">⚔️</span>
+              <Flame size={48} className="text-white/20" />
               <div>
                 <h3 className="font-semibold text-lg mb-1">Pas encore de matchs</h3>
                 <p className="text-white/40 text-sm">Continue a swiper pour trouver tes matchs !</p>
               </div>
             </div>
           ) : (
-            <div className="space-y-2 pt-2">
+            <div className="grid grid-cols-2 gap-4 pt-2">
               {matches.map((item, index) => {
                 const isOpening = openingConversation === item.otherUser.id
-                const showEncourageBanner = !userCanChat && item.hasEncouragement
                 const otherName = item.otherUser.first_name || 'Cette personne'
 
                 return (
-                  <motion.div
+                  <motion.button
                     key={item.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
+                    type="button"
+                    disabled={isOpening}
+                    onClick={() => openConversation(item.otherUser.id, item.conversationId, item.id)}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className={showEncourageBanner ? 'rounded-2xl border border-gold/15 bg-dark-200/40 overflow-hidden' : ''}
+                    className="relative group overflow-hidden rounded-2xl h-48 bg-dark-300 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60"
                   >
-                    <button
-                      type="button"
-                      disabled={isOpening}
-                      onClick={() => openConversation(item.otherUser.id, item.conversationId, item.id)}
-                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
-                    >
-                      {/* Avatar — always clear, never blurred */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setProfileViewerUser(item.otherUser)
-                          setShowProfileModal(true)
-                        }}
-                        className="relative shrink-0 hover:opacity-75 transition-opacity"
-                      >
-                        <div className={`w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ${showEncourageBanner ? 'ring-gold/50' : 'ring-gold/30'}`}>
-                          {item.otherUser.photos?.[0] ? (
-                            <img
-                              src={(item.otherUser.photos as string[])[0]}
-                              alt={item.otherUser.first_name || ''}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl">
-                              👤
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-gold text-dark text-[9px] font-black px-1 py-0.5 rounded-full">
-                          {showEncourageBanner ? <Zap size={10} /> : '✓'}
-                        </div>
-
-                        {!item.isViewed && (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border-2 border-dark" />
-                        )}
-                      </button>
-
-                      {/* Info — real name, real time, always visible */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <p className="font-semibold truncate">
-                            {otherName}
-                            {item.otherUser.age ? `, ${item.otherUser.age}` : ''}
-                          </p>
-
-                          {item.createdAt && (
-                            <span className="text-white/30 text-xs shrink-0 ml-2">
-                              {formatTime(item.createdAt)}
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-white/40 text-sm truncate">
-                          {isOpening
-                            ? 'Ouverture...'
-                            : userCanChat
-                              ? isPaidPlanUtil(item.otherUser.plan)
-                                ? 'Nouveau match ! Dis bonjour'
-                                : 'En attente du plan Business de ce membre'
-                              : showEncourageBanner
-                                ? 'Souhaite echanger avec vous'
-                                : 'Passe Business pour discuter'}
-                        </p>
-                      </div>
-
-                      {/* Lock icon hint for free users */}
-                      {!userCanChat && !showEncourageBanner && (
-                        <div className="shrink-0 w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center">
-                          <Lock size={14} className="text-gold/60" />
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Encouragement banner — only for free users who received one */}
-                    {showEncourageBanner && (
-                      <div className="px-3 pb-3">
-                        <div className="rounded-[12px] border border-gold/15 bg-gradient-to-r from-gold/[0.06] to-transparent p-3">
-                          <div className="flex items-start gap-2.5">
-                            <div className="shrink-0 mt-0.5 w-7 h-7 rounded-full bg-gold/15 border border-gold/25 flex items-center justify-center">
-                              <Zap size={13} className="text-gold" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[12px] leading-[1.55] text-white/60">
-                                <span className="font-semibold text-white/80">{otherName}</span>
-                                {' '}utilise deja PAKT Business et vous encourage a faire de meme pour echanger ensemble.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleCheckout('business')
-                                }}
-                                className="mt-2 h-[30px] px-4 rounded-[8px] bg-gold text-dark text-[11px] font-bold hover:bg-gold-light active:scale-[0.97] transition-all"
-                              >
-                                Passer Business
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+                    {/* Background image */}
+                    {item.otherUser.photos?.[0] ? (
+                      <img
+                        src={(item.otherUser.photos as string[])[0]}
+                        alt={item.otherUser.first_name || ''}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-dark-200 to-dark-300">
+                        <UserCircle2 size={60} className="text-white/20" />
                       </div>
                     )}
-                  </motion.div>
+
+                    {/* Overlay gradient for text readability */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-dark via-transparent to-transparent" />
+
+                    {/* New badge */}
+                    {!item.isViewed && (
+                      <div className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">
+                        Nouveau
+                      </div>
+                    )}
+
+                    {/* Info at bottom */}
+                    <div className="absolute bottom-0 left-0 right-0 p-3 text-left">
+                      <p className="font-semibold text-white text-sm">
+                        {otherName}
+                        {item.otherUser.age ? `, ${item.otherUser.age}` : ''}
+                      </p>
+                      <p className="text-white/70 text-xs truncate">
+                        {item.otherUser.city || 'Ville non spécifiée'}
+                      </p>
+                    </div>
+                  </motion.button>
                 )
               })}
             </div>
           )
-        ) : tab === 'likes' ? (
+        ) : (
           /* ── LIKES TAB — blurred for non-Pro ── */
           !isBusinessPro ? (
             <FreeLikesView likes={likes} onUpgrade={() => handleCheckout('business_pro')} />
           ) : likes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
-              <span className="text-5xl">👑</span>
+              <Crown size={48} className="text-white/20" />
               <div>
                 <h3 className="font-semibold text-lg mb-1">Aucun like pour le moment</h3>
                 <p className="text-white/40 text-sm">Les personnes qui te likent apparaitront ici.</p>
@@ -1059,7 +980,9 @@ export default function MatchesPage() {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+                            <div className="w-full h-full flex items-center justify-center">
+                              <UserCircle2 size={40} className="text-white/20" />
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1083,88 +1006,6 @@ export default function MatchesPage() {
 
                       <div className="shrink-0 w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center">
                         <ChevronLeft size={14} className="text-gold/60 rotate-180" />
-                      </div>
-                    </button>
-                  </motion.div>
-                )
-              })}
-            </div>
-          )
-        ) : (
-          /* ── CONVERSATIONS TAB ── */
-          isFree ? (
-            <FreeConversationsView
-              conversations={conversations}
-              onUpgrade={() => handleCheckout('business')}
-            />
-          ) : conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-2/3 text-center gap-4">
-              <span className="text-5xl">✉️</span>
-              <div>
-                <h3 className="font-semibold text-lg mb-1">Aucune conversation</h3>
-                <p className="text-white/40 text-sm">
-                  Tes conversations apparaitront ici apres un match.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-1 pt-2">
-              {conversations.map((item, index) => {
-                const lastMessage = item.lastMessage || 'Nouveau message'
-                const isOpening = openingConversation === item.otherUser.id
-
-                return (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={item.isLocked ? 'rounded-2xl bg-dark-200/50 border border-gold/10 p-1' : ''}
-                  >
-                    <button
-                      type="button"
-                      disabled={isOpening}
-                      onClick={() => openConversation(item.otherUser.id, item.id, null)}
-                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-dark-200 active:bg-dark-300 transition-colors text-left disabled:opacity-60"
-                    >
-                      <div className="relative shrink-0">
-                        <div className="w-14 h-14 rounded-full overflow-hidden bg-dark-300 ring-2 ring-offset-2 ring-offset-dark ring-gold/30">
-                          {item.otherUser.photos?.[0] ? (
-                            <img
-                              src={(item.otherUser.photos as string[])[0]}
-                              alt=""
-                              className={`w-full h-full object-cover ${
-                                item.isLocked && !userCanChat ? 'blur-[14px] scale-[1.3] brightness-[0.5] saturate-[0.65]' : ''
-                              }`}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <p className="font-semibold truncate">
-                            {item.isLocked && !userCanChat
-                              ? 'Conversation verrouillée'
-                              : item.otherUser.first_name || 'Profil'}
-                          </p>
-                          {item.lastMessageAt && (
-                            <span className="text-white/30 text-xs shrink-0 ml-2">
-                              {formatTime(item.lastMessageAt)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-white/40 text-sm truncate">
-                          {item.isLocked
-                            ? userCanChat
-                              ? 'Ce membre doit passer Business pour répondre'
-                              : 'Passe Business pour discuter'
-                            : isOpening
-                              ? 'Ouverture...'
-                              : lastMessage}
-                        </p>
                       </div>
                     </button>
                   </motion.div>
@@ -1286,7 +1127,7 @@ export default function MatchesPage() {
                           />
                         ) : (
                           <div className="w-full aspect-[3/4] rounded-2xl bg-dark-300 flex items-center justify-center">
-                            <span className="text-8xl">👤</span>
+                            <UserCircle2 size={80} className="text-white/20" />
                           </div>
                         )}
 

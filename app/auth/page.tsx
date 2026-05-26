@@ -252,10 +252,14 @@ export default function AuthPage() {
             )}
           </div>
 
-          <p className="text-center text-white/30 text-xs mt-8">
+          <p className="text-center text-white/30 text-xs mt-8 leading-relaxed">
             En continuant, tu acceptes nos{' '}
             <Link href="/legal/cgu" className="text-gold/60 underline">
               CGU
+            </Link>{' '}
+            et notre{' '}
+            <Link href="/legal/privacy" className="text-gold/60 underline">
+              Politique de confidentialité
             </Link>
           </p>
         </motion.div>

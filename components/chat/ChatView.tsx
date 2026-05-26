@@ -26,6 +26,7 @@ import {
   Ban,
   Trash2,
   UserCircle2,
+  Lock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -851,6 +852,18 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           <div className="flex justify-center pt-8">
             <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
           </div>
+        ) : !bothCanChat ? (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-6 pb-8">
+            <div className="w-16 h-16 rounded-full bg-gold/10 flex items-center justify-center">
+              <Lock size={32} className="text-gold/60" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg mb-2">{otherUser.first_name} n'a pas le plan Business</h3>
+              <p className="text-white/50 text-sm max-w-xs">
+                Cette personne doit passer au plan Business pour pouvoir discuter. Vous pouvez l'encourager à le faire !
+              </p>
+            </div>
+          </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-4 pb-8">
             <MessageCircle size={48} className="text-white/20" />
@@ -893,26 +906,41 @@ export default function ChatView({ conversationId, conversationType, otherUser }
 
       <div className="shrink-0 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+14px)] bg-dark-100 border-t border-dark-400">
         {canEncourage && (
-          <div className="mb-3 rounded-[14px] border border-gold/15 bg-gold/[0.04] p-3">
-            <p className="text-[11px] text-white/40 text-center mb-2.5">
-              Ce membre doit passer Business pour débloquer la conversation.
-            </p>
+          <div className="mb-3 rounded-[16px] border border-gold/25 bg-gradient-to-b from-gold/[0.08] to-gold/[0.03] p-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center shrink-0 mt-0.5">
+                <Sparkles size={18} className="text-gold" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white text-sm mb-1">Encourager à passer Business</p>
+                <p className="text-[12px] text-white/50">
+                  Envoyer un message à {otherUser.first_name} pour lui proposer de passer au plan Business et discuter ensemble
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={sendEncouragement}
               disabled={encourageSending || encourageCooldown}
-              className={`w-full flex items-center justify-center gap-2 h-11 rounded-[12px] text-sm font-bold transition-all ${
+              className={`w-full flex items-center justify-center gap-2 h-10 rounded-[11px] text-sm font-bold transition-all ${
                 encourageCooldown
-                  ? 'bg-dark-300 text-white/30 cursor-default'
-                  : 'bg-gradient-to-r from-gold to-[#e2c06d] text-dark shadow-[0_2px_12px_rgba(212,168,83,0.2)] hover:shadow-[0_2px_18px_rgba(212,168,83,0.35)] active:scale-[0.98]'
-              } disabled:opacity-70`}
+                  ? 'bg-dark-300 text-white/40'
+                  : 'bg-gradient-to-r from-gold to-[#e2c06d] text-dark shadow-[0_4px_16px_rgba(212,168,83,0.2)] hover:shadow-[0_6px_24px_rgba(212,168,83,0.35)] active:scale-[0.98]'
+              } disabled:opacity-50`}
             >
-              <Sparkles size={15} />
-              {encourageCooldown
-                ? 'Encouragement envoyé !'
-                : encourageSending
-                  ? 'Envoi en cours...'
-                  : 'Encourager à passer Business'}
+              {encourageCooldown ? (
+                <>
+                  <Sparkles size={14} />
+                  Envoyé !
+                </>
+              ) : encourageSending ? (
+                'Envoi...'
+              ) : (
+                <>
+                  <Sparkles size={14} />
+                  Envoyer l'encouragement
+                </>
+              )}
             </button>
           </div>
         )}

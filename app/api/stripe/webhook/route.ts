@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse('Webhook error', { status: 400 })
   }
 
-  // 🔥 PAYMENT OK
+  // PAYMENT OK
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
 
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 🔥 UPDATE (upgrade / downgrade)
+  // UPDATE (upgrade / downgrade)
   if (event.type === 'customer.subscription.updated') {
     const subscription = event.data.object as Stripe.Subscription
 
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       .eq('stripe_customer_id', customerId)
   }
 
-  // 🔥 ANNULATION
+  // ANNULATION
   if (event.type === 'customer.subscription.deleted') {
     const subscription = event.data.object as Stripe.Subscription
 

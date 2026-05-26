@@ -11,7 +11,8 @@ import type { Profile } from '@/lib/supabase/types'
 
 const NAV_ITEMS = [
   { href: '/swipe', icon: Flame, label: 'Découvrir' },
-  { href: '/matches', icon: MessageCircle, label: 'Messages' },
+  { href: '/matches', icon: MessageCircle, label: 'Matchs' },
+  { href: '/messages', icon: MessageCircle, label: 'Chat' },
   { href: '/profile', icon: User, label: 'Profil' },
   { href: '/settings', icon: null, label: 'PAKT' },
 ]
@@ -326,7 +327,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-dark-100/95 backdrop-blur-xl border-t border-dark-400 flex items-center justify-around pt-3 pb-[calc(env(safe-area-inset-bottom)+8px)]">
         {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href
-          const showBadge = href === '/matches' && totalNotifications > 0
+          const showBadge = href === '/messages' && totalNotifications > 0
 
           return (
             <button
