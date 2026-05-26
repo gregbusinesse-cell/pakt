@@ -25,11 +25,14 @@ import {
   Flag,
   Ban,
   Trash2,
+  UserCircle2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import SwipeCard from '@/components/swipe/SwipeCard'
 import { useAppStore } from '@/lib/store'
+import { useOnlineStatus } from '@/lib/hooks/useOnlineStatus'
+import MessageStatus from '@/components/chat/MessageStatus'
 
 interface Props {
   conversationId: string
@@ -113,6 +116,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
   const db = supabase as any
   const router = useRouter()
   const { profile, refreshNotifications } = useAppStore()
+  const { isOnline, statusText } = useOnlineStatus(otherUser?.id || null)
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -363,9 +367,25 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     loadMatchStatus()
   }, [currentUserId, db, otherUser?.id])
 
-  const assertCanSendMessage = () => {
+  const assertCanSendMessage = async () => {
     if (!iAmPaid) {
       throw new Error('Passe à PAKT Business pour débloquer les conversations.')
+    }
+
+    // Reload other user's plan to check latest status
+    const { data: freshOtherUser, error: refreshError } = await db
+      .from('profiles')
+      .select('plan')
+      .eq('id', otherUser.id)
+      .single()
+
+    if (refreshError) {
+      console.error('[CHAT_VIEW] Failed to refresh other user plan:', refreshError)
+      // Fall back to cached plan
+    } else if (freshOtherUser && !isPaidPlan(freshOtherUser.plan)) {
+      throw new Error("Ce membre doit passer Business pour débloquer la conversation.")
+    } else if (!freshOtherUser) {
+      throw new Error("Profil introuvable")
     }
 
     if (!isPaidPlan(otherPlan)) {
@@ -536,7 +556,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     setSending(true)
 
     try {
-      assertCanSendMessage()
+      await assertCanSendMessage()
 
       let fileUrl: string | undefined
       let fileName: string | undefined
@@ -601,7 +621,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
     if (recordingRef.current || stoppingRef.current || sending) return
 
     try {
-      assertCanSendMessage()
+      await assertCanSendMessage()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur profil')
       return
@@ -752,17 +772,24 @@ export default function ChatView({ conversationId, conversationType, otherUser }
         </button>
 
         <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-dark-300 shrink-0">
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-dark-300 shrink-0 flex items-center justify-center relative">
             {otherUser.photos?.[0] ? (
               <img src={otherUser.photos[0]} alt="" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-xl">👤</div>
+              <UserCircle2 size={24} className="text-white/20" />
+            )}
+            {isOnline && (
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-dark-100" />
             )}
           </div>
 
           <div className="flex-1 min-w-0">
             <p className="font-semibold truncate">{otherUser.first_name}</p>
-            {otherUser.city && <p className="text-xs text-white/40 truncate">{otherUser.city}</p>}
+            <div className="flex items-center gap-1.5">
+              <p className={`text-xs ${isOnline ? 'text-green-400' : 'text-white/40'}`}>
+                {statusText}
+              </p>
+            </div>
           </div>
         </button>
 
@@ -826,7 +853,7 @@ export default function ChatView({ conversationId, conversationType, otherUser }
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-4 pb-8">
-            <span className="text-4xl">👋</span>
+            <MessageCircle size={48} className="text-white/20" />
             <p className="text-white/40 text-sm">
               Commence la conversation avec {otherUser.first_name} !
             </p>
@@ -1274,11 +1301,12 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
       : 0
 
   return (
-    <div
-      className={`max-w-[85%] min-w-[230px] px-4 py-3 flex items-center gap-3 rounded-[20px] ${
-        isMine ? 'bubble-sent' : 'bubble-received'
-      }`}
-    >
+    <div className="flex flex-col gap-1">
+      <div
+        className={`max-w-[85%] min-w-[230px] px-4 py-3 flex items-center gap-3 rounded-[20px] ${
+          isMine ? 'bubble-sent' : 'bubble-received'
+        }`}
+      >
       <button
         type="button"
         onClick={togglePlay}
@@ -1336,6 +1364,12 @@ function AudioBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
           setIsPlaying(false)
         }}
       />
+      </div>
+      {isMine && (
+        <div className="flex justify-end pr-1">
+          <MessageStatus isRead={msg.is_read || false} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1346,25 +1380,32 @@ function ImageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   if (!imageUrl) return null
 
   return (
-    <button
-      type="button"
-      onClick={() => window.open(imageUrl, '_blank', 'noopener,noreferrer')}
-      className={`max-w-[78%] rounded-[16px] overflow-hidden border text-left ${
-        isMine ? 'border-gold/30 bg-gold/10' : 'border-dark-500 bg-dark-200'
-      }`}
-    >
-      <img
-        src={imageUrl}
-        alt={msg.file_name || 'Image'}
-        className="block max-h-72 w-full object-cover"
-      />
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => window.open(imageUrl, '_blank', 'noopener,noreferrer')}
+        className={`max-w-[78%] rounded-[16px] overflow-hidden border text-left ${
+          isMine ? 'border-gold/30 bg-gold/10' : 'border-dark-500 bg-dark-200'
+        }`}
+      >
+        <img
+          src={imageUrl}
+          alt={msg.file_name || 'Image'}
+          className="block max-h-72 w-full object-cover"
+        />
 
-      {msg.file_name && (
-        <div className={`px-3 py-2 text-xs truncate ${isMine ? 'text-dark/70 bg-gold' : 'text-white/60 bg-dark-200'}`}>
-          {msg.file_name}
+        {msg.file_name && (
+          <div className={`px-3 py-2 text-xs truncate ${isMine ? 'text-dark/70 bg-gold' : 'text-white/60 bg-dark-200'}`}>
+            {msg.file_name}
+          </div>
+        )}
+      </button>
+      {isMine && (
+        <div className="flex justify-end pr-1">
+          <MessageStatus isRead={msg.is_read || false} />
         </div>
       )}
-    </button>
+    </div>
   )
 }
 
@@ -1383,46 +1424,53 @@ function FileBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleOpen}
-      className={`max-w-[85%] min-w-[240px] px-4 py-3 flex items-center gap-3 rounded-[16px] text-left ${
-        isMine ? 'bubble-sent' : 'bubble-received'
-      }`}
-    >
-      <div
-        className={`w-11 h-11 rounded-[12px] flex items-center justify-center shrink-0 ${
-          isMine ? 'bg-dark/15 text-dark' : 'bg-white/10 text-gold'
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={handleOpen}
+        className={`max-w-[85%] min-w-[240px] px-4 py-3 flex items-center gap-3 rounded-[16px] text-left ${
+          isMine ? 'bubble-sent' : 'bubble-received'
         }`}
       >
-        <FileText size={22} />
-      </div>
+        <div
+          className={`w-11 h-11 rounded-[12px] flex items-center justify-center shrink-0 ${
+            isMine ? 'bg-dark/15 text-dark' : 'bg-white/10 text-gold'
+          }`}
+        >
+          <FileText size={22} />
+        </div>
 
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold truncate">{fileName}</p>
-        {fileSize && (
-          <p className={`text-xs mt-0.5 ${isMine ? 'text-dark/60' : 'text-white/45'}`}>
-            {fileSize}
-          </p>
-        )}
-      </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold truncate">{fileName}</p>
+          {fileSize && (
+            <p className={`text-xs mt-0.5 ${isMine ? 'text-dark/60' : 'text-white/45'}`}>
+              {fileSize}
+            </p>
+          )}
+        </div>
 
-      <a
-        href={fileUrl || '#'}
-        download={fileName}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(event) => {
-          event.stopPropagation()
-          if (!fileUrl) event.preventDefault()
-        }}
-        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-          isMine ? 'bg-dark/15 text-dark hover:bg-dark/25' : 'bg-white/10 text-white hover:bg-white/15'
-        }`}
-      >
-        <Download size={17} />
-      </a>
-    </button>
+        <a
+          href={fileUrl || '#'}
+          download={fileName}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => {
+            event.stopPropagation()
+            if (!fileUrl) event.preventDefault()
+          }}
+          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+            isMine ? 'bg-dark/15 text-dark hover:bg-dark/25' : 'bg-white/10 text-white hover:bg-white/15'
+          }`}
+        >
+          <Download size={17} />
+        </a>
+      </button>
+      {isMine && (
+        <div className="flex justify-end pr-1">
+          <MessageStatus isRead={msg.is_read || false} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1439,8 +1487,13 @@ function MessageBubble({ msg, isMine }: { msg: Message; isMine: boolean }) {
 
   if (msg.message_type === 'text') {
     return (
-      <div className={`max-w-[75%] px-4 py-2.5 text-sm leading-relaxed ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
-        {msg.content}
+      <div className={`max-w-[75%] flex flex-col gap-1 px-4 py-2.5 text-sm leading-relaxed ${isMine ? 'bubble-sent' : 'bubble-received'}`}>
+        <div>{msg.content}</div>
+        {isMine && (
+          <div className="flex items-center justify-end">
+            <MessageStatus isRead={msg.is_read || false} />
+          </div>
+        )}
       </div>
     )
   }
