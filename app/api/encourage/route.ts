@@ -126,12 +126,12 @@ export async function POST(req: NextRequest) {
     const senderName = senderData?.first_name || 'Un membre Business'
 
     const encourageVariants = [
-      `Salut ! J'ai pris le plan Business sur PAKT et j'aimerais vraiment discuter avec toi. C'est incroyable, tu devrais le prendre aussi ! On va pouvoir faire de grandes choses ensemble. 🚀`,
+      `Salut ! J'ai pris le plan Business sur PAKT et j'aimerais vraiment discuter avec toi. C'est incroyable, tu devrais le prendre aussi ! On va pouvoir faire de grandes choses ensemble.`,
       `Hey ! J'ai activé le plan Business et je pense sincèrement qu'on pourrait collaborer sur quelque chose de folie. Prends Business toi aussi, tu ne regretteras pas !`,
       `${senderName} ici ! J'ai investi dans le plan Business parce que j'ai vu du potentiel chez toi. Fais le même pas, on va créer quelque chose d'exceptionnel ensemble !`,
-      `Yo ! Le plan Business, c'est un game changer. Je l'ai pris et maintenant je veux te le partager. Rejoins-moi, on va se lancer dans un projet incroyable 💪`,
+      `Yo ! Le plan Business, c'est un game changer. Je l'ai pris et maintenant je veux te le partager. Rejoins-moi, on va se lancer dans un projet incroyable.`,
       `Salut ! J'ai activé Business pour vraiment progresser sur PAKT. Tu as un profil intéressant, on devrait discuter. Prends Business et on y va !`,
-      `${senderName} t'écrit ! Business, c'est THE choice pour les gens sérieux. J'y suis passé et ça change tout. Toi aussi, fais ce mouvement, nos idées ensemble ça va être dingue ! 🔥`,
+      `${senderName} t'écrit ! Business, c'est THE choice pour les gens sérieux. J'y suis passé et ça change tout. Toi aussi, fais ce mouvement, nos idées ensemble ça va être dingue !`,
     ]
 
     const message = encourageVariants[Math.floor(Math.random() * encourageVariants.length)]
