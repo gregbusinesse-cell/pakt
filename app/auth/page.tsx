@@ -77,7 +77,7 @@ export default function AuthPage() {
 
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
     if (!clientId) {
-      console.error('[AUTH] NEXT_PUBLIC_GOOGLE_CLIENT_ID manquant — vérifier .env.local ou les variables d\'environnement')
+      console.error('[AUTH] NEXT_PUBLIC_GOOGLE_CLIENT_ID manquant — verifier les variables Vercel')
       return
     }
 
@@ -173,8 +173,8 @@ export default function AuthPage() {
           className="w-full max-w-sm relative z-10"
         >
           <div className="text-center mb-10">
-            <h1 className="text-5xl font-black tracking-widest text-gold-gradient mb-3">PAKT</h1>
-            <p className="text-white/60 text-lg font-semibold tracking-wide">Le Tinder du Business</p>
+            <h1 className="text-5xl font-black tracking-widest text-gold-gradient mb-2">PAKT</h1>
+            <p className="text-white/40 text-sm tracking-wider">Le Tinder du Business</p>
           </div>
 
           <div className="flex bg-dark-200 rounded-2xl p-1 mb-6">
@@ -228,13 +228,11 @@ export default function AuthPage() {
           <div className="relative w-full">
             {/* Visual custom button (no functionality, just for display) */}
             <div
-              className="w-full flex items-center justify-center gap-3 bg-dark-200 border border-dark-400 rounded-2xl py-4 text-white pointer-events-none select-none hover:bg-dark-300 transition-colors"
+              className="w-full flex items-center justify-center gap-3 bg-dark-200 border border-dark-400 rounded-2xl py-4 text-white pointer-events-none select-none"
               aria-hidden="true"
             >
-              <div className="w-5 h-5 flex items-center justify-center">
-                <GoogleIcon />
-              </div>
-              <span className="font-semibold">Se connecter avec Google</span>
+              <GoogleIcon />
+              Continuer avec Google
             </div>
 
             {/* Invisible but clickable Google official button overlay */}
@@ -254,14 +252,14 @@ export default function AuthPage() {
             )}
           </div>
 
-          <p className="text-center text-white/40 text-xs mt-8 leading-relaxed">
-            En créant un compte, tu acceptes nos{' '}
-            <Link href="/legal/cgu" className="text-gold hover:text-gold/80 underline font-semibold transition-colors">
-              Conditions Générales d'Utilisation
-            </Link>
-            {' '}et notre{' '}
-            <Link href="/legal/privacy" className="text-gold hover:text-gold/80 underline font-semibold transition-colors">
-              Politique de Confidentialité
+          <p className="text-center text-white/30 text-xs mt-8 leading-relaxed">
+            En continuant, tu acceptes nos{' '}
+            <Link href="/legal/cgu" className="text-gold/60 underline">
+              CGU
+            </Link>{' '}
+            et notre{' '}
+            <Link href="/legal/privacy" className="text-gold/60 underline">
+              Politique de confidentialité
             </Link>
           </p>
         </motion.div>
@@ -272,7 +270,7 @@ export default function AuthPage() {
 
 function GoogleIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 18 18">
+    <svg width="18" height="18" viewBox="0 0 18 18">
       <path
         fill="#4285F4"
         d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.66-.15-1.18z"
