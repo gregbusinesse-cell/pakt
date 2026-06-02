@@ -1,133 +1,145 @@
-// Simple static page — no client JS, no hooks, no build issues
-// Shown after email confirmation (success or error)
+import { headers } from 'next/headers'
+import type { Metadata } from 'next'
 
-export const dynamic = 'force-static'
-
-interface Props {
-  searchParams: { [key: string]: string | undefined }
+export const metadata: Metadata = {
+  title: 'PAKT — Confirmation email',
 }
 
-export default function EmailConfirmePage({ searchParams }: Props) {
-  const status = searchParams.status || 'ok'
+interface Props {
+  searchParams: Promise<{ status?: string }>
+}
 
-  const configs: Record<string, { color: string; symbol: string; title: string; message: string }> = {
+export default async function EmailConfirmePage({ searchParams }: Props) {
+  const { status = 'ok' } = await searchParams
+
+  // Detect mobile via User-Agent
+  const headersList = await headers()
+  const ua = headersList.get('user-agent') || ''
+  const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(ua)
+
+  type Config = { color: string; symbol: string; title: string; message: string; showOpenBtn: boolean }
+
+  const configs: Record<string, Config> = {
     ok: {
-      color: '#d4a853',
-      symbol: '✓',
+      color: '#d4a853', symbol: '✓',
       title: 'Email confirmé !',
       message: 'Ton adresse email a bien été confirmée. Ton compte PAKT est maintenant actif.',
+      showOpenBtn: true,
     },
     already: {
-      color: '#d4a853',
-      symbol: '✓',
+      color: '#d4a853', symbol: '✓',
       title: 'Déjà confirmé',
       message: 'Ton adresse email a déjà été confirmée.',
+      showOpenBtn: true,
     },
     expired: {
-      color: '#ff4444',
-      symbol: '!',
+      color: '#ff4444', symbol: '!',
       title: 'Lien expiré',
       message: 'Ce lien a expiré (validité 24h). Crée un nouveau compte depuis l\'application PAKT.',
+      showOpenBtn: false,
     },
     error: {
-      color: '#ff4444',
-      symbol: '!',
+      color: '#ff4444', symbol: '!',
       title: 'Lien invalide',
-      message: 'Ce lien de confirmation est invalide. Contacte le support : paktsupport@gmail.com',
+      message: 'Ce lien est invalide. Contacte-nous : paktsupport@gmail.com',
+      showOpenBtn: false,
     },
   }
 
   const c = configs[status] ?? configs.error
 
   return (
-    <html lang="fr">
-      <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PAKT</title>
-        <style>{`
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            background: #0a0a0a;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            color: #fff;
-          }
-          .logo {
-            font-size: 32px;
-            font-weight: 900;
-            letter-spacing: 8px;
-            color: #d4a853;
-            margin-bottom: 40px;
-          }
-          .card {
-            background: #161616;
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 20px;
-            padding: 40px 32px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-          }
-          .badge {
-            width: 72px;
-            height: 72px;
-            border-radius: 50%;
-            background: ${c.color};
-            color: #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            font-weight: 900;
-            margin: 0 auto 24px;
-          }
-          h1 { font-size: 20px; font-weight: 800; margin-bottom: 12px; }
-          p { color: rgba(255,255,255,0.5); font-size: 14px; line-height: 1.7; }
-          .notice {
-            background: rgba(212,168,83,0.08);
-            border: 1px solid rgba(212,168,83,0.2);
-            border-radius: 12px;
-            padding: 16px 18px;
-            margin-top: 24px;
-          }
-          .notice p { color: #d4a853; font-weight: 600; font-size: 13px; }
-          .btn {
-            display: inline-block;
-            background: #d4a853;
-            color: #000;
-            font-weight: 700;
-            font-size: 15px;
-            text-decoration: none;
-            padding: 13px 32px;
-            border-radius: 12px;
-            margin-top: 20px;
-          }
-          footer { color: rgba(255,255,255,0.18); font-size: 11px; margin-top: 28px; }
-        `}</style>
-      </head>
-      <body>
-        <div className="logo">PAKT</div>
-        <div className="card">
-          <div className="badge">{c.symbol}</div>
-          <h1>{c.title}</h1>
-          <p>{c.message}</p>
-          {(status === 'ok' || status === 'already') && (
-            <>
-              <div className="notice">
-                <p>Retourne sur l&apos;application mobile PAKT et connecte-toi avec ton mot de passe.</p>
-              </div>
-              <a className="btn" href="pakt://auth">Ouvrir PAKT</a>
-            </>
+    <div style={{
+      margin: 0, padding: 0,
+      background: '#0a0a0a',
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px',
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      color: '#fff',
+    }}>
+      {/* Logo */}
+      <div style={{
+        fontSize: 30, fontWeight: 900, letterSpacing: 8,
+        color: '#d4a853', marginBottom: 36, textAlign: 'center',
+      }}>
+        PAKT
+      </div>
+
+      {/* Card */}
+      <div style={{
+        background: '#161616',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 20,
+        padding: '36px 28px',
+        maxWidth: 380,
+        width: '100%',
+        textAlign: 'center',
+      }}>
+        {/* Badge */}
+        <div style={{
+          width: 68, height: 68, borderRadius: '50%',
+          background: c.color, color: '#000',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 30, fontWeight: 900,
+          margin: '0 auto 20px',
+        }}>
+          {c.symbol}
+        </div>
+
+        {/* Title */}
+        <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 800, marginBottom: 10, margin: '0 0 10px' }}>
+          {c.title}
+        </h1>
+
+        {/* Message */}
+        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.7, margin: 0 }}>
+          {c.message}
+        </p>
+
+        {/* Action box */}
+        <div style={{
+          background: 'rgba(212,168,83,0.08)',
+          border: '1px solid rgba(212,168,83,0.2)',
+          borderRadius: 12, padding: '14px 16px', marginTop: 20,
+        }}>
+          {isMobile && c.showOpenBtn ? (
+            <p style={{ color: '#d4a853', fontWeight: 600, fontSize: 13, margin: 0 }}>
+              Appuie sur le bouton ci-dessous pour ouvrir l&apos;application et te connecter.
+            </p>
+          ) : c.showOpenBtn ? (
+            <p style={{ color: '#d4a853', fontWeight: 600, fontSize: 13, margin: 0 }}>
+              Ouvre l&apos;application <strong>PAKT</strong> sur ton téléphone et connecte-toi avec ton mot de passe.
+            </p>
+          ) : (
+            <p style={{ color: '#d4a853', fontWeight: 600, fontSize: 13, margin: 0 }}>
+              Retourne sur l&apos;application PAKT et recommence l&apos;inscription.
+            </p>
           )}
         </div>
-        <footer>PAKT &copy; 2026</footer>
-      </body>
-    </html>
+
+        {/* Button — only on mobile */}
+        {isMobile && c.showOpenBtn && (
+          <a
+            href="pakt://auth"
+            style={{
+              display: 'inline-block', marginTop: 18,
+              background: '#d4a853', color: '#000',
+              fontWeight: 700, fontSize: 14, textDecoration: 'none',
+              padding: '12px 28px', borderRadius: 10,
+            }}
+          >
+            Ouvrir PAKT
+          </a>
+        )}
+      </div>
+
+      <footer style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11, marginTop: 24 }}>
+        PAKT &copy; 2026
+      </footer>
+    </div>
   )
 }
